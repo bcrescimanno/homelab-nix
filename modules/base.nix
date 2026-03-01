@@ -88,7 +88,7 @@
     enable = true;
     # Point this at your flake in git so upgrades pull your actual config.
     # Replace with your real repo URL.
-    flake = "github:bcrescimanno/homelab-nix#pi-media";
+    flake = "github:bcrescimanno/homelab-nix";
     flags = [ "--update-input" "nixpkgs" ];
     dates = "04:00"; # Run at 4am
     randomizedDelaySecs = 1800; # Stagger if multiple devices run this
@@ -116,7 +116,7 @@
   # Locale & timezone
   # ---------------------------------------------------------------------------
 
-  time.timeZone = "America/Chicago"; # adjust to your timezone
+  time.timeZone = "America/Los_Angeles"; # adjust to your timezone
   i18n.defaultLocale = "en_US.UTF-8";
 
   # ---------------------------------------------------------------------------
