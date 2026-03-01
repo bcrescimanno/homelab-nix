@@ -1,4 +1,4 @@
-# modules/base.nix — shared configuration for all Pi devices.
+# modules/bass.nix — shared configuration for all Pi devices.
 #
 
 { config, pkgs, lib, ... }:
@@ -88,8 +88,8 @@
     enable = true;
     # Point this at your flake in git so upgrades pull your actual config.
     # Replace with your real repo URL.
-    flake = "github:bcrescimanno/homelab-nix";
-    flags = [ "--update-input" "nixpkgs" ];
+    flake = "github:bcrescimanno/homelab-nix#${config.networking.hostName}";
+    flags = [ "--refresh" ];
     dates = "04:00"; # Run at 4am
     randomizedDelaySecs = 1800; # Stagger if multiple devices run this
   };
