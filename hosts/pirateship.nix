@@ -60,10 +60,6 @@
     };
   };
 
-  # Tell the bootloader to use the EFI partition we defined above.
-  boot.loader.systemd-boot.enable = true;
-  boot.loader.efi.canTouchEfiVariables = true;
-
   # ---------------------------------------------------------------------------
   # Networking
   # ---------------------------------------------------------------------------
