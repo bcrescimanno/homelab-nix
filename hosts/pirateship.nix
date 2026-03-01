@@ -1,4 +1,4 @@
-# hosts/pi-media.nix — host-specific configuration.
+# hosts/pirateship.nix — host-specific configuration.
 #
 # This file contains things that are unique to this particular machine:
 # its hostname, the disk it boots from, its IP address, and any
@@ -68,8 +68,6 @@
   # Networking
   # ---------------------------------------------------------------------------
 
-  # A static IP makes the Pi easier to reach and avoids depending on DHCP
-  # leases staying consistent. Adjust to match your home network.
   networking.interfaces.eth0.useDHCP = true;
 
   # ---------------------------------------------------------------------------

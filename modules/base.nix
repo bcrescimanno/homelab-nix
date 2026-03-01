@@ -1,4 +1,4 @@
-# modules/bass.nix — shared configuration for all Pi devices.
+# modules/base.nix — shared configuration for all Pi devices.
 #
 
 { config, pkgs, lib, ... }:
