@@ -91,7 +91,7 @@
     flake = "github:bcrescimanno/homelab-nix#${config.networking.hostName}";
     flags = [ "--refresh" ];
     dates = "04:00"; # Run at 4am
-    randomizedDelaySecs = 1800; # Stagger if multiple devices run this
+    randomizedDelaySec = "30m"; # Stagger if multiple devices run this
   };
 
   # ---------------------------------------------------------------------------
