@@ -47,7 +47,7 @@
     };
 
     qbittorrent = {
-      image = "lscr.io/linuxserver/qbittorrent:latest";
+      image = "lscr.io/linuxserver/qbittorrent:4.6.7";
       autoStart = true;
       dependsOn = [ "gluetun" ];
       extraOptions = [ "--network=container:gluetun" ];
