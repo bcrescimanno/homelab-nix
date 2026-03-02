@@ -26,6 +26,7 @@
         PORT_FORWARD_ONLY = "on";
         WIREGUARD_IMPLEMENTATION = "userspace";
         BLOCK_MALICIOUS = "off";
+        WIREGUARD_MTU = "1280";
       };
 
       extraOptions = [
