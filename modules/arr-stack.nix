@@ -29,6 +29,7 @@
       ];
 
       ports = [
+        "8000:8000"   # gluetun control server
         "8888:8888"   # gluetun HTTP proxy
         "8388:8388"   # gluetun Shadowsocks
         "8080:8080"   # qBittorrent web UI
@@ -103,7 +104,21 @@
         "/var/lib/prowlarr/config:/config"
       ];
     };
+
+    qbittorrent-port-manager = {
+      image = "mjmeli/qbittorrent-port-forward-gluetun-server:latest";
+      autoStart = true;
+      dependsOn = [ "gluetun" "qbittorrent" ];
+      extraOptions = [ "--network=container:gluetun" ];
+      environment = {
+        QBT_ADDR = "http://localhost:8080";
+        GTN_ADDR = "http://localhost:8000";
+      };
+      environmentFiles = [ "/run/secrets/qbt_credentials" ];
+    };
+
   };
+
 
   systemd.tmpfiles.rules = [
     "d /var/lib/qbittorrent/config 0755 brian users -"

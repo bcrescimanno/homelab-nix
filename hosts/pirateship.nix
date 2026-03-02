@@ -87,6 +87,7 @@
     
     secrets = {
       vpn_env = {};
+      qbt_credentials = {};
     };
   };
 }
