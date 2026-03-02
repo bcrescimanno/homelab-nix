@@ -19,6 +19,7 @@
         VPN_TYPE = "wireguard";
         # Server endpoint hostname only — port comes from the secret
         SERVER_COUNTRIES = "United States";
+        VPN_PORT_FORWARDING = "on";
       };
 
       extraOptions = [
