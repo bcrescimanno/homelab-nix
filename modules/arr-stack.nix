@@ -39,15 +39,15 @@
         "8000:8000"   # gluetun control server
         "8888:8888"   # gluetun HTTP proxy
         "8388:8388"   # gluetun Shadowsocks
-        "8080:8080"   # qBittorrent web UI
+        "9091:9091"   # Transmission
         "7878:7878"   # Radarr
         "8989:8989"   # Sonarr
         "9696:9696"   # Prowlarr
       ];
     };
 
-    qbittorrent = {
-      image = "lscr.io/linuxserver/qbittorrent:latest";
+    transmission = {
+      image = "lscr.io/linuxserver/transmission:latest";
       autoStart = true;
       dependsOn = [ "gluetun" ];
       extraOptions = [ "--network=container:gluetun" ];
@@ -55,10 +55,9 @@
         PUID = "1000";
         PGID = "1000";
         TZ = "America/Los_Angeles";
-        WEBUI_PORT = "8080";
       };
       volumes = [
-        "/var/lib/qbittorrent/config:/config"
+        "/var/lib/transmission/config:/config"
         "/var/lib/media/torrents:/downloads"
       ];
     };
@@ -127,47 +126,46 @@
   };
   script = ''
     set -e
-    
+
     PORT_FILE="/var/lib/gluetun/tmp/forwarded_port"
-    COOKIE_FILE=$(${pkgs.coreutils}/bin/mktemp)
-    
-    trap "${pkgs.coreutils}/bin/rm -f $COOKIE_FILE" EXIT
-    
+
     if [ ! -f "$PORT_FILE" ]; then
       echo "Port file not found yet, waiting..."
       sleep 30
       exit 1
     fi
-    
+
     PORT=$(cat "$PORT_FILE" | tr -d '[:space:]')
-    
+
     if [ -z "$PORT" ] || [ "$PORT" = "0" ]; then
       echo "No forwarded port available yet, waiting..."
       sleep 30
       exit 1
     fi
-    
+
     echo "Forwarded port: $PORT"
-    
-    # Login and save cookie to temp file
+
+    # Transmission RPC requires a session ID — get it first
+    SESSION_ID=$(${pkgs.curl}/bin/curl -sf \
+      -u "$TRANSMISSION_USERNAME:$TRANSMISSION_PASSWORD" \
+      http://localhost:9091/transmission/rpc 2>&1 | \
+      grep -o 'X-Transmission-Session-Id: [^<]*' | awk '{print $2}')
+
+    # Update peer port
     ${pkgs.curl}/bin/curl -sf \
-      -c "$COOKIE_FILE" \
-      --data "username=$QBT_USERNAME&password=$QBT_PASSWORD" \
-      http://localhost:8080/api/v2/auth/login
-    
-    # Update listening port
-    ${pkgs.curl}/bin/curl -sf \
-      -b "$COOKIE_FILE" \
-      --data 'json={"listen_port":'"$PORT"'}' \
-      http://localhost:8080/api/v2/app/setPreferences
-    
-    echo "Updated qBittorrent listening port to $PORT"
+      -u "$TRANSMISSION_USERNAME:$TRANSMISSION_PASSWORD" \
+      -H "X-Transmission-Session-Id: $SESSION_ID" \
+      -d '{"method":"session-set","arguments":{"peer-port":'"$PORT"'}}' \
+      http://localhost:9091/transmission/rpc
+
+    echo "Updated Transmission peer port to $PORT"
     sleep 300
   '';
 };
 
   systemd.tmpfiles.rules = [
     "d /var/lib/qbittorrent/config 0755 brian users -"
+    "d /var/lib/transmission/config 0755 brian users -"
     "d /var/lib/radarr/config 0755 brian users -"
     "d /var/lib/sonarr/config 0755 brian users -"
     "d /var/lib/prowlarr/config 0755 brian users -"
