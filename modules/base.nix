@@ -15,7 +15,10 @@
   # truth for who can log in.
   users.mutableUsers = false;
 
+  programs.zsh.enable = true;
+
   users.users.brian = {
+    shell = pkgs.zsh;
     isNormalUser = true;
     # `wheel` allows `sudo`. `podman` allows managing containers without sudo.
     extraGroups = [ "wheel" "podman" ];
