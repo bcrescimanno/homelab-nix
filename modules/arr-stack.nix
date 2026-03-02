@@ -13,6 +13,9 @@
     gluetun = {
       image = "ghcr.io/qdm12/gluetun:latest";
       autoStart = true;
+      volumes = [
+        "/var/lib/gluetun:/gluetun"
+      ];
 
       environment = {
         VPN_SERVICE_PROVIDER = "protonvpn";
@@ -160,5 +163,7 @@
     "d /var/lib/media/torrents 0755 brian users -"
     "d /var/lib/media/movies 0755 brian users -"
     "d /var/lib/media/tv 0755 brian users -"
+    "d /var/lib/gluetun/auth 0755 brian users -"
+    "f /var/lib/gluetun/auth/config.toml 0644 brian users -"
   ];
 }
