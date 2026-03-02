@@ -47,15 +47,14 @@
     };
 
     qbittorrent = {
-      image = "lscr.io/linuxserver/qbittorrent:4.6.7";
+      image = "qbittorrentofficial/qbittorrent-nox:stable";
       autoStart = true;
       dependsOn = [ "gluetun" ];
       extraOptions = [ "--network=container:gluetun" ];
       environment = {
-        PUID = "1000";
-        PGID = "1000";
-        TZ = "America/Los_Angeles";
-        WEBUI_PORT = "8080";
+        QBT_EULA = "accept";
+        QBT_VERSION = "stable";
+        QBT_WEBUI_PORT = "8080";
       };
       volumes = [
         "/var/lib/qbittorrent/config:/config"
