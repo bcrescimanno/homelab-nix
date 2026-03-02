@@ -40,7 +40,7 @@
         partitions = {
           boot = {
             size = "512M";
-            type = "EF00"; # EFI System Partition
+            type = "EF00"; # FAT32 firmware partition
             content = {
               type = "filesystem";
               format = "vfat";
@@ -59,6 +59,8 @@
       };
     };
   };
+
+  boot.loader.raspberryPi.bootloader = "kernel";
 
   # ---------------------------------------------------------------------------
   # Networking
