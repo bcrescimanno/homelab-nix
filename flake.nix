@@ -6,6 +6,10 @@
     nixos-raspberrypi.url = "github:nvmd/nixos-raspberrypi/main";
     disko.url = "github:nix-community/disko";
     disko.inputs.nixpkgs.follows = "nixpkgs";
+    sops-nix = {
+      url = "github:Mic92/sops-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   nixConfig = {
@@ -15,10 +19,9 @@
     ];
   };
 
-  outputs = { self, nixpkgs, nixos-raspberrypi, disko, ... }@inputs: {
+  outputs = { self, nixpkgs, nixos-raspberrypi, disko, sops-nix, ... }@inputs: {
     nixosConfigurations = {
       pirateship = nixos-raspberrypi.lib.nixosSystem {
-        specialArgs = inputs;
         modules = [
           ({ ... }: {
             imports = with nixos-raspberrypi.nixosModules; [
@@ -29,7 +32,9 @@
           disko.nixosModules.disko
           ./hosts/pirateship.nix
           ./modules/base.nix
+          sops-nix.nixosModules.sops
         ];
+        specialArgs = { inherit inputs; };
       };
     };
   };
