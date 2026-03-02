@@ -34,7 +34,7 @@
           ./modules/base.nix
           sops-nix.nixosModules.sops
         ];
-        specialArgs = { inherit inputs; };
+        specialArgs = { inherit inputs nixos-raspberrypi; };
       };
     };
   };
