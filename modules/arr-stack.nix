@@ -105,22 +105,51 @@
       ];
     };
 
-    qbittorrent-port-manager = {
-      image = "mjmeli/qbittorrent-port-forward-gluetun-server:latest";
-      autoStart = true;
-      dependsOn = [ "gluetun" "qbittorrent" ];
-      extraOptions = [
-        "--network=container:gluetun" 
-        "--env-file=/run/secrets/qbt_credentials"
-      ];
-      environment = {
-        QBT_ADDR = "http://localhost:8080";
-        GTN_ADDR = "http://localhost:8000";
-      };
-    };
-
   };
 
+  systemd.services.qbittorrent-port-sync = {
+  description = "Sync gluetun forwarded port to qBittorrent";
+  after = [ "podman-gluetun.service" "podman-qbittorrent.service" ];
+  wantedBy = [ "multi-user.target" ];
+  
+  serviceConfig = {
+    Type = "simple";
+    Restart = "always";
+    RestartSec = "30s";
+    EnvironmentFile = "/run/secrets/qbt_credentials";
+  };
+
+  script = ''
+    set -e
+    
+    # Get forwarded port from gluetun control server
+    PORT=$(${pkgs.curl}/bin/curl -sf http://localhost:8000/v1/openvpn/portforwarded | ${pkgs.jq}/bin/jq -r '.port')
+    
+    if [ -z "$PORT" ] || [ "$PORT" = "0" ] || [ "$PORT" = "null" ]; then
+      echo "No forwarded port available yet, waiting..."
+      sleep 30
+      exit 1
+    fi
+    
+    echo "Forwarded port: $PORT"
+    
+    # Login to qBittorrent and get session cookie
+    SID=$(${pkgs.curl}/bin/curl -sf -c - \
+      --data "username=$QBT_USERNAME&password=$QBT_PASSWORD" \
+      http://localhost:8080/api/v2/auth/login | grep SID | awk '{print $7}')
+    
+    # Update listening port
+    ${pkgs.curl}/bin/curl -sf \
+      -b "SID=$SID" \
+      --data 'json={"listen_port":'"$PORT"'}' \
+      http://localhost:8080/api/v2/app/setPreferences
+    
+    echo "Updated qBittorrent listening port to $PORT"
+    
+    # Check every 5 minutes for port changes
+    sleep 300
+  '';
+};
 
   systemd.tmpfiles.rules = [
     "d /var/lib/qbittorrent/config 0755 brian users -"
