@@ -27,11 +27,6 @@
         "--env-file=/run/secrets/vpn_env"
       ];
 
-      extraOptions = [
-        "--cap-add=NET_ADMIN"
-        "--device=/dev/net/tun:/dev/net/tun"
-      ];
-
       ports = [
         "8888:8888"   # gluetun HTTP proxy
         "8388:8388"   # gluetun Shadowsocks
