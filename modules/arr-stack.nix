@@ -21,7 +21,7 @@
       environment = {
         VPN_SERVICE_PROVIDER = "protonvpn";
         VPN_TYPE = "wireguard";
-        SERVER_COUNTRIES = "United States";
+        SERVER_COUNTRIES = "Netherlands";
         VPN_PORT_FORWARDING = "on";
         PORT_FORWARD_ONLY = "on";
         BLOCK_MALICIOUS = "off";
