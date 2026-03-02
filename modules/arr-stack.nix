@@ -177,7 +177,7 @@ systemd.services.podman-gluetun = {
     sleep 10
     ${pkgs.podman}/bin/podman exec --privileged gluetun sh -c "ip link set tun0 mtu 1280 && ethtool -K tun0 gso off gro off 2>/dev/null; echo 'GSO/GRO disabled on tun0'"
   '';
-}
+};
 
   systemd.tmpfiles.rules = [
     "d /var/lib/qbittorrent/config 0755 brian users -"
