@@ -70,7 +70,7 @@
 
   virtualisation.containers.containersConf.settings = {
     network = {
-      network_backend = "cni";
+      network_backend = lib.mkForce "cni";
     };
   };
   # ---------------------------------------------------------------------------
