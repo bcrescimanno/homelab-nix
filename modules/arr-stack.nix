@@ -30,7 +30,7 @@
       };
 
       extraOptions = [
-        "--cap-add=NET_ADMIN"
+        "--privileged"
         "--device=/dev/net/tun:/dev/net/tun"
         "--env-file=/run/secrets/vpn_env"
       ];
