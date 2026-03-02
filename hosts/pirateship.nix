@@ -68,8 +68,7 @@
 
   networking.interfaces.eth0.useDHCP = true;
 
-  virtualization.podman.networkingTunnels = true;
-  virtualization.containers.containersConf.settings = {
+  virtualisation.containers.containersConf.settings = {
     network = {
       network_backend = "cni";
     };
