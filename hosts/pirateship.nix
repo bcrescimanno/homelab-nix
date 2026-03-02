@@ -86,9 +86,9 @@
     age.keyFile = "/var/lib/sops-nix/key.txt";
     
     secrets = {
-      vpn_private_key = {};
-      vpn_peer_public_key = {};
-      vpn_endpoint = {};
+      vpn_env = {
+        format = "binary";
+      };
     };
   };
 }
