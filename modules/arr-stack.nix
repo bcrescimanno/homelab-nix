@@ -24,6 +24,7 @@
         SERVER_COUNTRIES = "Netherlands";
         VPN_PORT_FORWARDING = "on";
         PORT_FORWARD_ONLY = "on";
+        WIREGUARD_IMPLEMENTATION = "userspace";
         BLOCK_MALICIOUS = "off";
       };
 
