@@ -37,5 +37,80 @@
       ];
     };
 
+    qbittorrent = {
+      image = "lscr.io/linuxserver/qbittorrent:latest";
+      autoStart = true;
+      dependsOn = [ "gluetun" ];
+      extraOptions = [ "--network=container:gluetun" ];
+      environment = {
+        PUID = "1000";
+        PGID = "1000";
+        TZ = "America/Los_Angeles";
+        WEBUI_PORT = "8080";
+      };
+      volumes = [
+        "/var/lib/qbittorrent/config:/config"
+        "/var/lib/media/torrents:/downloads"
+      ];
+    };
+
+    radarr = {
+      image = "lscr.io/linuxserver/radarr:latest";
+      autoStart = true;
+      dependsOn = [ "gluetun" ];
+      extraOptions = [ "--network=container:gluetun" ];
+      environment = {
+        PUID = "1000";
+        PGID = "1000";
+        TZ = "America/Los_Angeles";
+      };
+      volumes = [
+        "/var/lib/radarr/config:/config"
+        "/var/lib/media/movies:/movies"
+        "/var/lib/media/torrents:/downloads"
+      ];
+    };
+
+    sonarr = {
+      image = "lscr.io/linuxserver/sonarr:latest";
+      autoStart = true;
+      dependsOn = [ "gluetun" ];
+      extraOptions = [ "--network=container:gluetun" ];
+      environment = {
+        PUID = "1000";
+        PGID = "1000";
+        TZ = "America/Los_Angeles";
+      };
+      volumes = [
+        "/var/lib/sonarr/config:/config"
+        "/var/lib/media/tv:/tv"
+        "/var/lib/media/torrents:/downloads"
+      ];
+    };
+
+    prowlarr = {
+      image = "lscr.io/linuxserver/prowlarr:latest";
+      autoStart = true;
+      dependsOn = [ "gluetun" ];
+      extraOptions = [ "--network=container:gluetun" ];
+      environment = {
+        PUID = "1000";
+        PGID = "1000";
+        TZ = "America/Los_Angeles";
+      };
+      volumes = [
+        "/var/lib/prowlarr/config:/config"
+      ];
+    };
   };
+
+  systemd.tmpfiles.rules = [
+    "d /var/lib/qbittorrent/config 0755 root root -"
+    "d /var/lib/radarr/config 0755 root root -"
+    "d /var/lib/sonarr/config 0755 root root -"
+    "d /var/lib/prowlarr/config 0755 root root -"
+    "d /var/lib/media/torrents 0755 root root -"
+    "d /var/lib/media/movies 0755 root root -"
+    "d /var/lib/media/tv 0755 root root -"
+  ];
 }
