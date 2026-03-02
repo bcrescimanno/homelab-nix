@@ -21,10 +21,10 @@
       environment = {
         VPN_SERVICE_PROVIDER = "protonvpn";
         VPN_TYPE = "wireguard";
-        # Server endpoint hostname only — port comes from the secret
         SERVER_COUNTRIES = "United States";
         VPN_PORT_FORWARDING = "on";
-        HTTP_CONTROL_SERVER_AUTH = "none";
+        PORT_FORWARD_ONLY = "on";
+        BLOCK_MALICIOUS = "off";
       };
 
       extraOptions = [
