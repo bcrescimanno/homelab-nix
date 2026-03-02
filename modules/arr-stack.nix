@@ -166,6 +166,14 @@
   '';
 };
 
+systemd.services.podman-gluetun = {
+  postStart = ''
+    sleep 5
+    ${pkgs.iproute2}/bin/ip link set tun0 mtu 1280 2>/dev/null || true
+    ${pkgs.ethtool}/bin/ethtool -K tun0 gso off gro off 2>/dev/null || true
+  '';
+};
+
   systemd.tmpfiles.rules = [
     "d /var/lib/qbittorrent/config 0755 brian users -"
     "d /var/lib/transmission/config 0755 brian users -"
