@@ -31,6 +31,7 @@
           })
           disko.nixosModules.disko
           ./hosts/pirateship.nix
+          ./modules/arr-stack.nix
           ./modules/base.nix
           sops-nix.nixosModules.sops
         ];
