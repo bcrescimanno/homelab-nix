@@ -105,12 +105,12 @@
   };
 
   systemd.tmpfiles.rules = [
-    "d /var/lib/qbittorrent/config 0755 root root -"
-    "d /var/lib/radarr/config 0755 root root -"
-    "d /var/lib/sonarr/config 0755 root root -"
-    "d /var/lib/prowlarr/config 0755 root root -"
-    "d /var/lib/media/torrents 0755 root root -"
-    "d /var/lib/media/movies 0755 root root -"
-    "d /var/lib/media/tv 0755 root root -"
+    "d /var/lib/qbittorrent/config 0755 brian users -"
+    "d /var/lib/radarr/config 0755 brian users -"
+    "d /var/lib/sonarr/config 0755 brian users -"
+    "d /var/lib/prowlarr/config 0755 brian users -"
+    "d /var/lib/media/torrents 0755 brian users -"
+    "d /var/lib/media/movies 0755 brian users -"
+    "d /var/lib/media/tv 0755 brian users -"
   ];
 }
