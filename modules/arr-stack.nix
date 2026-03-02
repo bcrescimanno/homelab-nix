@@ -21,8 +21,10 @@
         SERVER_COUNTRIES = "United States";
       };
 
-      environmentFiles = [
-        config.sops.secrets.vpn_env.path
+      extraOptions = [
+        "--cap-add=NET_ADMIN"
+        "--device=/dev/net/tun:/dev/net/tun"
+        "--env-file=/run/secrets/vpn_env"
       ];
 
       extraOptions = [
