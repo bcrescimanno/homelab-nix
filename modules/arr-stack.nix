@@ -39,15 +39,15 @@
         "8000:8000"   # gluetun control server
         "8888:8888"   # gluetun HTTP proxy
         "8388:8388"   # gluetun Shadowsocks
-        "9091:9091"   # Transmission
+        "8080:8080"   # qBittorrent
         "7878:7878"   # Radarr
         "8989:8989"   # Sonarr
         "9696:9696"   # Prowlarr
       ];
     };
 
-    transmission = {
-      image = "lscr.io/linuxserver/transmission:latest";
+    qbittorrent = {
+      image = "lscr.io/linuxserver/qbittorrent:latest";
       autoStart = true;
       dependsOn = [ "gluetun" ];
       extraOptions = [ "--network=container:gluetun" ];
@@ -55,9 +55,10 @@
         PUID = "1000";
         PGID = "1000";
         TZ = "America/Los_Angeles";
+        WEBUI_PORT = "8080";
       };
       volumes = [
-        "/var/lib/transmission/config:/config"
+        "/var/lib/qbittorrent/config:/config"
         "/var/lib/media/torrents:/downloads"
       ];
     };
@@ -128,6 +129,9 @@
     set -e
 
     PORT_FILE="/var/lib/gluetun/tmp/forwarded_port"
+    COOKIE_FILE=$(${pkgs.coreutils}/bin/mktemp)
+
+    trap "${pkgs.coreutils}/bin/rm -f $COOKIE_FILE" EXIT
 
     if [ ! -f "$PORT_FILE" ]; then
       echo "Port file not found yet, waiting..."
@@ -145,27 +149,29 @@
 
     echo "Forwarded port: $PORT"
 
-    # Get session ID from 409 response header
-    SESSION_ID=$(${pkgs.curl}/bin/curl -si \
-      -u "$TRANSMISSION_USERNAME:$TRANSMISSION_PASSWORD" \
-      http://localhost:9091/transmission/rpc | \
-      ${pkgs.gnugrep}/bin/grep -i "X-Transmission-Session-Id" | \
-      ${pkgs.gawk}/bin/awk '{print $2}' | \
-      tr -d '[:space:]')
-
-    echo "Session ID: $SESSION_ID"
+    ${pkgs.curl}/bin/curl -sf \
+      -c "$COOKIE_FILE" \
+      --data "username=$QBT_USERNAME&password=$QBT_PASSWORD" \
+      http://localhost:8080/api/v2/auth/login
 
     ${pkgs.curl}/bin/curl -sf \
-      -u "$TRANSMISSION_USERNAME:$TRANSMISSION_PASSWORD" \
-      -H "X-Transmission-Session-Id: $SESSION_ID" \
-      -d '{"method":"session-set","arguments":{"peer-port":'"$PORT"'}}' \
-      http://localhost:9091/transmission/rpc
+      -b "$COOKIE_FILE" \
+      --data 'json={"listen_port":'"$PORT"'}' \
+      http://localhost:8080/api/v2/app/setPreferences
 
-    echo "Updated Transmission peer port to $PORT"
+    echo "Updated qBittorrent listening port to $PORT"
+    
+    ${pkgs.curl}/bin/curl -sf \
+      -b "$COOKIE_FILE" \
+      http://localhost:8080/api/v2/auth/logout
+
     sleep 300
   '';
 };
 
+# We're not sure why this is required on a Raspberry Pi. However, for some reason, we
+# must turn off gso and gro or any UDP traffic will get dropped. Ideally, this can be
+# removed at some point; however, it's required as of 3/1/2026
 systemd.services.podman-gluetun = {
   postStart = ''
     sleep 5
@@ -176,7 +182,6 @@ systemd.services.podman-gluetun = {
 
   systemd.tmpfiles.rules = [
     "d /var/lib/qbittorrent/config 0755 brian users -"
-    "d /var/lib/transmission/config 0755 brian users -"
     "d /var/lib/radarr/config 0755 brian users -"
     "d /var/lib/sonarr/config 0755 brian users -"
     "d /var/lib/prowlarr/config 0755 brian users -"
