@@ -127,6 +127,9 @@
     set -e
     
     PORT_FILE="/var/lib/gluetun/tmp/forwarded_port"
+    COOKIE_FILE=$(${pkgs.coreutils}/bin/mktemp)
+    
+    trap "${pkgs.coreutils}/bin/rm -f $COOKIE_FILE" EXIT
     
     if [ ! -f "$PORT_FILE" ]; then
       echo "Port file not found yet, waiting..."
@@ -134,7 +137,7 @@
       exit 1
     fi
     
-    PORT=$(cat "$PORT_FILE")
+    PORT=$(cat "$PORT_FILE" | tr -d '[:space:]')
     
     if [ -z "$PORT" ] || [ "$PORT" = "0" ]; then
       echo "No forwarded port available yet, waiting..."
@@ -144,12 +147,15 @@
     
     echo "Forwarded port: $PORT"
     
-    SID=$(${pkgs.curl}/bin/curl -sf -c - \
-      --data "username=$QBT_USERNAME&password=$QBT_PASSWORD" \
-      http://localhost:8080/api/v2/auth/login | grep SID | awk '{print $7}')
-    
+    # Login and save cookie to temp file
     ${pkgs.curl}/bin/curl -sf \
-      -b "SID=$SID" \
+      -c "$COOKIE_FILE" \
+      --data "username=$QBT_USERNAME&password=$QBT_PASSWORD" \
+      http://localhost:8080/api/v2/auth/login
+    
+    # Update listening port
+    ${pkgs.curl}/bin/curl -sf \
+      -b "$COOKIE_FILE" \
       --data 'json={"listen_port":'"$PORT"'}' \
       http://localhost:8080/api/v2/app/setPreferences
     
