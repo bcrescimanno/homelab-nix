@@ -68,11 +68,6 @@
 
   networking.interfaces.eth0.useDHCP = true;
 
-  virtualisation.containers.containersConf.settings = {
-    network = {
-      network_backend = lib.mkForce "cni";
-    };
-  };
   # ---------------------------------------------------------------------------
   # System state version
   # ---------------------------------------------------------------------------
