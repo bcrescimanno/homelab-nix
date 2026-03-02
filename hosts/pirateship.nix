@@ -68,6 +68,12 @@
 
   networking.interfaces.eth0.useDHCP = true;
 
+  virtualisation.podman.networkingTunnels = true;
+  virtualisation.containers.containersConf.settings = {
+    network = {
+      network_backend = "cni";
+    };
+  };
   # ---------------------------------------------------------------------------
   # System state version
   # ---------------------------------------------------------------------------
