@@ -76,4 +76,19 @@
   # It controls behavior of certain migration scripts. Don't change it
   # after the fact — it's not a "target version" setting.
   system.stateVersion = "25.11";
+
+  # ---------------------------------------------------------------------------
+  # SOPS Secrets
+  # ---------------------------------------------------------------------------
+  sops = {
+    defaultSopsFile = ../secrets/pirateship.yaml;
+    defaultSopsFormat = "yaml";
+    age.keyFile = "/var/lib/sops-nix/key.txt";
+    
+    secrets = {
+      vpn_private_key = {};
+      vpn_peer_public_key = {};
+      vpn_endpoint = {};
+    };
+  };
 }
