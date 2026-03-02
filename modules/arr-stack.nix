@@ -145,13 +145,16 @@
 
     echo "Forwarded port: $PORT"
 
-    # Transmission RPC requires a session ID — get it first
-    SESSION_ID=$(${pkgs.curl}/bin/curl -sf \
+    # Get session ID from 409 response header
+    SESSION_ID=$(${pkgs.curl}/bin/curl -si \
       -u "$TRANSMISSION_USERNAME:$TRANSMISSION_PASSWORD" \
-      http://localhost:9091/transmission/rpc 2>&1 | \
-      grep -o 'X-Transmission-Session-Id: [^<]*' | awk '{print $2}')
+      http://localhost:9091/transmission/rpc | \
+      ${pkgs.gnugrep}/bin/grep -i "X-Transmission-Session-Id" | \
+      ${pkgs.gawk}/bin/awk '{print $2}' | \
+      tr -d '[:space:]')
 
-    # Update peer port
+    echo "Session ID: $SESSION_ID"
+
     ${pkgs.curl}/bin/curl -sf \
       -u "$TRANSMISSION_USERNAME:$TRANSMISSION_PASSWORD" \
       -H "X-Transmission-Session-Id: $SESSION_ID" \
