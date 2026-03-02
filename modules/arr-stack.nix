@@ -20,6 +20,7 @@
         # Server endpoint hostname only — port comes from the secret
         SERVER_COUNTRIES = "United States";
         VPN_PORT_FORWARDING = "on";
+        HTTP_CONTROL_SERVER_AUTH = "none";
       };
 
       extraOptions = [
