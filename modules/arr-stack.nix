@@ -109,12 +109,14 @@
       image = "mjmeli/qbittorrent-port-forward-gluetun-server:latest";
       autoStart = true;
       dependsOn = [ "gluetun" "qbittorrent" ];
-      extraOptions = [ "--network=container:gluetun" ];
+      extraOptions = [
+        "--network=container:gluetun" 
+        "--env-file=/run/secrets/qbt_credentials"
+      ];
       environment = {
         QBT_ADDR = "http://localhost:8080";
         GTN_ADDR = "http://localhost:8000";
       };
-      environmentFiles = [ "/run/secrets/qbt_credentials" ];
     };
 
   };
