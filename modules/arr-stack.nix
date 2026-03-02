@@ -15,6 +15,7 @@
       autoStart = true;
       volumes = [
         "/var/lib/gluetun:/gluetun"
+        "/var/lib/gluetun/tmp:/tmp/gluetun"
       ];
 
       environment = {
@@ -122,14 +123,20 @@
     RestartSec = "30s";
     EnvironmentFile = "/run/secrets/qbt_credentials";
   };
-
   script = ''
     set -e
     
-    # Get forwarded port from gluetun control server
-    PORT=$(${pkgs.curl}/bin/curl -sf http://localhost:8000/v1/openvpn/portforwarded | ${pkgs.jq}/bin/jq -r '.port')
+    PORT_FILE="/var/lib/gluetun/tmp/forwarded_port"
     
-    if [ -z "$PORT" ] || [ "$PORT" = "0" ] || [ "$PORT" = "null" ]; then
+    if [ ! -f "$PORT_FILE" ]; then
+      echo "Port file not found yet, waiting..."
+      sleep 30
+      exit 1
+    fi
+    
+    PORT=$(cat "$PORT_FILE")
+    
+    if [ -z "$PORT" ] || [ "$PORT" = "0" ]; then
       echo "No forwarded port available yet, waiting..."
       sleep 30
       exit 1
@@ -137,20 +144,16 @@
     
     echo "Forwarded port: $PORT"
     
-    # Login to qBittorrent and get session cookie
     SID=$(${pkgs.curl}/bin/curl -sf -c - \
       --data "username=$QBT_USERNAME&password=$QBT_PASSWORD" \
       http://localhost:8080/api/v2/auth/login | grep SID | awk '{print $7}')
     
-    # Update listening port
     ${pkgs.curl}/bin/curl -sf \
       -b "SID=$SID" \
       --data 'json={"listen_port":'"$PORT"'}' \
       http://localhost:8080/api/v2/app/setPreferences
     
     echo "Updated qBittorrent listening port to $PORT"
-    
-    # Check every 5 minutes for port changes
     sleep 300
   '';
 };
@@ -164,6 +167,7 @@
     "d /var/lib/media/movies 0755 brian users -"
     "d /var/lib/media/tv 0755 brian users -"
     "d /var/lib/gluetun/auth 0755 brian users -"
+    "d /var/lib/gluetun/tmp 0755 brian users -"
     "f /var/lib/gluetun/auth/config.toml 0644 brian users -"
   ];
 }
