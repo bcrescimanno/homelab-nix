@@ -145,13 +145,12 @@
 
     echo "Forwarded port: $PORT"
 
-    # Get session ID from 409 response header
     SESSION_ID=$(${pkgs.curl}/bin/curl -si \
       -u "$TRANSMISSION_USERNAME:$TRANSMISSION_PASSWORD" \
-      http://localhost:9091/transmission/rpc | \
-      ${pkgs.gnugrep}/bin/grep -i "X-Transmission-Session-Id" | \
-      ${pkgs.gawk}/bin/awk '{print $2}' | \
-      tr -d '[:space:]')
+      http://localhost:9091/transmission/rpc \
+      | ${pkgs.gnugrep}/bin/grep "^X-Transmission-Session-Id:" \
+      | ${pkgs.gawk}/bin/awk '{print $2}' \
+      | tr -d '\r')
 
     echo "Session ID: $SESSION_ID"
 
