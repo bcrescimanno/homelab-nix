@@ -142,6 +142,24 @@
       ];
     };
 
+    jellyfin = {
+      image = "lscr.io/linuxserver/jellyfin:latest";
+      autoStart = true;
+      environment = {
+        PUID = "1000";
+        PGID = "1000";
+        TZ = "America/Los_Angeles";
+      };
+      ports = [
+        "8096:8096";
+      ]
+      volumes = [
+        "/var/lib/jellyfin/config:/config"
+        "/var/lib/media/movies:/movies"
+        "/var/lib/media/tv:/tv"
+        "/var/lib/media/music:/music"
+      ];
+    };
   };
 
   systemd.services.qbittorrent-port-sync = {
@@ -220,5 +238,6 @@ systemd.services.podman-gluetun = {
     "d /var/lib/lidarr/config 0755 brian users -"
     "d /var/lib/recyclarr/config 0755 brian users -"
     "d /var/lib/media/music 0755 brian users -"
+    "d /var/lib/jellyfin/config 0755 brian users -"
   ];
 }
