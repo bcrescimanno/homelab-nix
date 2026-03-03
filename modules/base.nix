@@ -106,12 +106,10 @@
   # tracked and can be removed just as declaratively as it was added.
   environment.systemPackages = with pkgs; [
     git
-    htop
+    btop
     curl
     wget
-    jq          # JSON processing — useful for inspecting container configs
-    ncdu        # Disk usage analyzer
-    smartmontools # Hard drive health monitoring
+    jq
     lsof
   ];
 
