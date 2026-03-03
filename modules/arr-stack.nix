@@ -174,7 +174,6 @@ systemd.services.podman-gluetun = {
 };
 
   systemd.tmpfiles.rules = [
-    "d /var/lib/qbittorrent/config 0755 brian users -"
     "d /var/lib/transmission/config 0755 brian users -"
     "d /var/lib/radarr/config 0755 brian users -"
     "d /var/lib/sonarr/config 0755 brian users -"
@@ -184,6 +183,8 @@ systemd.services.podman-gluetun = {
     "d /var/lib/media/tv 0755 brian users -"
     "d /var/lib/gluetun/auth 0755 brian users -"
     "d /var/lib/gluetun/tmp 0755 brian users -"
+    "d /var/lib/media/torrents/complete/radarr 0755 brian users -"
+    "d /var/lib/media/torrents/complete/sonarr 0755 brian users -"   
     "f /var/lib/gluetun/auth/config.toml 0644 brian users -"
   ];
 }
