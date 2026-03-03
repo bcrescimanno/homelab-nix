@@ -151,8 +151,8 @@
         TZ = "America/Los_Angeles";
       };
       ports = [
-        "8096:8096";
-      ]
+        "8096:8096"
+      ];
       volumes = [
         "/var/lib/jellyfin/config:/config"
         "/var/lib/media/movies:/movies"
