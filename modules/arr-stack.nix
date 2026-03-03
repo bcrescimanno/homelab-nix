@@ -43,6 +43,8 @@
         "7878:7878"   # Radarr
         "8989:8989"   # Sonarr
         "9696:9696"   # Prowlarr
+        "8686:8686"   # Lidarr
+        "8787:8787"   # Readarr
       ];
     };
 
@@ -108,6 +110,53 @@
       };
       volumes = [
         "/var/lib/prowlarr/config:/config"
+      ];
+    };
+
+    lidarr = {
+      image = "lscr.io/linuxserver/lidarr:latest";
+      autoStart = true;
+      dependsOn = [ "gluetun" ];
+      extraOptions = [ "--network=container:gluetun" ];
+      environment = {
+        PUID = "1000";
+        PGID = "1000";
+        TZ = "America/Los_Angeles";
+      };
+      volumes = [
+        "/var/lib/lidarr/config:/config"
+        "/var/lib/media/music:/music"
+        "/var/lib/media/torrents:/downloads"
+      ];
+    };
+
+    readarr = {
+      image = "lscr.io/linuxserver/readarr:develop";
+      autoStart = true;
+      dependsOn = [ "gluetun" ];
+      extraOptions = [ "--network=container:gluetun" ];
+      environment = {
+        PUID = "1000";
+        PGID = "1000";
+        TZ = "America/Los_Angeles";
+      };
+      volumes = [
+        "/var/lib/readarr/config:/config"
+        "/var/lib/media/books:/books"
+        "/var/lib/media/torrents:/downloads"
+      ];
+    };
+
+    recyclarr = {
+      image = "ghcr.io/recyclarr/recyclarr:latest";
+      autoStart = true;
+      dependsOn = [ "gluetun" "radarr" "sonarr" ];
+      extraOptions = [ "--network=container:gluetun" ];
+      environment = {
+        TZ = "America/Los_Angeles";
+      };
+      volumes = [
+        "/var/lib/recyclarr/config:/config"
       ];
     };
 
@@ -186,5 +235,10 @@ systemd.services.podman-gluetun = {
     "d /var/lib/media/torrents/complete/radarr 0755 brian users -"
     "d /var/lib/media/torrents/complete/sonarr 0755 brian users -"   
     "f /var/lib/gluetun/auth/config.toml 0644 brian users -"
+    "d /var/lib/lidarr/config 0755 brian users -"
+    "d /var/lib/readarr/config 0755 brian users -"
+    "d /var/lib/recyclarr/config 0755 brian users -"
+    "d /var/lib/media/music 0755 brian users -"
+    "d /var/lib/media/books 0755 brian users -"
   ];
 }
