@@ -72,6 +72,7 @@
   # default OCI runtime (crun).
   virtualisation.podman = {
     enable = true;
+    dockerSocket.enable = true;
     # Creates a `docker` symlink so any tools or scripts that call `docker`
     # will transparently use Podman instead. Handy for compatibility.
     dockerCompat = true;
