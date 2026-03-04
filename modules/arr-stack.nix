@@ -11,7 +11,7 @@
   virtualisation.oci-containers.containers = {
 
     gluetun = {
-      image = "ghcr.io/qdm12/gluetun:latest";
+      image = "ghcr.io/qdm12/gluetun:latest@sha256:3e439a7ff285f5782278881675d90ac3b17733e591c68fa7097fa84769ef0e6c";
       autoStart = true;
       volumes = [
         "/var/lib/gluetun:/gluetun"
@@ -48,7 +48,7 @@
     };
 
     transmission = {
-      image = "lscr.io/linuxserver/transmission:latest";
+      image = "lscr.io/linuxserver/transmission:latest@sha256:d2183a00bbd5dbb083b14dcd65419379bfd91e0965b52849642354ec3d246452";
       autoStart = true;
       dependsOn = [ "gluetun" ];
       extraOptions = [ "--network=container:gluetun" ];
@@ -64,7 +64,7 @@
     };
 
     radarr = {
-      image = "lscr.io/linuxserver/radarr:latest";
+      image = "lscr.io/linuxserver/radarr:latest@sha256:a360633a3682d41e96f71a07ff36ecbdf2394a9628465b84b0a8437087715b41";
       autoStart = true;
       dependsOn = [ "gluetun" ];
       extraOptions = [ "--network=container:gluetun" ];
@@ -81,7 +81,7 @@
     };
 
     sonarr = {
-      image = "lscr.io/linuxserver/sonarr:latest";
+      image = "lscr.io/linuxserver/sonarr:latest@sha256:37be832b78548e3f55f69c45b50e3b14d18df1b6def2a4994258217e67efb1a1";
       autoStart = true;
       dependsOn = [ "gluetun" ];
       extraOptions = [ "--network=container:gluetun" ];
@@ -98,7 +98,7 @@
     };
 
     prowlarr = {
-      image = "lscr.io/linuxserver/prowlarr:latest";
+      image = "lscr.io/linuxserver/prowlarr:latest@sha256:e74a1e093dcc223d671d4b7061e2b4946f1989a4d3059654ff4e623b731c9134";
       autoStart = true;
       dependsOn = [ "gluetun" ];
       extraOptions = [ "--network=container:gluetun" ];
@@ -113,7 +113,7 @@
     };
 
     lidarr = {
-      image = "lscr.io/linuxserver/lidarr:latest";
+      image = "lscr.io/linuxserver/lidarr:latest@sha256:58f149df604246d7039a4c8b99ab1fefd1c4ae625048c76f3b956f2e0fb9774b";
       autoStart = true;
       dependsOn = [ "gluetun" ];
       extraOptions = [ "--network=container:gluetun" ];
@@ -130,7 +130,7 @@
     };
 
     recyclarr = {
-      image = "ghcr.io/recyclarr/recyclarr:latest";
+      image = "ghcr.io/recyclarr/recyclarr:latest@sha256:55afe316d3e4e4e3b9120cef7c79436b1b5311f6a18d4ef4b7653e720499c90a";
       autoStart = true;
       dependsOn = [ "gluetun" "radarr" "sonarr" ];
       extraOptions = [ "--network=container:gluetun" ];
@@ -143,7 +143,7 @@
     };
 
     portainer-agent = {
-      image = "portainer/agent:latest";
+      image = "portainer/agent:latest@sha256:e3a9bcb1e5862edaca62d6e54f70efc5815dff33e955a30578b174423b19977c";
       autoStart = true;
       volumes = [
         "/run/podman/podman.sock:/var/run/docker.sock"
@@ -155,7 +155,7 @@
     };
 
     jellyfin = {
-      image = "lscr.io/linuxserver/jellyfin:latest";
+      image = "lscr.io/linuxserver/jellyfin:latest@sha256:aae645d1ff11c42b1d2d3b80694e34e0e1ea4a51879900843c8ab6e8b127a32a";
       autoStart = true;
       environment = {
         PUID = "1000";
