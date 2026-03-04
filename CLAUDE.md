@@ -27,6 +27,21 @@ nix run github:nix-community/nixos-anywhere -- --flake .#pirateship root@<ip>
 SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops secrets/pirateship.yaml
 ```
 
+## Hosts
+
+| Host | Hardware | Status | Role |
+|---|---|---|---|
+| `pirateship` | Raspberry Pi 5 | Live on NixOS | Media stack (arr apps, Jellyfin, VPN) |
+| `rivendell` | Raspberry Pi 5, 8GB | Planned migration from Raspberry Pi OS (Trixie) | Home Assistant, Matter Server, Nginx Proxy Manager, Portainer CE, Technitium (secondary DNS) |
+| `mirkwood` | Raspberry Pi 5, 4GB | Planned migration from Raspberry Pi OS (Trixie) | Technitium (primary DNS), Homepage, Portainer Agent |
+
+`rivendell` and `mirkwood` currently run Docker Compose stacks (source in `~/code/homelab`). They will be migrated to NixOS and added to this flake. Key migration decisions:
+- Pi-hole + Unbound + Redis + Nebula-Sync → replaced by Technitium DNS (one container per device, built-in sync and recursive resolution)
+- Watchtower → replaced by Renovate (already in use for pirateship)
+- Jellyfin on rivendell → retired once NAS is added; pirateship becomes the sole Jellyfin instance
+- Docker → Podman (consistent with pirateship)
+- A NAS will be added in future; at that point all media storage moves off pirateship's local disk
+
 ## Architecture
 
 ### Module Structure
