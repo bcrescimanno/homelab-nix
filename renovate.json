@@ -23,7 +23,8 @@
       "description": "Open PRs for container image updates as soon as new digests are available",
       "matchManagers": ["custom.regex"],
       "pinDigests": true,
-      "dependencyDashboardApproval": false
+      "dependencyDashboardApproval": false,
+      "ignoreDeps": ["portainer/agent"]
     }
   ]
 }

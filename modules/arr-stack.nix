@@ -155,7 +155,7 @@
     };
 
     jellyfin = {
-      image = "lscr.io/linuxserver/jellyfin:latest@sha256:aae645d1ff11c42b1d2d3b80694e34e0e1ea4a51879900843c8ab6e8b127a32a";
+      image = "ghcr.io/linuxserver/jellyfin:latest@sha256:de2f9ee14391f9343ab4d7cbd76ac853a963e226be85fa2366ff144f45fab353";
       autoStart = true;
       environment = {
         PUID = "1000";
