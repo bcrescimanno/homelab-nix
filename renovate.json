@@ -1,0 +1,30 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "nix": {
+    "enabled": true
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "fileMatch": ["\\.nix$"],
+      "matchStrings": [
+        "image = \"(?<depName>[^\"]+):(?<currentValue>[^\"]+)\""
+      ],
+      "datasourceTemplate": "docker"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Automerge nix flake input updates after CI passes",
+      "matchManagers": ["nix"],
+      "schedule": ["every week on monday"],
+      "automerge": true
+    },
+    {
+      "description": "Open PRs for container image updates as soon as new digests are available",
+      "matchManagers": ["custom.regex"],
+      "pinDigests": true
+    }
+  ]
+}
