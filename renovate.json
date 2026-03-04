@@ -7,7 +7,7 @@
       "customType": "regex",
       "fileMatch": ["\\.nix$"],
       "matchStrings": [
-        "image = \"(?<depName>[^\"]+):(?<currentValue>[^\"]+)\""
+        "image = \"(?<depName>[^\"]+):(?<currentValue>[^@\"]+)(?:@(?<currentDigest>[^\"]+))?\""
       ],
       "datasourceTemplate": "docker"
     }
