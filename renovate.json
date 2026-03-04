@@ -16,7 +16,7 @@
     {
       "description": "Automerge nix flake input updates after CI passes",
       "matchManagers": ["nix"],
-      "schedule": ["on monday"],
+      "schedule": ["on saturday"],
       "automerge": true
     },
     {
