@@ -1,9 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended"],
-  "nix": {
-    "enabled": true
-  },
+  "extends": ["config:base"],
+  "enabledManagers": ["nix", "custom.regex"],
   "customManagers": [
     {
       "customType": "regex",
