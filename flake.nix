@@ -19,21 +19,47 @@
     ];
   };
 
-  outputs = { self, nixpkgs, nixos-raspberrypi, disko, sops-nix, ... }@inputs: {
+  outputs = { self, nixpkgs, nixos-raspberrypi, disko, sops-nix, ... }@inputs:
+    let
+      piModules = extraModules: [
+        ({ ... }: {
+          imports = with nixos-raspberrypi.nixosModules; [
+            raspberry-pi-5.base
+            raspberry-pi-5.bluetooth
+          ];
+        })
+        disko.nixosModules.disko
+        sops-nix.nixosModules.sops
+        ./modules/base.nix
+      ] ++ extraModules;
+    in
+    {
     nixosConfigurations = {
       pirateship = nixos-raspberrypi.lib.nixosSystem {
-        modules = [
-          ({ ... }: {
-            imports = with nixos-raspberrypi.nixosModules; [
-              raspberry-pi-5.base
-              raspberry-pi-5.bluetooth
-            ];
-          })
-          disko.nixosModules.disko
+        modules = piModules [
           ./hosts/pirateship.nix
           ./modules/arr-stack.nix
-          ./modules/base.nix
-          sops-nix.nixosModules.sops
+        ];
+        specialArgs = { inherit inputs nixos-raspberrypi; };
+      };
+
+      rivendell = nixos-raspberrypi.lib.nixosSystem {
+        modules = piModules [
+          ./hosts/rivendell.nix
+          ./modules/dns.nix
+          ./modules/homeassistant.nix
+          ./modules/proxy.nix
+          ./modules/monitoring.nix
+        ];
+        specialArgs = { inherit inputs nixos-raspberrypi; };
+      };
+
+      mirkwood = nixos-raspberrypi.lib.nixosSystem {
+        modules = piModules [
+          ./hosts/mirkwood.nix
+          ./modules/dns.nix
+          ./modules/homepage.nix
+          ./modules/monitoring.nix
         ];
         specialArgs = { inherit inputs nixos-raspberrypi; };
       };
