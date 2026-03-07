@@ -6,8 +6,6 @@
 { config, pkgs, lib, ... }:
 
 {
-  virtualisation.oci-containers.backend = "podman";
-
   virtualisation.oci-containers.containers = {
 
     gluetun = {
@@ -142,18 +140,6 @@
       ];
     };
 
-    portainer-agent = {
-      image = "portainer/agent:latest@sha256:e3a9bcb1e5862edaca62d6e54f70efc5815dff33e955a30578b174423b19977c";
-      autoStart = true;
-      volumes = [
-        "/run/podman/podman.sock:/var/run/docker.sock"
-        "/var/lib/containers/volumes:/var/lib/docker/volumes"
-      ];
-      ports = [
-        "9001:9001"
-      ];
-    };
-
     jellyfin = {
       image = "ghcr.io/linuxserver/jellyfin:latest@sha256:de2f9ee14391f9343ab4d7cbd76ac853a963e226be85fa2366ff144f45fab353";
       autoStart = true;
@@ -251,6 +237,5 @@ systemd.services.podman-gluetun = {
     "d /var/lib/recyclarr/config 0755 brian users -"
     "d /var/lib/media/music 0755 brian users -"
     "d /var/lib/jellyfin/config 0755 brian users -"
-    "d /var/lib/containers/volumes 0755 root root -"
   ];
 }
