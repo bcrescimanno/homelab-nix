@@ -3,6 +3,9 @@
   "extends": ["config:recommended"],
   "dependencyDashboardApproval": false,
   "enabledManagers": ["nix", "custom.regex"],
+  "nix": {
+    "enabled": true
+  },
   "customManagers": [
     {
       "customType": "regex",
