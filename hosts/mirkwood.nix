@@ -75,20 +75,7 @@
     age.keyFile = "/var/lib/sops-nix/key.txt";
 
     secrets = {
-      # TODO: add secrets as services are configured
+      technitium_env = {};
     };
   };
-
-  # ---------------------------------------------------------------------------
-  # Firewall
-  # ---------------------------------------------------------------------------
-
-  networking.firewall.allowedTCPPorts = [
-    53   # Technitium DNS (TCP)
-    5380 # Technitium web UI
-  ];
-
-  networking.firewall.allowedUDPPorts = [
-    53   # Technitium DNS (UDP)
-  ];
 }

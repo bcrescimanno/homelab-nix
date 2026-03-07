@@ -75,7 +75,7 @@
     age.keyFile = "/var/lib/sops-nix/key.txt";
 
     secrets = {
-      # TODO: add secrets as services are configured
+      technitium_env = {};
     };
   };
 
