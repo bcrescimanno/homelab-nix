@@ -16,7 +16,7 @@
 
 {
   virtualisation.oci-containers.containers.technitium = {
-    image = "docker.io/technitium/dns-server:latest";
+    image = "docker.io/technitium/dns-server:latest@sha256:94f2b90d63f03181421152157a8099ea2752b13fa30b6c96833859be8e93dfa9";
     autoStart = true;
 
     volumes = [

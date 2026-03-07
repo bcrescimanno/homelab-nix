@@ -15,7 +15,7 @@
 
 {
   virtualisation.oci-containers.containers.npm = {
-    image = "docker.io/jc21/nginx-proxy-manager:latest";
+    image = "docker.io/jc21/nginx-proxy-manager:latest@sha256:2aa69b382a384b676c0d4f1d6f2eac40ecd478fcf7af1cfb3f9f1d3cd0c81e12";
     autoStart = true;
     volumes = [
       "/var/lib/npm/data:/data"
