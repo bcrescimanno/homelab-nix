@@ -11,9 +11,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: DeterminateSystems/nix-installer-action@main
-      - uses: renovatebot/github-action@v46.1.3
-        with:
-          token: ${{ secrets.RENOVATE_TOKEN }}
+      - run: npx --yes renovate
         env:
+          RENOVATE_TOKEN: ${{ secrets.RENOVATE_TOKEN }}
           RENOVATE_REPOSITORIES: ${{ github.repository }}
           RENOVATE_BINARY_SOURCE: global
