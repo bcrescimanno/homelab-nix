@@ -1,12 +1,17 @@
 # modules/monitoring.nix — Glances system monitoring
 #
-# Glances is a cross-platform monitoring tool with a web UI.
-# It runs on all Pi devices so each one is independently observable.
+# Glances runs as a native systemd service (not a container) so it has
+# direct access to host metrics via /proc and /sys without needing
+# --privileged. The nixpkgs module handles the systemd unit, hardening,
+# and firewall rule.
 #
-# TODO: Implement container or native service config once deployed.
+# Web UI accessible at http://<host>:61208
 
 { config, pkgs, lib, ... }:
 
 {
-  # placeholder — no services configured yet
+  services.glances = {
+    enable = true;
+    openFirewall = true;
+  };
 }
