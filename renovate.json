@@ -14,7 +14,7 @@
   "customManagers": [
     {
       "customType": "regex",
-      "fileMatch": ["\\.nix$"],
+      "managerFilePatterns": ["/\\.nix$/"],
       "matchStrings": [
         "image = \"(?<depName>[^:\"]+):(?<currentValue>[^@:\"]+)(?:@(?<currentDigest>[^\"]+))?\""
       ],
