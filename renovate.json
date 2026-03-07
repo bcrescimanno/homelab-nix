@@ -6,6 +6,10 @@
   "nix": {
     "enabled": true
   },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["on saturday"]
+  },
   "customManagers": [
     {
       "customType": "regex",
