@@ -6,10 +6,11 @@
   "customManagers": [
     {
       "customType": "regex",
-      "fileMatch": ["\\.nix$"],
+      "managerFilePatterns": ["\\.nix$"],
       "matchStrings": [
         "image = \"(?<depName>[^:\"]+):(?<currentValue>[^@:\"]+)(?:@(?<currentDigest>[^\"]+))?\""
       ],
+      "replaceString": "image = \"{{{depName}}}:{{{currentValue}}}@{{{newDigest}}}\"",
       "datasourceTemplate": "docker"
     }
   ],
