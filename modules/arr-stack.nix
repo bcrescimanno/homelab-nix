@@ -251,5 +251,6 @@ systemd.services.podman-gluetun = {
     "d /var/lib/recyclarr/config 0755 brian users -"
     "d /var/lib/media/music 0755 brian users -"
     "d /var/lib/jellyfin/config 0755 brian users -"
+    "d /var/lib/containers/volumes 0755 root root -"
   ];
 }
