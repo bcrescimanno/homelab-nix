@@ -1,6 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:base"],
+  "extends": ["config:recommended"],
   "dependencyDashboardApproval": false,
   "enabledManagers": ["nix", "custom.regex"],
   "customManagers": [
@@ -23,8 +23,7 @@
     {
       "description": "Open PRs for container image updates as soon as new digests are available",
       "matchManagers": ["custom.regex"],
-      "pinDigests": true,
-      "ignoreDeps": ["portainer/agent"]
+      "pinDigests": true
     }
   ]
 }
