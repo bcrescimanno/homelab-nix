@@ -81,6 +81,8 @@
     defaultNetwork.settings.dns_enabled = true;
   };
 
+  virtualisation.oci-containers.backend = "podman";
+
   # ---------------------------------------------------------------------------
   # Automatic updates
   # ---------------------------------------------------------------------------
