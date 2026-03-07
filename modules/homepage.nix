@@ -13,7 +13,7 @@
 
 {
   virtualisation.oci-containers.containers.homepage = {
-    image = "ghcr.io/gethomepage/homepage:latest";
+    image = "ghcr.io/gethomepage/homepage:latest@sha256:0b596092c0b55fe4c65379a428a3fe90bd192f10d1b07d189a34fe5fabe7eedb";
     autoStart = true;
     volumes = [
       # Nix-managed config (read-only); logs subdir overlaid below.
