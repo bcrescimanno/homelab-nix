@@ -10,7 +10,7 @@
       "matchStrings": [
         "image = \"(?<depName>[^:\"]+):(?<currentValue>[^@:\"]+)(?:@(?<currentDigest>[^\"]+))?\""
       ],
-      "replaceString": "image = \"{{{depName}}}:{{{currentValue}}}@{{{newDigest}}}\"",
+      "autoReplaceStringTemplate": "image = \"{{{depName}}}:{{{currentValue}}}@{{{newDigest}}}\"",
       "datasourceTemplate": "docker"
     }
   ],
