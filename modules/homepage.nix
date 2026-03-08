@@ -16,8 +16,14 @@
     image = "ghcr.io/gethomepage/homepage:latest@sha256:0b596092c0b55fe4c65379a428a3fe90bd192f10d1b07d189a34fe5fabe7eedb";
     autoStart = true;
     volumes = [
-      # Nix-managed config (read-only); logs subdir overlaid below.
-      "/etc/homepage:/app/config:ro"
+      # environment.etc creates symlinks; mount the real files from /etc/static
+      # so symlinks resolve inside the container. Mount individually to avoid
+      # the nested read-only/writable mount conflict on /app/config/logs.
+      "/etc/static/homepage/settings.yaml:/app/config/settings.yaml:ro"
+      "/etc/static/homepage/services.yaml:/app/config/services.yaml:ro"
+      "/etc/static/homepage/widgets.yaml:/app/config/widgets.yaml:ro"
+      "/etc/static/homepage/bookmarks.yaml:/app/config/bookmarks.yaml:ro"
+      "/etc/static/homepage/docker.yaml:/app/config/docker.yaml:ro"
       "/var/lib/homepage/logs:/app/config/logs"
     ];
     ports = [
