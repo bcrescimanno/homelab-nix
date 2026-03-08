@@ -78,7 +78,11 @@
     dockerCompat = true;
     # Enables the Podman socket, which lets tools like podman-compose
     # and some GUIs communicate with Podman the same way they would Docker.
-    defaultNetwork.settings.dns_enabled = true;
+    # Disable Podman's built-in container DNS (aardvark-dns). None of our
+    # containers need to resolve each other by name — they use IPs or ports
+    # directly. Keeping this enabled occupies port 53 on the bridge interface
+    # which conflicts with Technitium on hosts that run it.
+    defaultNetwork.settings.dns_enabled = false;
   };
 
   virtualisation.oci-containers.backend = "podman";
