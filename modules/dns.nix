@@ -26,8 +26,11 @@
     environment = {
       # Use the hostname as this server's DNS identity (shows in Technitium UI).
       DNS_SERVER_DOMAIN = config.networking.hostName;
-      # Recursive resolution for private network clients only — safe default.
+      # Recursive resolution for private network clients only — no upstream
+      # forwarder, queries go directly to root servers for maximum privacy.
       DNS_SERVER_RECURSION = "AllowOnlyForPrivateNetworks";
+      # Validate DNSSEC signatures on all responses.
+      DNS_SERVER_DNSSEC_VALIDATION = "true";
       DNS_SERVER_PREFER_IPv6 = "false";
       DNS_SERVER_LOG_USING_LOCAL_TIME = "true";
     };
