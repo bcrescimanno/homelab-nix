@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-NixOS flake for a Raspberry Pi 5 homelab. Currently manages one host (`pirateship`) running a media stack via Podman containers. Two other Raspberry Pi 5 devices exist on the network running Raspberry Pi OS (Trixie) with Docker Compose stacks — they will be migrated to NixOS and added to this flake in the future. A NAS will also be added, at which point media storage (currently on local disk under `/var/lib/media/`) will move there along with backup configuration.
+NixOS flake for a Raspberry Pi 5 homelab. Manages three hosts: `pirateship` (media stack), `rivendell` (Home Assistant, NPM, secondary DNS), and `mirkwood` (primary DNS, Homepage). A NAS will be added in future, at which point media storage (currently on local disk under `/var/lib/media/`) will move there along with backup configuration.
 
 Uses `nixos-raspberrypi` for Pi-specific hardware support, `disko` for declarative disk partitioning, and `sops-nix` for secrets management.
 
@@ -32,24 +32,23 @@ SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops secrets/pirateship.yaml
 | Host | Hardware | Status | Role |
 |---|---|---|---|
 | `pirateship` | Raspberry Pi 5 | Live on NixOS | Media stack (arr apps, Jellyfin, VPN) |
-| `rivendell` | Raspberry Pi 5, 8GB | Planned migration from Raspberry Pi OS (Trixie) | Home Assistant, Matter Server, Nginx Proxy Manager, Portainer CE, Technitium (secondary DNS) |
-| `mirkwood` | Raspberry Pi 5, 4GB | Planned migration from Raspberry Pi OS (Trixie) | Technitium (primary DNS), Homepage, Portainer Agent |
-
-`rivendell` and `mirkwood` currently run Docker Compose stacks (source in `~/code/homelab`). They will be migrated to NixOS and added to this flake. Key migration decisions:
-- Pi-hole + Unbound + Redis + Nebula-Sync → replaced by Technitium DNS (one container per device, built-in sync and recursive resolution)
-- Watchtower → replaced by Renovate (already in use for pirateship)
-- Jellyfin on rivendell → retired once NAS is added; pirateship becomes the sole Jellyfin instance
-- Docker → Podman (consistent with pirateship)
-- A NAS will be added in future; at that point all media storage moves off pirateship's local disk
+| `rivendell` | Raspberry Pi 5, 8GB | Live on NixOS | Home Assistant, Matter Server, Nginx Proxy Manager, Technitium (secondary DNS), Glances |
+| `mirkwood` | Raspberry Pi 5, 4GB | Live on NixOS | Technitium (primary DNS), Homepage, Glances |
 
 ## Architecture
 
 ### Module Structure
 
-- `flake.nix` — entry point; defines the single `pirateship` NixOS configuration, wiring together all inputs and modules
-- `hosts/pirateship.nix` — machine-specific config: hostname, disk layout (disko), networking, and SOPS secret declarations
+- `flake.nix` — entry point; defines NixOS configurations for all three hosts
+- `hosts/{pirateship,rivendell,mirkwood}.nix` — machine-specific config: hostname, disk layout (disko), networking, and SOPS secret declarations
 - `modules/base.nix` — shared config for all devices: user accounts, SSH, firewall, Podman setup, auto-upgrade, common packages
-- `modules/arr-stack.nix` — all OCI containers managed via `virtualisation.oci-containers`
+- `modules/arr-stack.nix` — pirateship media stack containers
+- `modules/dns.nix` — Technitium DNS container (rivendell + mirkwood)
+- `modules/homeassistant.nix` — Home Assistant + Matter Server containers (rivendell)
+- `modules/proxy.nix` — Nginx Proxy Manager container (rivendell)
+- `modules/homepage.nix` — Homepage dashboard container with Nix-managed config (mirkwood)
+- `modules/monitoring.nix` — Glances system monitor as native NixOS service (rivendell + mirkwood)
+- `scripts/configure-technitium.sh` — post-install API script to configure Technitium (blocklists, zones, zone sync)
 
 ### Container Stack (arr-stack.nix)
 
