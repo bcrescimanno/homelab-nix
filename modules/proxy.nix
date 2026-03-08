@@ -21,6 +21,7 @@
       "/var/lib/npm/data:/data"
       "/var/lib/npm/letsencrypt:/etc/letsencrypt"
     ];
+    extraOptions = [ "--dns-search=local" ];
     ports = [
       "80:80/tcp"
       "443:443/tcp"
