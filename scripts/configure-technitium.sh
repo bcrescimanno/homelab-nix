@@ -8,14 +8,18 @@
 #   ./scripts/configure-technitium.sh <host> <admin-password>
 #
 # Example:
-#   ./scripts/configure-technitium.sh rivendell 'mypassword'
-#   ./scripts/configure-technitium.sh mirkwood  'mypassword'
+#   ./scripts/configure-technitium.sh mirkwood  'mypassword' primary
+#   ./scripts/configure-technitium.sh rivendell 'mypassword' secondary
 
 set -euo pipefail
 
-HOST="${1:?Usage: $0 <host> <admin-password>}"
-PASS="${2:?Usage: $0 <host> <admin-password>}"
+HOST="${1:?Usage: $0 <host> <admin-password> [primary|secondary]}"
+PASS="${2:?Usage: $0 <host> <admin-password> [primary|secondary]}"
+ROLE="${3:-primary}"  # 'primary' (mirkwood) or 'secondary' (rivendell)
 BASE="http://${HOST}:5380/api"
+
+PRIMARY_HOST="mirkwood"
+PRIMARY_IP="10.0.1.8"
 
 # ---------------------------------------------------------------------------
 # Auth
@@ -77,13 +81,17 @@ create_forwarder_zone() {
 create_forwarder_zone "local"              "10.0.1.1" "router DHCP hostnames"
 create_forwarder_zone "1.0.10.in-addr.arpa" "10.0.1.1" "reverse DNS"
 
-echo "Configuring primary zone: theshire.io (split-horizon for local NPM)..."
+echo "Configuring theshire.io zone (split-horizon for local NPM)..."
 if echo "$ZONES" | grep -qx "theshire.io"; then
   echo "  Already exists, skipping."
-else
+elif [[ "$ROLE" == "primary" ]]; then
   api "zones/create?zone=theshire.io&type=Primary" > /dev/null
   api "zones/records/add?zone=theshire.io&domain=*.theshire.io&type=A&ipAddress=10.0.1.9&ttl=300" > /dev/null
-  echo "  Created with wildcard -> 10.0.1.9"
+  api "zones/options/set?zone=theshire.io&zoneTransfer=Allow&notify=AllNameServers&notifyNameServers=10.0.1.9" > /dev/null
+  echo "  Created as Primary with wildcard -> 10.0.1.9, zone transfer enabled to rivendell."
+else
+  api "zones/create?zone=theshire.io&type=Secondary&primaryNameServerAddresses=${PRIMARY_IP}" > /dev/null
+  echo "  Created as Secondary, syncing from ${PRIMARY_HOST} (${PRIMARY_IP})."
 fi
 
 # ---------------------------------------------------------------------------
