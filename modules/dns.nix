@@ -32,15 +32,12 @@
       DNS_SERVER_LOG_USING_LOCAL_TIME = "true";
     };
 
-    # Admin password is supplied via sops-managed env file.
+    # Host networking so Technitium binds directly to the host's IP on port 53.
+    # Bridge networking conflicts with Podman's aardvark-dns which also uses
+    # port 53 on the bridge interface (10.88.0.1:53).
     extraOptions = [
+      "--network=host"
       "--env-file=/run/secrets/technitium_env"
-    ];
-
-    ports = [
-      "53:53/tcp"
-      "53:53/udp"
-      "5380:5380/tcp"
     ];
   };
 
