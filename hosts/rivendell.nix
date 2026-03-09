@@ -4,7 +4,7 @@
 # Role: Home Assistant, Matter Server, Nginx Proxy Manager,
 #       Portainer CE, Technitium (secondary DNS), Glances
 
-{ config, pkgs, lib, ... }:
+{ config, pkgs, lib, inputs, ... }:
 
 {
   # ---------------------------------------------------------------------------
@@ -81,4 +81,7 @@
     };
   };
 
+  home-manager.users.brian = {
+    imports = [ "${inputs.dotfiles}/machines/rivendell.nix" ];
+  };
 }

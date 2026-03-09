@@ -9,7 +9,7 @@
 # `pkgs` to reference packages, `lib` for helper functions, and `config`
 # to read values set by other modules (useful for conditional logic).
 
-{ config, pkgs, lib, ... }:
+{ config, pkgs, lib, inputs, ... }:
 
 {
   # ---------------------------------------------------------------------------
@@ -89,5 +89,9 @@
       vpn_env = {};
       qbt_credentials = {};
     };
+  };
+
+  home-manager.users.brian = {
+    imports = [ "${inputs.dotfiles}/machines/pirateship.nix" ];
   };
 }

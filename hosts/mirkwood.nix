@@ -4,7 +4,7 @@
 # Role: Technitium (primary DNS), Homepage dashboard,
 #       Portainer Agent, Glances
 
-{ config, pkgs, lib, ... }:
+{ config, pkgs, lib, inputs, ... }:
 
 {
   # ---------------------------------------------------------------------------
@@ -77,5 +77,9 @@
     secrets = {
       technitium_env = {};
     };
+  };
+
+  home-manager.users.brian = {
+    imports = [ "${inputs.dotfiles}/machines/mirkwood.nix" ];
   };
 }

@@ -10,6 +10,10 @@
       url = "github:Mic92/sops-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # dotfiles is the source of home configs; use its pinned home-manager so
+    # both flakes always run the same HM version against the same nixpkgs.
+    dotfiles.url = "github:bcrescimanno/dotfiles";
+    home-manager.follows = "dotfiles/home-manager";
   };
 
   nixConfig = {
@@ -19,7 +23,7 @@
     ];
   };
 
-  outputs = { self, nixpkgs, nixos-raspberrypi, disko, sops-nix, ... }@inputs:
+  outputs = { self, nixpkgs, nixos-raspberrypi, disko, sops-nix, home-manager, ... }@inputs:
     let
       piModules = extraModules: [
         ({ ... }: {
@@ -30,6 +34,20 @@
         })
         disko.nixosModules.disko
         sops-nix.nixosModules.sops
+        home-manager.nixosModules.home-manager
+        {
+          # nixos-raspberrypi pins an older nixpkgs that predates
+          # neovimUtils.makeVimPackageInfo. Overlay it in from the dotfiles
+          # nixpkgs so home-manager's neovim module evaluation succeeds.
+          nixpkgs.overlays = [
+            (final: prev:
+              let newerPkgs = inputs.dotfiles.inputs.nixpkgs.legacyPackages.${prev.system};
+              in { neovimUtils = prev.neovimUtils // { inherit (newerPkgs.neovimUtils) makeVimPackageInfo; }; })
+          ];
+          home-manager.useGlobalPkgs = true;
+          home-manager.useUserPackages = true;
+          home-manager.backupFileExtension = "backup";
+        }
         ./modules/base.nix
       ] ++ extraModules;
     in
