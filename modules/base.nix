@@ -123,6 +123,11 @@
     jq
     lsof
     home-manager
+    python3
+    sqlite
+    bind.dnsutils  # dig, nslookup
+    usbutils       # lsusb
+    ripgrep
   ];
 
   # ---------------------------------------------------------------------------
