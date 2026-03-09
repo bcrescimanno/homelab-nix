@@ -5,6 +5,37 @@
 
 { config, pkgs, lib, ... }:
 
+let
+  recyclarrConfig = pkgs.writeText "recyclarr.yml" ''
+    sonarr:
+      sonarr-main:
+        base_url: http://localhost:8989
+        api_key: 6d398052e1bb412b967f58cadb972bf6
+        delete_old_custom_formats: true
+        quality_definition:
+          type: series
+        quality_profiles:
+          - trash_id: 72dae194fc92bf828f32cde7744e51a1 # WEB-1080p
+            reset_unmatched_scores:
+              enabled: true
+          - trash_id: d1498e7d189fbe6c7110ceaabb7473e6 # WEB-2160p
+            reset_unmatched_scores:
+              enabled: true
+
+    radarr:
+      radarr-main:
+        base_url: http://localhost:7878
+        api_key: 2669eb7d758f4c0cb0eaeb2e1b8abc69
+        delete_old_custom_formats: true
+        quality_definition:
+          type: movie
+        quality_profiles:
+          - trash_id: 64fb5f9858489bdac2af690e27c8f42f # UHD Bluray + WEB
+            reset_unmatched_scores:
+              enabled: true
+  '';
+in
+
 {
   virtualisation.oci-containers.containers = {
 
@@ -137,6 +168,7 @@
       };
       volumes = [
         "/var/lib/recyclarr/config:/config"
+        "${recyclarrConfig}:/config/recyclarr.yml:ro"
       ];
     };
 
