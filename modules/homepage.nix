@@ -47,7 +47,7 @@
         Media = [
           {
             Jellyfin = {
-              href = "http://pirateship:8096";
+              href = "https://jellyfin.theshire.io";
               description = "Media server";
               icon = "jellyfin.png";
             };
@@ -58,35 +58,35 @@
         Downloads = [
           {
             Transmission = {
-              href = "http://pirateship:9091";
+              href = "https://dl.theshire.io";
               description = "Torrent client";
               icon = "transmission.png";
             };
           }
           {
             Radarr = {
-              href = "http://pirateship:7878";
+              href = "https://movies.theshire.io";
               description = "Movie manager";
               icon = "radarr.png";
             };
           }
           {
             Sonarr = {
-              href = "http://pirateship:8989";
+              href = "https://sonarr.theshire.io";
               description = "TV manager";
               icon = "sonarr.png";
             };
           }
           {
             Prowlarr = {
-              href = "http://pirateship:9696";
+              href = "https://prowlarr.theshire.io";
               description = "Indexer manager";
               icon = "prowlarr.png";
             };
           }
           {
             Lidarr = {
-              href = "http://pirateship:8686";
+              href = "https://lidarr.theshire.io";
               description = "Music manager";
               icon = "lidarr.png";
             };
@@ -97,7 +97,7 @@
         Home = [
           {
             "Home Assistant" = {
-              href = "http://rivendell:8123";
+              href = "https://ha.theshire.io";
               description = "Home automation";
               icon = "home-assistant.png";
             };
@@ -108,21 +108,21 @@
         Infrastructure = [
           {
             "Technitium (mirkwood)" = {
-              href = "http://mirkwood:5380";
+              href = "https://ns1.theshire.io";
               description = "Primary DNS";
               icon = "technitium-dns-server.png";
             };
           }
           {
             "Technitium (rivendell)" = {
-              href = "http://rivendell:5380";
+              href = "https://ns2.theshire.io";
               description = "Secondary DNS";
               icon = "technitium-dns-server.png";
             };
           }
           {
             "Nginx Proxy Manager" = {
-              href = "http://rivendell:81";
+              href = "https://proxy.theshire.io";
               description = "Reverse proxy";
               icon = "nginx-proxy-manager.png";
             };
@@ -133,21 +133,21 @@
         Monitoring = [
           {
             "Glances (mirkwood)" = {
-              href = "http://mirkwood:61208";
+              href = "https://mirkwood-stats.theshire.io";
               description = "System monitor";
               icon = "glances.png";
             };
           }
           {
             "Glances (rivendell)" = {
-              href = "http://rivendell:61208";
+              href = "https://rivendell-stats.theshire.io";
               description = "System monitor";
               icon = "glances.png";
             };
           }
           {
             "Glances (pirateship)" = {
-              href = "http://pirateship:61208";
+              href = "https://pirateship-stats.theshire.io";
               description = "System monitor";
               icon = "glances.png";
             };
