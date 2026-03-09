@@ -35,7 +35,7 @@
     };
 
     matter-server = {
-      image = "ghcr.io/home-assistant/matter-server:stable";
+      image = "ghcr.io/home-assistant-libs/python-matter-server:stable";
       autoStart = true;
       volumes = [
         "/var/lib/matter-server/data:/data"
