@@ -27,7 +27,7 @@
       "/var/lib/homepage/logs:/app/config/logs"
     ];
     environment = {
-      HOMEPAGE_ALLOWED_HOSTS = "mirkwood.local:3000,mirkwood:3000,10.0.1.8:3000";
+      HOMEPAGE_ALLOWED_HOSTS = "mirkwood.local:3000,mirkwood:3000,10.0.1.8:3000,home.theshire.io";
     };
     ports = [
       "3000:3000/tcp"
@@ -111,6 +111,10 @@
               icon: glances.png
           - Glances (rivendell):
               href: http://rivendell:61208
+              description: System monitor
+              icon: glances.png
+          - Glances (pirateship):
+              href: http://pirateship:61208
               description: System monitor
               icon: glances.png
     '';

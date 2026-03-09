@@ -17,8 +17,11 @@ nix flake check --no-build
 # Update flake inputs (nixpkgs, etc.)
 nix flake update
 
-# Deploy to the Pi (run from dev machine)
-nixos-rebuild switch --flake .#pirateship --target-host brian@pirateship --use-remote-sudo
+# Deploy to a Pi (run from dev machine)
+# --build-host required when deploying from x86_64 to aarch64 — builds on the Pi itself
+nixos-rebuild switch --flake .#pirateship --target-host brian@pirateship --build-host brian@pirateship --sudo
+nixos-rebuild switch --flake .#rivendell --target-host brian@rivendell --build-host brian@rivendell --sudo
+nixos-rebuild switch --flake .#mirkwood --target-host brian@mirkwood --build-host brian@mirkwood --sudo
 
 # Initial install via nixos-anywhere
 nix run github:nix-community/nixos-anywhere -- --flake .#pirateship root@<ip>
@@ -47,7 +50,7 @@ SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops secrets/pirateship.yaml
 - `modules/homeassistant.nix` — Home Assistant + Matter Server containers (rivendell)
 - `modules/proxy.nix` — Nginx Proxy Manager container (rivendell)
 - `modules/homepage.nix` — Homepage dashboard container with Nix-managed config (mirkwood)
-- `modules/monitoring.nix` — Glances system monitor as native NixOS service (rivendell + mirkwood)
+- `modules/monitoring.nix` — Glances system monitor as native NixOS service (all three hosts)
 - `scripts/configure-technitium.sh` — post-install API script to configure Technitium (blocklists, zones, zone sync)
 
 ### Container Stack (arr-stack.nix)

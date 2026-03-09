@@ -51,7 +51,7 @@ api() {
 # ---------------------------------------------------------------------------
 
 echo "Applying global settings..."
-api "settings/set?dnssecValidation=false&logQueries=false" > /dev/null
+api "settings/set?dnssecValidation=false&logQueries=true" > /dev/null
 
 # ---------------------------------------------------------------------------
 # Blocklists
@@ -60,6 +60,29 @@ api "settings/set?dnssecValidation=false&logQueries=false" > /dev/null
 echo "Configuring blocklists..."
 BLOCKLIST_URLS="https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts,https://big.oisd.nl/domainswild2,https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/wildcard/pro-onlydomains.txt"
 api "settings/set?enableBlocking=true&blockingType=NxDomain&blockListUrls=${BLOCKLIST_URLS}" > /dev/null
+
+# ---------------------------------------------------------------------------
+# Query Logs app
+# ---------------------------------------------------------------------------
+
+APP_NAME="Query Logs (Sqlite)"
+APP_NAME_ENCODED="Query%20Logs%20(Sqlite)"
+
+echo "Checking for Query Logs app..."
+INSTALLED_APPS=$(curl -sf "${BASE}/apps/list?token=${TOKEN}" | jq -r '.response.apps[].name')
+
+if echo "$INSTALLED_APPS" | grep -qxF "$APP_NAME"; then
+  echo "  Already installed, skipping."
+else
+  echo "  Fetching app store listing..."
+  APP_URL=$(curl -sf "${BASE}/apps/listStoreApps?token=${TOKEN}" | jq -r --arg name "$APP_NAME" '.response.storeApps[] | select(.name == $name) | .url')
+  if [[ -z "$APP_URL" || "$APP_URL" == "null" ]]; then
+    echo "  WARNING: Could not find '$APP_NAME' in app store. Install it manually via the web UI." >&2
+  else
+    api "apps/downloadAndInstall?name=${APP_NAME_ENCODED}&url=${APP_URL}" > /dev/null
+    echo "  Installed."
+  fi
+fi
 
 # ---------------------------------------------------------------------------
 # Zones
