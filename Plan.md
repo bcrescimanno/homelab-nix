@@ -1,24 +1,17 @@
 # Migration Plan: rivendell & mirkwood → NixOS
 
-> **Local reference only — not committed to git.**
 > Status markers: [ ] todo · [x] done · [~] in progress · [!] blocked
 
 ---
 
-## Current State
+## Current State (as of 2026-03-08)
+
+Migration complete. All three hosts are live on NixOS.
 
 | Host | OS | Services |
 |---|---|---|
-| pirateship | NixOS | arr stack, Jellyfin, Transmission, gluetun VPN |
-| rivendell | Raspberry Pi OS (Trixie) | Home Assistant, Matter Server, Nginx Proxy Manager, Pi-hole (secondary), Unbound, Redis, Nebula-Sync, Watchtower |
-| mirkwood | Raspberry Pi OS (Trixie) | Pi-hole (primary DNS), Unbound, Redis, Nebula-Sync, Homepage, Watchtower |
-
-## Target State
-
-| Host | OS | Services |
-|---|---|---|
-| pirateship | NixOS | (unchanged) |
-| rivendell | NixOS | Home Assistant, Matter Server, Nginx Proxy Manager, Technitium DNS (secondary), Glances |
+| pirateship | NixOS | arr stack, Jellyfin, Transmission, gluetun VPN, Glances |
+| rivendell | NixOS | Home Assistant, Matter Server, Nginx Proxy Manager, Technitium DNS (secondary), NUT (UPS), Glances |
 | mirkwood | NixOS | Technitium DNS (primary), Homepage, Glances |
 
 ## Key Migration Decisions
@@ -391,24 +384,20 @@ Ensure Renovate is watching container image digests/tags in the new module files
 
 | Item | Notes |
 |---|---|
-| Age private keys for rivendell & mirkwood | Confirm these are saved on liquidark before proceeding |
 | HA USB devices (Zigbee/Z-Wave dongles) | Will need to be passed through to container; check device path in NixOS |
 | Matter Server Bluetooth access | Needs Bluetooth configured in NixOS; `bluetooth` module is in piModules already |
-| Homepage config format | Currently managed as Docker volume; may want to commit config as Nix-managed files instead |
-| Technitium initial setup | First boot requires web UI setup; no fully declarative setup available yet |
 | Technitium declarative Nix config | Investigate replacing `scripts/configure-technitium.sh` with a Nix-native solution. Check for a NixOS module or nixpkgs package that can manage Technitium configuration declaratively. If nothing exists yet, watch for community efforts — this is a natural fit for a NixOS module. |
-| NVMe device path | Assume `/dev/nvme0n1` — verify with `lsblk` after USB boot before running nixos-anywhere |
 | Technitium DNSSEC + local DNS | DNSSEC validation is disabled globally (Option A) so `.local` forwarding works via conditional forwarder to 10.0.1.1. Future Option B: migrate DHCP to Technitium's built-in DHCP server — it auto-creates DNS records for every lease/reservation, enabling full hostname support AND DNSSEC validation for public domains. |
-| UniFi custom DNS entries for rivendell | Multiple custom DNS entries in UniFi point to 10.0.1.9 (rivendell's IP) with various hostnames (homebridge, ns2, etc.) from its previous Pi OS life. Clean these up once mirkwood migration is complete — consolidate to a single `rivendell` entry. |
-| Technitium query logging | Query logs are not currently searchable/queryable. Technitium supports log querying via its web UI and API but requires enabling query logging (`logQueries = true`) and configuring a log app. Set this up post-migration so DNS queries can be audited and clients identified by hostname. |
-| Network UPS Tools (NUT) | Set up NUT on rivendell to monitor the UPS. Rivendell is the natural home for this given it runs HA — HA can then react to UPS events (e.g. trigger automations on power loss). |
+| UniFi custom DNS entries for rivendell | Multiple custom DNS entries in UniFi point to 10.0.1.9 (rivendell's IP) with various hostnames (homebridge, ns2, etc.) from its previous Pi OS life. Clean these up — consolidate to a single `rivendell` entry. |
 | NPM proxy configuration | Audit all running homelab services and set up proxy hosts + SSL in NPM. Pirateship services (Jellyfin, arr stack) need to be added. Existing HA proxy may need review. Services: Jellyfin, Radarr, Sonarr, Prowlarr, Lidarr, Transmission, Home Assistant, Technitium ×2, Homepage, Glances ×2. |
 | GitHub branch protection | Enable branch protection on `main` in GitHub repo settings. Require PRs and status checks (flake check) before merging. Prevents direct pushes to main. |
 | Jellyfin file sync | Investigate syncing specific files into Jellyfin (metadata, configs, or media library data). Clarify what needs to be synced and from where. |
-| Homepage alternative | Investigate Nix-native dashboard alternatives to Homepage (e.g. Dasherr, Homarr, or others). Goal: eliminate the `environment.etc` + volume mount complexity and manage the dashboard config purely in Nix. |
 | SSO | Investigate SSO for the homelab. Options include Authelia or Authentik (both integrate well with NPM). Would allow single login across all proxied services and remove per-app auth for internal tools. |
-| home-manager nixpkgs overlay cleanup | `flake.nix` piModules contains an overlay that patches `neovimUtils.makeVimPackageInfo` from the dotfiles nixpkgs into the system nixpkgs. This works around `nixos-raspberrypi` pinning a nixpkgs version that predates the function. Once `nixos-raspberrypi` updates its pin past Feb 2026, remove the overlay, restore `home-manager.inputs.nixpkgs.follows = "nixpkgs"`, and drop the dotfiles-follows approach. |
-| Glances on pirateship | Add `modules/monitoring.nix` (Glances container) to pirateship's module list so all three hosts have a consistent monitoring UI at port 61208. Then add it to Homepage services.yaml. |
-| Apple device DNS storms | HomePods generate a burst of ~1500 DNS requests on startup/network change while discovering each other (AirPlay 2, HomeKit hub sync, iCloud). Traffic drops off once devices establish connections. Confirmed no blocked domains — this is normal behavior. Monitor if sustained high traffic appears outside of startup windows. |
-| Recyclarr quality profiles | Recyclarr configs on pirateship appear to be blocking 1080p TV show downloads. Review the recyclarr configuration in `modules/arr-stack.nix` and the synced quality profiles in Sonarr to ensure 1080p is an allowed/preferred quality tier. |
-| Pi 5 USB boot | Confirm USB boot is enabled in EEPROM (`rpi-eeprom-config` or similar) |
+| home-manager nixpkgs overlay cleanup | `flake.nix` piModules contains an overlay that patches `neovimUtils.makeVimPackageInfo` from the dotfiles nixpkgs into the system nixpkgs. This works around `nixos-raspberrypi` pinning a nixpkgs version that predates the function. Once `nixos-raspberrypi` updates its pin past Feb 2026, remove the overlay and drop the dotfiles-follows approach. |
+| Apple device DNS storms | HomePods generate a burst of ~1500 DNS requests on startup/network change while discovering each other. Traffic drops off once devices establish connections. Confirmed no blocked domains — normal behavior. Monitor if sustained high traffic appears outside of startup windows. |
+| NAS + backups | Once NAS is added: move `/var/lib/media/` to NAS, configure backup solution for host state and HA data. |
+| ~~Network UPS Tools (NUT)~~ | ~~Done~~ — `modules/nut.nix` live on rivendell, HA integration configured. |
+| ~~Glances on pirateship~~ | ~~Done~~ — `modules/monitoring.nix` included on all three hosts. |
+| ~~Technitium query logging~~ | ~~Done~~ — query logging enabled via `configure-technitium.sh`. |
+| ~~Recyclarr quality profiles~~ | ~~Done~~ — config made declarative in `arr-stack.nix`; WEB-1080p + WEB-2160p (Sonarr) and UHD Bluray+WEB (Radarr) profiles correct. |
+| ~~Home Manager integration~~ | ~~Done~~ — dotfiles integrated via `home-manager` NixOS module on all hosts. |
