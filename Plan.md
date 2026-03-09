@@ -388,11 +388,11 @@ Ensure Renovate is watching container image digests/tags in the new module files
 | Matter Server Bluetooth access | Needs Bluetooth configured in NixOS; `bluetooth` module is in piModules already |
 | Technitium declarative Nix config | Investigate replacing `scripts/configure-technitium.sh` with a Nix-native solution. Check for a NixOS module or nixpkgs package that can manage Technitium configuration declaratively. If nothing exists yet, watch for community efforts — this is a natural fit for a NixOS module. |
 | Technitium DNSSEC + local DNS | DNSSEC validation is disabled globally (Option A) so `.local` forwarding works via conditional forwarder to 10.0.1.1. Future Option B: migrate DHCP to Technitium's built-in DHCP server — it auto-creates DNS records for every lease/reservation, enabling full hostname support AND DNSSEC validation for public domains. |
-| UniFi custom DNS entries for rivendell | Multiple custom DNS entries in UniFi point to 10.0.1.9 (rivendell's IP) with various hostnames (homebridge, ns2, etc.) from its previous Pi OS life. Clean these up — consolidate to a single `rivendell` entry. |
-| NPM proxy configuration | Audit all running homelab services and set up proxy hosts + SSL in NPM. Pirateship services (Jellyfin, arr stack) need to be added. Existing HA proxy may need review. Services: Jellyfin, Radarr, Sonarr, Prowlarr, Lidarr, Transmission, Home Assistant, Technitium ×2, Homepage, Glances ×2. |
-| GitHub branch protection | Enable branch protection on `main` in GitHub repo settings. Require PRs and status checks (flake check) before merging. Prevents direct pushes to main. |
-| Jellyfin file sync | Investigate syncing specific files into Jellyfin (metadata, configs, or media library data). Clarify what needs to be synced and from where. |
 | SSO | Investigate SSO for the homelab. Options include Authelia or Authentik (both integrate well with NPM). Would allow single login across all proxied services and remove per-app auth for internal tools. |
+| ~~UniFi custom DNS entries for rivendell~~ | ~~Done~~ — stale hostnames cleaned up. |
+| ~~NPM proxy configuration~~ | ~~Done~~ — all services proxied with SSL. |
+| ~~GitHub branch protection~~ | ~~Done~~ — branch protection enabled on main. |
+| ~~Jellyfin file sync~~ | ~~Done~~ |
 | home-manager nixpkgs overlay cleanup | `flake.nix` piModules contains an overlay that patches `neovimUtils.makeVimPackageInfo` from the dotfiles nixpkgs into the system nixpkgs. This works around `nixos-raspberrypi` pinning a nixpkgs version that predates the function. Once `nixos-raspberrypi` updates its pin past Feb 2026, remove the overlay and drop the dotfiles-follows approach. |
 | Apple device DNS storms | HomePods generate a burst of ~1500 DNS requests on startup/network change while discovering each other. Traffic drops off once devices establish connections. Confirmed no blocked domains — normal behavior. Monitor if sustained high traffic appears outside of startup windows. |
 | NAS + backups | Once NAS is added: move `/var/lib/media/` to NAS, configure backup solution for host state and HA data. |
