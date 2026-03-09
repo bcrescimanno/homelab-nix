@@ -76,6 +76,8 @@
 
     secrets = {
       technitium_env = {};
+      nut_upsmon_password = {};
+      nut_ha_password = {};
     };
   };
 

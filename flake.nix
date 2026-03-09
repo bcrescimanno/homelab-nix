@@ -51,6 +51,7 @@
           ./modules/homeassistant.nix
           ./modules/proxy.nix
           ./modules/monitoring.nix
+          ./modules/nut.nix
         ];
         specialArgs = { inherit inputs nixos-raspberrypi; };
       };
