@@ -23,6 +23,7 @@
       autoStart = true;
       volumes = [
         "/var/lib/homeassistant/config:/config"
+        "/run/dbus:/run/dbus:ro"
       ];
       environment = {
         TZ = "America/Los_Angeles";
