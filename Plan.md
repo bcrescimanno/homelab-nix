@@ -395,6 +395,8 @@ Ensure Renovate is watching container image digests/tags in the new module files
 | ~~Jellyfin file sync~~ | ~~Done~~ |
 | home-manager nixpkgs overlay cleanup | `flake.nix` piModules contains an overlay that patches `neovimUtils.makeVimPackageInfo` from the dotfiles nixpkgs into the system nixpkgs. This works around `nixos-raspberrypi` pinning a nixpkgs version that predates the function. Once `nixos-raspberrypi` updates its pin past Feb 2026, remove the overlay and drop the dotfiles-follows approach. |
 | Apple device DNS storms | HomePods generate a burst of ~1500 DNS requests on startup/network change while discovering each other. Traffic drops off once devices establish connections. Confirmed no blocked domains — normal behavior. Monitor if sustained high traffic appears outside of startup windows. |
+| Device inventory & HomeKit migration | Inventory all smart home devices currently controlled via HomeKit-only and migrate them to HomeKit-through-Home-Assistant (exposing HA as a HomeKit bridge). Goal: single pane of glass in HA with automations, while keeping HomeKit/Siri usable. |
+| Node-RED for automations | Evaluate Node-RED as the automation engine for Home Assistant. Node-RED offers a visual flow editor and is more powerful than HA's built-in automations for complex logic. Would run as a container on rivendell alongside HA. |
 | NAS + backups | Once NAS is added: move `/var/lib/media/` to NAS, configure backup solution for host state and HA data. |
 | ~~Network UPS Tools (NUT)~~ | ~~Done~~ — `modules/nut.nix` live on rivendell, HA integration configured. |
 | ~~Glances on pirateship~~ | ~~Done~~ — `modules/monitoring.nix` included on all three hosts. |
