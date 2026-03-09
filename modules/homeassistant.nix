@@ -49,9 +49,15 @@
 
   };
 
+  # Enable Bluetooth userspace daemon (bluetoothd) so HA and Matter Server
+  # can access the Pi 5's built-in Bluetooth adapter via DBus.
+  hardware.bluetooth.enable = true;
+
   # Port 5580 (Matter Server WebSocket) is localhost-only — HA connects
   # to it internally and it does not need to be reachable from the network.
+  # UDP 4001: Govee Local — devices send status updates to this port on the host.
   networking.firewall.allowedTCPPorts = [ 8123 ];
+  networking.firewall.allowedUDPPorts = [ 4001 ];
 
   systemd.tmpfiles.rules = [
     "d /var/lib/homeassistant/config 0755 root root -"
