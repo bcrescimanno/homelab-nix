@@ -1,10 +1,7 @@
 # modules/homepage.nix — Homepage dashboard
 #
-# Config files are Nix-managed via environment.etc and mounted read-only
-# into the container at /app/config. Homepage writes logs to
-# /app/config/logs/, so a separate writable mount overlays that
-# subdirectory. Any config change requires a nixos-rebuild + container
-# restart to take effect.
+# Uses the native NixOS service module instead of a container, so config
+# is declared entirely in Nix. No environment.etc, no volume mounts.
 #
 # Icons reference the dashboard-icons project bundled with Homepage.
 # See https://gethomepage.dev/configs/services/ for full schema.
@@ -12,126 +9,166 @@
 { config, pkgs, lib, ... }:
 
 {
-  virtualisation.oci-containers.containers.homepage = {
-    image = "ghcr.io/gethomepage/homepage:latest@sha256:0b596092c0b55fe4c65379a428a3fe90bd192f10d1b07d189a34fe5fabe7eedb";
-    autoStart = true;
-    volumes = [
-      # environment.etc creates symlinks; mount the real files from /etc/static
-      # so symlinks resolve inside the container. Mount individually to avoid
-      # the nested read-only/writable mount conflict on /app/config/logs.
-      "/etc/static/homepage/settings.yaml:/app/config/settings.yaml:ro"
-      "/etc/static/homepage/services.yaml:/app/config/services.yaml:ro"
-      "/etc/static/homepage/widgets.yaml:/app/config/widgets.yaml:ro"
-      "/etc/static/homepage/bookmarks.yaml:/app/config/bookmarks.yaml:ro"
-      "/etc/static/homepage/docker.yaml:/app/config/docker.yaml:ro"
-      "/var/lib/homepage/logs:/app/config/logs"
-    ];
-    environment = {
-      HOMEPAGE_ALLOWED_HOSTS = "mirkwood.local:3000,mirkwood:3000,10.0.1.8:3000,home.theshire.io";
+  services.homepage-dashboard = {
+    enable = true;
+    listenPort = 3000;
+    openFirewall = true;
+    allowedHosts = "mirkwood.local:3000,mirkwood:3000,10.0.1.8:3000,home.theshire.io";
+
+    settings = {
+      title = "Homelab";
+      theme = "dark";
+      color = "slate";
+      headerStyle = "clean";
+      statusStyle = "dot";
     };
-    ports = [
-      "3000:3000/tcp"
+
+    widgets = [
+      {
+        datetime = {
+          text_size = "xl";
+          format = {
+            timeStyle = "short";
+            dateStyle = "short";
+            hour12 = true;
+          };
+        };
+      }
+      {
+        search = {
+          provider = "duckduckgo";
+          target = "_blank";
+        };
+      }
+    ];
+
+    services = [
+      {
+        Media = [
+          {
+            Jellyfin = {
+              href = "http://pirateship:8096";
+              description = "Media server";
+              icon = "jellyfin.png";
+            };
+          }
+        ];
+      }
+      {
+        Downloads = [
+          {
+            Transmission = {
+              href = "http://pirateship:9091";
+              description = "Torrent client";
+              icon = "transmission.png";
+            };
+          }
+          {
+            Radarr = {
+              href = "http://pirateship:7878";
+              description = "Movie manager";
+              icon = "radarr.png";
+            };
+          }
+          {
+            Sonarr = {
+              href = "http://pirateship:8989";
+              description = "TV manager";
+              icon = "sonarr.png";
+            };
+          }
+          {
+            Prowlarr = {
+              href = "http://pirateship:9696";
+              description = "Indexer manager";
+              icon = "prowlarr.png";
+            };
+          }
+          {
+            Lidarr = {
+              href = "http://pirateship:8686";
+              description = "Music manager";
+              icon = "lidarr.png";
+            };
+          }
+        ];
+      }
+      {
+        Home = [
+          {
+            "Home Assistant" = {
+              href = "http://rivendell:8123";
+              description = "Home automation";
+              icon = "home-assistant.png";
+            };
+          }
+        ];
+      }
+      {
+        Infrastructure = [
+          {
+            "Technitium (mirkwood)" = {
+              href = "http://mirkwood:5380";
+              description = "Primary DNS";
+              icon = "technitium-dns-server.png";
+            };
+          }
+          {
+            "Technitium (rivendell)" = {
+              href = "http://rivendell:5380";
+              description = "Secondary DNS";
+              icon = "technitium-dns-server.png";
+            };
+          }
+          {
+            "Nginx Proxy Manager" = {
+              href = "http://rivendell:81";
+              description = "Reverse proxy";
+              icon = "nginx-proxy-manager.png";
+            };
+          }
+        ];
+      }
+      {
+        Monitoring = [
+          {
+            "Glances (mirkwood)" = {
+              href = "http://mirkwood:61208";
+              description = "System monitor";
+              icon = "glances.png";
+            };
+          }
+          {
+            "Glances (rivendell)" = {
+              href = "http://rivendell:61208";
+              description = "System monitor";
+              icon = "glances.png";
+            };
+          }
+          {
+            "Glances (pirateship)" = {
+              href = "http://pirateship:61208";
+              description = "System monitor";
+              icon = "glances.png";
+            };
+          }
+        ];
+      }
+    ];
+
+    bookmarks = [
+      {
+        Homelab = [
+          {
+            "GitHub Repo" = [
+              {
+                href = "https://github.com/bcrescimanno/homelab-nix";
+                icon = "github.png";
+              }
+            ];
+          }
+        ];
+      }
     ];
   };
-
-  environment.etc = {
-    "homepage/settings.yaml".text = ''
-      title: Homelab
-      theme: dark
-      color: slate
-      headerStyle: clean
-      statusStyle: dot
-    '';
-
-    "homepage/widgets.yaml".text = ''
-      - datetime:
-          text_size: xl
-          format:
-            timeStyle: short
-            dateStyle: short
-            hour12: true
-      - search:
-          provider: duckduckgo
-          target: _blank
-    '';
-
-    "homepage/services.yaml".text = ''
-      - Media:
-          - Jellyfin:
-              href: http://pirateship:8096
-              description: Media server
-              icon: jellyfin.png
-
-      - Downloads:
-          - Transmission:
-              href: http://pirateship:9091
-              description: Torrent client
-              icon: transmission.png
-          - Radarr:
-              href: http://pirateship:7878
-              description: Movie manager
-              icon: radarr.png
-          - Sonarr:
-              href: http://pirateship:8989
-              description: TV manager
-              icon: sonarr.png
-          - Prowlarr:
-              href: http://pirateship:9696
-              description: Indexer manager
-              icon: prowlarr.png
-          - Lidarr:
-              href: http://pirateship:8686
-              description: Music manager
-              icon: lidarr.png
-
-      - Home:
-          - Home Assistant:
-              href: http://rivendell:8123
-              description: Home automation
-              icon: home-assistant.png
-
-      - Infrastructure:
-          - Technitium (mirkwood):
-              href: http://mirkwood:5380
-              description: Primary DNS
-              icon: technitium-dns-server.png
-          - Technitium (rivendell):
-              href: http://rivendell:5380
-              description: Secondary DNS
-              icon: technitium-dns-server.png
-          - Nginx Proxy Manager:
-              href: http://rivendell:81
-              description: Reverse proxy
-              icon: nginx-proxy-manager.png
-
-      - Monitoring:
-          - Glances (mirkwood):
-              href: http://mirkwood:61208
-              description: System monitor
-              icon: glances.png
-          - Glances (rivendell):
-              href: http://rivendell:61208
-              description: System monitor
-              icon: glances.png
-          - Glances (pirateship):
-              href: http://pirateship:61208
-              description: System monitor
-              icon: glances.png
-    '';
-
-    "homepage/bookmarks.yaml".text = ''
-      - Homelab:
-          - GitHub Repo:
-              - href: https://github.com/bcrescimanno/homelab-nix
-                icon: github.png
-    '';
-
-    "homepage/docker.yaml".text = '''';
-  };
-
-  networking.firewall.allowedTCPPorts = [ 3000 ];
-
-  systemd.tmpfiles.rules = [
-    "d /var/lib/homepage/logs 0755 root root -"
-  ];
 }
