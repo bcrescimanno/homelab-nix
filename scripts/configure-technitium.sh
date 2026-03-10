@@ -58,7 +58,7 @@ api "settings/set?dnssecValidation=false&logQueries=true" > /dev/null
 # ---------------------------------------------------------------------------
 
 echo "Configuring blocklists..."
-BLOCKLIST_URLS="https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts,https://big.oisd.nl/domainswild2,https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/wildcard/pro-onlydomains.txt"
+BLOCKLIST_URLS="https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
 api "settings/set?enableBlocking=true&blockingType=NxDomain&blockListUrls=${BLOCKLIST_URLS}" > /dev/null
 
 # ---------------------------------------------------------------------------
