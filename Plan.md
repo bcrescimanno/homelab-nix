@@ -386,9 +386,21 @@ Ensure Renovate is watching container image digests/tags in the new module files
 |---|---|
 | HA USB devices (Zigbee/Z-Wave dongles) | Will need to be passed through to container; check device path in NixOS |
 | Matter Server Bluetooth access | Needs Bluetooth configured in NixOS; `bluetooth` module is in piModules already |
+| **Matter Server errors** | Seeing errors from the Matter Server container — investigate logs (`sudo podman logs matter-server`) and check HA → Settings → System → Logs for related errors. Likely Bluetooth/DBus permissions or IPv6 multicast issue. |
 | Technitium declarative Nix config | Investigate replacing `scripts/configure-technitium.sh` with a Nix-native solution. Check for a NixOS module or nixpkgs package that can manage Technitium configuration declaratively. If nothing exists yet, watch for community efforts — this is a natural fit for a NixOS module. |
 | Technitium DNSSEC + local DNS | DNSSEC validation is disabled globally (Option A) so `.local` forwarding works via conditional forwarder to 10.0.1.1. Future Option B: migrate DHCP to Technitium's built-in DHCP server — it auto-creates DNS records for every lease/reservation, enabling full hostname support AND DNSSEC validation for public domains. |
-| SSO | Investigate SSO for the homelab. Options include Authelia or Authentik (both integrate well with NPM). Would allow single login across all proxied services and remove per-app auth for internal tools. |
+| ~~SSO~~ | ~~Plan complete~~ — Authelia chosen; full plan in `memory/sso-plan.md`. Implementation deferred. |
+| NixOS on personal machines | Trial NixOS on the laptop (ROG Zephyrus G14 2024, RTX 4070 dGPU + Radeon 890M iGPU) before considering desktop (RTX 5090). See notes below. |
+| **Immich** | Self-hosted photo/video library (Google Photos replacement). Mobile backup app, face recognition, albums, map view. Host on pirateship (or NAS when added). High value, moderate setup effort. |
+| **Tailscale** | Mesh VPN for remote homelab access — no port forwarding needed. All hosts join the tailnet; access services from anywhere. Consider Headscale (self-hosted control plane) once comfortable. Affects all three hosts (`modules/tailscale.nix` or added to `base.nix`). |
+| **Vaultwarden** | Self-hosted Bitwarden-compatible password manager. Replace 1Password subscription. Uses official Bitwarden clients on all platforms including iOS. Host on rivendell. Backups are critical — losing the DB without a backup means losing passwords. |
+| **Uptime Kuma** | Service uptime monitoring with alerting (email, ntfy, Telegram, etc.). Polls services on a schedule and notifies when they go down. Fast to set up, high value for peace of mind. Host on rivendell or mirkwood. |
+| **Navidrome / Roon** | Evaluate both for music playback. Navidrome: free, lightweight, Subsonic API, pairs with Lidarr, Symfonium on iOS. Roon: rich linked metadata + discovery + multi-room + DSP + Tidal/Qobuz, $120/yr or $830 lifetime, needs real hardware for the Core. Not mutually exclusive — Navidrome for library streaming, Roon if the experience is worth the cost. |
+| **ntfy** | Self-hosted push notification server. Lightweight pub/sub — HA automations, scripts, Uptime Kuma, and NUT can all push to your phone via the ntfy iOS/Android app. Host on rivendell. |
+| **Prometheus + Grafana** | Metrics collection + dashboards with historical data and alerting. Grafana Node Exporter for host metrics; additional exporters for containers, NUT UPS, DNS. Higher setup effort than Uptime Kuma but gives trending/history. Host Prometheus + Grafana on mirkwood or rivendell. |
+| **Paperless-ngx** | Document management with OCR — scan or email documents in, they become tagged, searchable PDFs. Excellent for tax documents, warranties, receipts. Host on rivendell or pirateship. |
+| **Private music trackers** | Redacted (RED) and Orpheus (OPS) are the gold standard for lossless/hi-res FLAC. Both require interview/application. Integrate with Lidarr via Prowlarr. Evaluate whether the quality uplift over public trackers justifies the ratio maintenance overhead. |
+| **Usenet** | Evaluate Usenet as a download source alongside torrents. Needs: provider account (~$5–15/mo), indexer subscription (~$10–15/yr), and SABnzbd container on pirateship. All arr apps (Radarr, Sonarr, Lidarr) support Usenet natively via Prowlarr indexers. No ratio/seeding requirements; faster than torrents; no VPN kill-switch dependency. |
 | ~~UniFi custom DNS entries for rivendell~~ | ~~Done~~ — stale hostnames cleaned up. |
 | ~~NPM proxy configuration~~ | ~~Done~~ — all services proxied with SSL. |
 | ~~GitHub branch protection~~ | ~~Done~~ — branch protection enabled on main. |
@@ -397,9 +409,66 @@ Ensure Renovate is watching container image digests/tags in the new module files
 | Apple device DNS storms | HomePods generate a burst of ~1500 DNS requests on startup/network change while discovering each other. Traffic drops off once devices establish connections. Confirmed no blocked domains — normal behavior. Monitor if sustained high traffic appears outside of startup windows. |
 | Device inventory & HomeKit migration | Inventory all smart home devices currently controlled via HomeKit-only and migrate them to HomeKit-through-Home-Assistant (exposing HA as a HomeKit bridge). Goal: single pane of glass in HA with automations, while keeping HomeKit/Siri usable. |
 | Node-RED for automations | Evaluate Node-RED as the automation engine for Home Assistant. Node-RED offers a visual flow editor and is more powerful than HA's built-in automations for complex logic. Would run as a container on rivendell alongside HA. |
-| NAS + backups | Once NAS is added: move `/var/lib/media/` to NAS, configure backup solution for host state and HA data. |
+| **NAS + backups** | Hardware: UniFi UNAS Pro 4 (`erebor`) with 4×12TB Seagate IronWolf. Drives arriving soon. **Storage stack: mdadm + Btrfs (no ZFS).** Available RAID options: RAID 5 ("Basic Protection", ~24TB usable), RAID 6 ("Advanced Protection", ~16TB), RAID 10 ("Higher Protection", ~16TB). **Use RAID 6** — 2-drive failure tolerance, safer rebuild window with 8TB drives. Btrfs provides copy-on-write and per-block checksumming (bit rot protection), but **no scheduled scrubbing in the GUI** — must SSH in post-setup and add a monthly cron job (`btrfs scrub start /`). No containers/apps/iSCSI — pure file server, which is fine since containers run on the Pis. Dual 10GbE SFP+ is a strong point at $499. Once live: migrate `/var/lib/media/` from pirateship, configure NFS mounts on all three hosts, add backup strategy for homelab state (HA config, Vaultwarden DB) — needs off-site/cloud copy; RAID is not backup. |
 | ~~Network UPS Tools (NUT)~~ | ~~Done~~ — `modules/nut.nix` live on rivendell, HA integration configured. |
 | ~~Glances on pirateship~~ | ~~Done~~ — `modules/monitoring.nix` included on all three hosts. |
 | ~~Technitium query logging~~ | ~~Done~~ — query logging enabled via `configure-technitium.sh`. |
 | ~~Recyclarr quality profiles~~ | ~~Done~~ — config made declarative in `arr-stack.nix`; WEB-1080p + WEB-2160p (Sonarr) and UHD Bluray+WEB (Radarr) profiles correct. |
 | ~~Home Manager integration~~ | ~~Done~~ — dotfiles integrated via `home-manager` NixOS module on all hosts. |
+
+---
+
+## Personal Machines — NixOS Migration Evaluation
+
+### Hardware
+
+| Machine | Role | CPU/GPU | OS |
+|---|---|---|---|
+| ROG Zephyrus G14 2024 | Laptop (trial first) | AMD Ryzen AI 9 HX 370 · Radeon 890M iGPU · RTX 4060/4070 dGPU | Arch Linux |
+| Desktop | Primary workstation | RTX 5090 (Blackwell GB202) | Arch Linux |
+| Living room gaming PC | TV-connected gaming system | RTX 5070 Ti (Blackwell GB203) | Arch Linux |
+
+### Why consider it
+
+- Declarative config already familiar from homelab work
+- Atomic rollbacks: reboot into previous generation if an update breaks GPU/compositor
+- Reproducible machines: share a base config, diverge only where needed
+- `nix develop` / direnv for per-project dev environments replaces pyenv/nvm/rustup
+- dotfiles flake already structured with `machines/` — adding laptop/desktop is the same pattern
+
+### Key risks / friction points
+
+**Arch → NixOS generally:**
+- AUR has broader coverage than nixpkgs for obscure/proprietary tools
+- Non-FHS binaries (pre-compiled tarballs, some AppImages) need `nix-ld` or `buildFHSEnv` wrappers
+- `nixos-rebuild switch` is slower than `pacman -Syu`
+- Debugging requires understanding Nix module evaluation, not just reading logs
+
+**NVIDIA specifically:**
+- Wayland + NVIDIA has improved substantially (GBM, explicit sync ≥ kernel 6.8) but still occasionally needs workarounds
+- Use `hardware.nvidia.modesetting.enable = true` and `hardware.nvidia.open = false` (proprietary driver)
+
+### Laptop (G14 2024) — path forward
+
+1. Check `nixos-hardware` for `asus/rog-zephyrus/g14/2024` module — likely handles most hardware quirks
+2. Enable `services.asusd` (fan curves, keyboard backlight) and `services.supergfxd` (GPU switching)
+3. Use `hardware.nvidia.prime` **offload mode** — AMD iGPU handles daily use, NVIDIA launched explicitly per-app
+4. **MUX switch as escape hatch** — if PRIME offload is troublesome, set BIOS to AMD-only for daily use, flip to NVIDIA for gaming
+5. Add as a new machine in the dotfiles flake (`machines/g14.nix`), following the existing pattern
+
+### Desktop (RTX 5090) — wait
+
+- Requires NVIDIA driver ≥ 570.x (Blackwell support); verify `nvidiaPackages.stable` in nixpkgs covers the 5090 before attempting
+- No hybrid GPU complexity, but no fallback if driver is broken
+- Let the laptop experiment run for a month or two first; don't disrupt the primary workstation until patterns are solid
+
+### Living room gaming PC — evaluate NixOS vs Bazzite
+
+This machine's use case is different from the laptop/desktop — it's a couch gaming system, likely running Steam Big Picture or a similar launcher full-time. NixOS works for gaming (`programs.steam.enable = true`, controller support, etc.) but the declarative reproducibility advantages matter less for a dedicated game launcher box.
+
+**Worth seriously evaluating: [Bazzite](https://bazzite.gg/)** — a Fedora-based immutable/atomic gaming distro purpose-built for HTPCs and gaming PCs. Uses rpm-ostree for atomic updates (same rollback guarantees as NixOS), ships Steam Big Picture pre-configured, has first-class controller support and gaming optimizations baked in. Essentially what SteamOS 3.x is for the Steam Deck, but for any PC. May be a better fit than NixOS for this specific role.
+
+Decision factors:
+- If the goal is a seamless couch gaming experience with minimal maintenance: **Bazzite**
+- If the goal is consistency with the rest of the NixOS fleet and you don't mind configuring Steam/gaming in Nix: **NixOS**
+- GPU make/model needed to assess driver situation (note this in hardware table above)
