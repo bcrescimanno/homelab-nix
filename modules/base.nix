@@ -108,6 +108,39 @@
     randomizedDelaySec = "30m"; # Stagger if multiple devices run this
   };
 
+  # Notify ntfy when auto-upgrade succeeds or fails.
+  # Uses the LAN port on rivendell directly — avoids NPM dependency.
+  systemd.services.nixos-upgrade = {
+    unitConfig.OnSuccess = "nixos-upgrade-notify-success.service";
+    unitConfig.OnFailure = "nixos-upgrade-notify-failure.service";
+  };
+
+  systemd.services.nixos-upgrade-notify-success = {
+    description = "Notify ntfy of successful NixOS upgrade";
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = "${pkgs.curl}/bin/curl -s "
+        + "-H 'Title: NixOS Updated' "
+        + "-H 'Priority: 2' "
+        + "-H 'Tags: white_check_mark' "
+        + "-d '${config.networking.hostName} upgraded successfully' "
+        + "http://rivendell:2586/homelab";
+    };
+  };
+
+  systemd.services.nixos-upgrade-notify-failure = {
+    description = "Notify ntfy of failed NixOS upgrade";
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = "${pkgs.curl}/bin/curl -s "
+        + "-H 'Title: NixOS Upgrade FAILED' "
+        + "-H 'Priority: 4' "
+        + "-H 'Tags: rotating_light' "
+        + "-d '${config.networking.hostName} auto-upgrade failed — check journalctl -u nixos-upgrade' "
+        + "http://rivendell:2586/homelab";
+    };
+  };
+
   # ---------------------------------------------------------------------------
   # Common packages
   # ---------------------------------------------------------------------------

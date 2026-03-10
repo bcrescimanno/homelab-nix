@@ -12,7 +12,31 @@
 #   Host: localhost (or rivendell), Port: 3493
 #   Username: homeassistant, Password: <nut_ha_password>
 
-{ config, ... }:
+{ config, pkgs, ... }:
+
+let
+  # Publish UPS events to ntfy via the LAN port (bypasses NPM — more reliable
+  # during a real power event when NPM itself might be restarting).
+  # NOTIFYTYPE and UPSNAME are set by upsmon before calling this script.
+  nutNotify = pkgs.writeShellScript "nut-ntfy-notify" ''
+    case "$NOTIFYTYPE" in
+      ONBATT)   PRIORITY=4; TAGS=rotating_light ;;
+      LOWBATT)  PRIORITY=5; TAGS=warning ;;
+      SHUTDOWN) PRIORITY=5; TAGS=skull ;;
+      COMMBAD)  PRIORITY=4; TAGS=warning ;;
+      ONLINE)   PRIORITY=3; TAGS=white_check_mark ;;
+      COMMOK)   PRIORITY=3; TAGS=white_check_mark ;;
+      *)        PRIORITY=3; TAGS=electric_plug ;;
+    esac
+
+    ${pkgs.curl}/bin/curl -s \
+      -H "Title: UPS: $NOTIFYTYPE" \
+      -H "Priority: $PRIORITY" \
+      -H "Tags: $TAGS" \
+      -d "UPS $UPSNAME: $NOTIFYTYPE" \
+      http://rivendell:2586/homelab
+  '';
+in
 
 {
   power.ups = {
@@ -52,6 +76,18 @@
         user = "upsmon";
         passwordFile = config.sops.secrets.nut_upsmon_password.path;
         type = "primary";
+      };
+
+      settings = {
+        NOTIFYCMD = "${nutNotify}";
+        NOTIFYFLAG = [
+          ["ONBATT"   "SYSLOG+EXEC"]
+          ["LOWBATT"  "SYSLOG+EXEC"]
+          ["ONLINE"   "SYSLOG+EXEC"]
+          ["COMMBAD"  "SYSLOG+EXEC"]
+          ["COMMOK"   "SYSLOG+EXEC"]
+          ["SHUTDOWN" "SYSLOG+EXEC"]
+        ];
       };
     };
   };
