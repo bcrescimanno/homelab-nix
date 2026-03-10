@@ -70,6 +70,8 @@
           ./modules/proxy.nix
           ./modules/monitoring.nix
           ./modules/nut.nix
+          ./modules/ntfy.nix
+          ./modules/uptime-kuma.nix
         ];
         specialArgs = { inherit inputs nixos-raspberrypi; };
       };
