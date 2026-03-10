@@ -27,6 +27,10 @@
       NTFY_BASE_URL = "https://ntfy.theshire.io";
       NTFY_CACHE_FILE = "/var/cache/ntfy/cache.db";
       NTFY_BEHIND_PROXY = "true";
+      # Required for iOS push delivery: ntfy.sh acts as APNs relay for
+      # self-hosted instances. Without this, iOS devices never receive
+      # notifications when the app is in the background.
+      NTFY_UPSTREAM_BASE_URL = "https://ntfy.sh";
     };
     ports = [ "2586:80" ];
   };
