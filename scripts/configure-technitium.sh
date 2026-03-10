@@ -54,6 +54,49 @@ echo "Applying global settings..."
 api "settings/set?dnssecValidation=false&logQueries=true" > /dev/null
 
 # ---------------------------------------------------------------------------
+# DNS-over-HTTPS (DoH)
+#
+# Technitium serves DoH on port 5381 with a self-signed TLS cert.
+# NPM proxies doh.theshire.io (and doh2.theshire.io) to this port so
+# browsers can use the local DNS resolver with an encrypted connection.
+# The cert is generated on the host and lives in the Technitium config dir.
+# ---------------------------------------------------------------------------
+
+echo "Configuring DNS-over-HTTPS (DoH)..."
+
+DOH_CERT="/var/lib/technitium/config/doh.pfx"
+DOH_CERT_CONTAINER="/etc/dns/doh.pfx"
+
+if ssh "brian@${HOST}" "test -f ${DOH_CERT}" 2>/dev/null; then
+  echo "  DoH cert already exists, skipping generation."
+else
+  echo "  Generating self-signed TLS cert for DoH..."
+  ssh "brian@${HOST}" "nix-shell -p openssl --run \"
+    openssl req -x509 -newkey rsa:2048 \
+      -keyout /tmp/doh.key -out /tmp/doh.crt \
+      -days 3650 -nodes -subj '/CN=${HOST}' \
+      -addext 'subjectAltName=DNS:${HOST}' 2>/dev/null &&
+    openssl pkcs12 -export \
+      -out /tmp/doh.pfx \
+      -inkey /tmp/doh.key -in /tmp/doh.crt \
+      -passout pass:
+  \" && sudo cp /tmp/doh.pfx ${DOH_CERT} && sudo chmod 644 ${DOH_CERT}"
+  echo "  Cert generated."
+fi
+
+api "settings/set?enableDnsOverHttps=true&dnsOverHttpsPort=5381&webServiceEnableTls=true&webServiceUseSelfSignedTlsCertificate=true&webServiceTlsPort=53443&dnsTlsCertificatePath=${DOH_CERT_CONTAINER}&dnsTlsCertificatePassword=" > /dev/null
+
+echo "  Restarting Technitium to activate DoH listener..."
+ssh "brian@${HOST}" "sudo podman restart technitium" > /dev/null
+sleep 5
+
+if ssh "brian@${HOST}" "ss -tlnp | grep -q ':5381'" 2>/dev/null; then
+  echo "  DoH listening on port 5381."
+else
+  echo "  WARNING: DoH port 5381 not detected after restart. Check Technitium logs." >&2
+fi
+
+# ---------------------------------------------------------------------------
 # Blocklists
 # ---------------------------------------------------------------------------
 
