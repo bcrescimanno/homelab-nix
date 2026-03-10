@@ -45,7 +45,8 @@
   };
 
   networking.firewall = {
-    allowedTCPPorts = [ 53 5380 ];
+    # 53: DNS, 5380: web admin UI, 5381: DNS-over-HTTPS (DoH) for browsers
+    allowedTCPPorts = [ 53 5380 5381 ];
     allowedUDPPorts = [ 53 ];
   };
 
