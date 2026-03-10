@@ -94,4 +94,47 @@
   home-manager.users.brian = {
     imports = [ "${inputs.dotfiles}/machines/pirateship.nix" ];
   };
+
+  # ---------------------------------------------------------------------------
+  # NFS client support
+  # ---------------------------------------------------------------------------
+  boot.supportedFilesystems = [ "nfs" ];
+  services.rpcbind.enable = true;
+
+  # ---------------------------------------------------------------------------
+  # NAS mounts (erebor — UniFi UNAS Pro 4, RAID 6 ~24TB)
+  #
+  # Mounted at the same paths as the old local directories so arr-stack.nix
+  # needs no changes. _netdev tells systemd to wait for network; x-systemd.automount
+  # mounts on first access so boot doesn't hang if erebor is temporarily unavailable.
+  # ---------------------------------------------------------------------------
+  fileSystems."/var/lib/media/movies" = {
+    device = "erebor.theshire.io:/var/nfs/shared/movies";
+    fsType = "nfs";
+    options = [ "_netdev" "nofail" "x-systemd.automount" "noauto" ];
+  };
+
+  fileSystems."/var/lib/media/tv" = {
+    device = "erebor.theshire.io:/var/nfs/shared/tv";
+    fsType = "nfs";
+    options = [ "_netdev" "nofail" "x-systemd.automount" "noauto" ];
+  };
+
+  fileSystems."/var/lib/media/music" = {
+    device = "erebor.theshire.io:/var/nfs/shared/music";
+    fsType = "nfs";
+    options = [ "_netdev" "nofail" "x-systemd.automount" "noauto" ];
+  };
+
+  fileSystems."/var/lib/media/torrents" = {
+    device = "erebor.theshire.io:/var/nfs/shared/torrents";
+    fsType = "nfs";
+    options = [ "_netdev" "nofail" "x-systemd.automount" "noauto" ];
+  };
+
+  fileSystems."/var/lib/media/usenet" = {
+    device = "erebor.theshire.io:/var/nfs/shared/usenet";
+    fsType = "nfs";
+    options = [ "_netdev" "nofail" "x-systemd.automount" "noauto" ];
+  };
 }

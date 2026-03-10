@@ -147,6 +147,18 @@ create_forwarder_zone() {
 create_forwarder_zone "local"              "10.0.1.1" "router DHCP hostnames"
 create_forwarder_zone "1.0.10.in-addr.arpa" "10.0.1.1" "reverse DNS"
 
+add_a_record() {
+  local domain="$1" ip="$2"
+  local existing
+  existing=$(curl -sf "${BASE}/zones/records/get?zone=theshire.io&domain=${domain}&type=A&token=${TOKEN}" | jq -r '.status')
+  if [[ "$existing" == "ok" ]]; then
+    echo "  ${domain} already exists, skipping."
+  else
+    api "zones/records/add?zone=theshire.io&domain=${domain}&type=A&ipAddress=${ip}&ttl=300" > /dev/null
+    echo "  Added ${domain} -> ${ip}."
+  fi
+}
+
 echo "Configuring theshire.io zone (split-horizon for local NPM)..."
 if echo "$ZONES" | grep -qx "theshire.io"; then
   echo "  Already exists, skipping."
@@ -158,6 +170,15 @@ elif [[ "$ROLE" == "primary" ]]; then
 else
   api "zones/create?zone=theshire.io&type=Secondary&primaryNameServerAddresses=${PRIMARY_IP}" > /dev/null
   echo "  Created as Secondary, syncing from ${PRIMARY_HOST} (${PRIMARY_IP})."
+fi
+
+# ---------------------------------------------------------------------------
+# Host A records (primary only — rivendell syncs via zone transfer)
+# ---------------------------------------------------------------------------
+
+if [[ "$ROLE" == "primary" ]]; then
+  echo "Configuring host A records..."
+  add_a_record "erebor.theshire.io" "10.0.1.21"
 fi
 
 # ---------------------------------------------------------------------------
