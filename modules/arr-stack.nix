@@ -73,6 +73,7 @@ in
         "8989:8989"   # Sonarr
         "9696:9696"   # Prowlarr
         "8686:8686"   # Lidarr
+        "8080:8080"   # SABnzbd
       ];
     };
 
@@ -106,6 +107,7 @@ in
         "/var/lib/radarr/config:/config"
         "/var/lib/media/movies:/movies"
         "/var/lib/media/torrents:/downloads"
+        "/var/lib/media/usenet:/sabnzbd"
       ];
     };
 
@@ -123,6 +125,7 @@ in
         "/var/lib/sonarr/config:/config"
         "/var/lib/media/tv:/tv"
         "/var/lib/media/torrents:/downloads"
+        "/var/lib/media/usenet:/sabnzbd"
       ];
     };
 
@@ -155,6 +158,7 @@ in
         "/var/lib/lidarr/config:/config"
         "/var/lib/media/music:/music"
         "/var/lib/media/torrents:/downloads"
+        "/var/lib/media/usenet:/sabnzbd"
       ];
     };
 
@@ -169,6 +173,22 @@ in
       volumes = [
         "/var/lib/recyclarr/config:/config"
         "${recyclarrConfig}:/config/recyclarr.yml:ro"
+      ];
+    };
+
+    sabnzbd = {
+      image = "lscr.io/linuxserver/sabnzbd:latest";
+      autoStart = true;
+      dependsOn = [ "gluetun" ];
+      extraOptions = [ "--network=container:gluetun" ];
+      environment = {
+        PUID = "1000";
+        PGID = "1000";
+        TZ = "America/Los_Angeles";
+      };
+      volumes = [
+        "/var/lib/sabnzbd/config:/config"
+        "/var/lib/media/usenet:/sabnzbd"
       ];
     };
 
@@ -269,5 +289,9 @@ systemd.services.podman-gluetun = {
     "d /var/lib/recyclarr/config 0755 brian users -"
     "d /var/lib/media/music 0755 brian users -"
     "d /var/lib/jellyfin/config 0755 brian users -"
+    "d /var/lib/sabnzbd/config 0755 brian users -"
+    "d /var/lib/media/usenet 0755 brian users -"
+    "d /var/lib/media/usenet/incomplete 0755 brian users -"
+    "d /var/lib/media/usenet/complete 0755 brian users -"
   ];
 }
