@@ -37,6 +37,10 @@
     matter-server = {
       image = "ghcr.io/home-assistant-libs/python-matter-server:stable";
       autoStart = true;
+      # --primary-interface eth0: bind mDNS/multicast to the Ethernet interface
+      # so Matter Server can discover WiFi devices on the local network.
+      # Without this it defaults to 'None' and mDNS discovery fails.
+      cmd = [ "--storage-path" "/data" "--primary-interface" "eth0" ];
       volumes = [
         "/var/lib/matter-server/data:/data"
         # DBus access is required for Bluetooth (Matter commissioning).
