@@ -84,4 +84,16 @@
   home-manager.users.brian = {
     imports = [ "${inputs.dotfiles}/machines/rivendell.nix" ];
   };
+
+  # ---------------------------------------------------------------------------
+  # Backup
+  # ---------------------------------------------------------------------------
+  homelab.backup.paths = [
+    "/var/lib/homeassistant/config"
+    "/var/lib/matter-server/data"
+    "/var/lib/npm/data"
+    "/var/lib/npm/letsencrypt"
+    "/var/lib/technitium/config"
+    "/var/lib/uptime-kuma"
+  ];
 }

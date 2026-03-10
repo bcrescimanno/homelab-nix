@@ -82,4 +82,11 @@
   home-manager.users.brian = {
     imports = [ "${inputs.dotfiles}/machines/mirkwood.nix" ];
   };
+
+  # ---------------------------------------------------------------------------
+  # Backup
+  # ---------------------------------------------------------------------------
+  homelab.backup.paths = [
+    "/var/lib/technitium/config"
+  ];
 }

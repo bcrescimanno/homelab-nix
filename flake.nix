@@ -25,6 +25,9 @@
 
   outputs = { self, nixpkgs, nixos-raspberrypi, disko, sops-nix, home-manager, ... }@inputs:
     let
+      # Not secret — appears in R2 endpoint URLs. Set this to your Cloudflare account ID.
+      r2AccountId = "e10a637fb9ef49068ff75e106b7a7c19";
+
       piModules = extraModules: [
         ({ ... }: {
           imports = with nixos-raspberrypi.nixosModules; [
@@ -49,6 +52,7 @@
           home-manager.backupFileExtension = "backup";
         }
         ./modules/base.nix
+        ./modules/backup.nix
       ] ++ extraModules;
     in
     {
@@ -59,7 +63,7 @@
           ./modules/arr-stack.nix
           ./modules/monitoring.nix
         ];
-        specialArgs = { inherit inputs nixos-raspberrypi; };
+        specialArgs = { inherit inputs nixos-raspberrypi r2AccountId; };
       };
 
       rivendell = nixos-raspberrypi.lib.nixosSystem {
@@ -73,7 +77,7 @@
           ./modules/ntfy.nix
           ./modules/uptime-kuma.nix
         ];
-        specialArgs = { inherit inputs nixos-raspberrypi; };
+        specialArgs = { inherit inputs nixos-raspberrypi r2AccountId; };
       };
 
       mirkwood = nixos-raspberrypi.lib.nixosSystem {
@@ -83,7 +87,7 @@
           ./modules/homepage.nix
           ./modules/monitoring.nix
         ];
-        specialArgs = { inherit inputs nixos-raspberrypi; };
+        specialArgs = { inherit inputs nixos-raspberrypi r2AccountId; };
       };
     };
   };

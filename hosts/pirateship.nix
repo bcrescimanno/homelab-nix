@@ -96,6 +96,19 @@
   };
 
   # ---------------------------------------------------------------------------
+  # Backup
+  # ---------------------------------------------------------------------------
+  homelab.backup.paths = [
+    "/var/lib/transmission/config"
+    "/var/lib/radarr/config"
+    "/var/lib/sonarr/config"
+    "/var/lib/prowlarr/config"
+    "/var/lib/lidarr/config"
+    "/var/lib/sabnzbd/config"
+    "/var/lib/jellyfin/config"
+  ];
+
+  # ---------------------------------------------------------------------------
   # NFS client support
   # ---------------------------------------------------------------------------
   boot.supportedFilesystems = [ "nfs" ];
