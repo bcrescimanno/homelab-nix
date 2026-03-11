@@ -86,6 +86,7 @@
           ./modules/dns.nix
           ./modules/homepage.nix
           ./modules/monitoring.nix
+          ./modules/grafana.nix
         ];
         specialArgs = { inherit inputs nixos-raspberrypi r2AccountId; };
       };

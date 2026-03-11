@@ -107,24 +107,10 @@
       {
         Infrastructure = [
           {
-            "Technitium (mirkwood)" = {
-              href = "https://ns1.theshire.io";
-              description = "Primary DNS";
-              icon = "technitium-dns-server.png";
-            };
-          }
-          {
-            "Technitium (rivendell)" = {
-              href = "https://ns2.theshire.io";
-              description = "Secondary DNS";
-              icon = "technitium-dns-server.png";
-            };
-          }
-          {
-            "Nginx Proxy Manager" = {
-              href = "https://proxy.theshire.io";
-              description = "Reverse proxy";
-              icon = "nginx-proxy-manager.png";
+            Grafana = {
+              href        = "https://grafana.theshire.io";
+              description = "DNS metrics & dashboards";
+              icon        = "grafana.png";
             };
           }
         ];

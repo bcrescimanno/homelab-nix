@@ -1,8 +1,8 @@
 # hosts/mirkwood.nix — host-specific configuration.
 #
 # mirkwood: Raspberry Pi 5, 4GB RAM
-# Role: Technitium (primary DNS), Homepage dashboard,
-#       Portainer Agent, Glances
+# Role: Blocky + Unbound (primary DNS), Homepage dashboard,
+#       Prometheus + Grafana, Glances
 
 { config, pkgs, lib, inputs, ... }:
 
@@ -74,9 +74,7 @@
     defaultSopsFormat = "yaml";
     age.keyFile = "/var/lib/sops-nix/key.txt";
 
-    secrets = {
-      technitium_env = {};
-    };
+    secrets = {};
   };
 
   home-manager.users.brian = {
@@ -87,6 +85,6 @@
   # Backup
   # ---------------------------------------------------------------------------
   homelab.backup.paths = [
-    "/var/lib/technitium/config"
+    "/var/lib/grafana"
   ];
 }

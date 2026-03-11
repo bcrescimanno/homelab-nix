@@ -1,56 +1,112 @@
-# modules/dns.nix — Technitium DNS Server
+# modules/dns.nix — Blocky (DNS blocker/proxy) + Unbound (recursive resolver)
 #
-# Technitium is a full-featured DNS server with a web UI. It replaces the
-# previous Pi-hole + Unbound + Redis + Nebula-Sync stack with a single
-# container that handles recursive resolution and zone sync natively.
+# Replaces Technitium DNS container with a fully declarative stack.
+# Runs identically on mirkwood (primary) and rivendell (secondary) —
+# no zone sync required; the Nix config is the source of truth.
 #
-# This module runs on both mirkwood (primary) and rivendell (secondary).
-# Primary/secondary sync is configured in the Technitium web UI after
-# both instances are up — it is not declared here.
+# Blocky handles: ad blocking, conditional forwarding (.local → UDM Pro),
+#   DoH server (port 4000), Prometheus metrics (/metrics on port 4000)
+# Unbound handles: recursive resolution to root servers, DNSSEC validation,
+#   and the theshire.io split-horizon zone via local-zone/local-data
 #
-# Secrets: the host's sops config must declare `technitium_env`, a file
-# containing at minimum:
-#   DNS_SERVER_ADMIN_PASSWORD=<password>
+# Port layout:
+#   53    — DNS (TCP+UDP, all clients)
+#   4000  — Blocky HTTP: DoH (/dns-query) + metrics (/metrics)
+#   5335  — Unbound (localhost only, not in firewall)
 
 { config, pkgs, lib, ... }:
 
 {
-  virtualisation.oci-containers.containers.technitium = {
-    image = "docker.io/technitium/dns-server:latest@sha256:94f2b90d63f03181421152157a8099ea2752b13fa30b6c96833859be8e93dfa9";
-    autoStart = true;
+  services.unbound = {
+    enable = true;
+    settings.server = {
+      interface      = [ "127.0.0.1" ];
+      port           = 5335;
+      access-control = [ "127.0.0.1/32 allow" ];
+      do-ip4         = true;
+      do-ip6         = false;
+      do-udp         = true;
+      do-tcp         = true;
+      hide-identity  = true;
+      hide-version   = true;
 
-    volumes = [
-      "/var/lib/technitium/config:/etc/dns"
-    ];
-
-    environment = {
-      # Use the hostname as this server's DNS identity (shows in Technitium UI).
-      DNS_SERVER_DOMAIN = config.networking.hostName;
-      # Recursive resolution for private network clients only — no upstream
-      # forwarder, queries go directly to root servers for maximum privacy.
-      DNS_SERVER_RECURSION = "AllowOnlyForPrivateNetworks";
-      # Validate DNSSEC signatures on all responses.
-      DNS_SERVER_DNSSEC_VALIDATION = "true";
-      DNS_SERVER_PREFER_IPv6 = "false";
-      DNS_SERVER_LOG_USING_LOCAL_TIME = "true";
+      # Split-horizon DNS for theshire.io.
+      # redirect zone type acts as a wildcard: all *.theshire.io queries return
+      # the apex A record (10.0.1.9 = Caddy on rivendell).
+      # erebor gets its own static zone (more-specific zones take priority).
+      local-zone = [
+        ''"theshire.io." redirect''
+        ''"erebor.theshire.io." static''
+      ];
+      local-data = [
+        ''"theshire.io. 3600 IN A 10.0.1.9"''
+        ''"erebor.theshire.io. 3600 IN A 10.0.1.21"''
+      ];
     };
-
-    # Host networking so Technitium binds directly to the host's IP on port 53.
-    # Bridge networking conflicts with Podman's aardvark-dns which also uses
-    # port 53 on the bridge interface (10.88.0.1:53).
-    extraOptions = [
-      "--network=host"
-      "--env-file=/run/secrets/technitium_env"
-    ];
   };
 
-  networking.firewall = {
-    # 53: DNS, 5380: web admin UI, 5381: DNS-over-HTTPS (DoH) for browsers
-    allowedTCPPorts = [ 53 5380 5381 ];
-    allowedUDPPorts = [ 53 ];
+  services.blocky = {
+    enable = true;
+    settings = {
+
+      ports = {
+        dns  = 53;
+        http = 4000;    # DoH (/dns-query) + Prometheus metrics (/metrics)
+      };
+
+      upstreams.groups.default = [ "127.0.0.1:5335" ];
+
+      # Bootstrap for initial blocklist downloads before Unbound is ready
+      bootstrapDns = {
+        upstream = "https://1.1.1.1/dns-query";
+        ips      = [ "1.1.1.1" "1.0.0.1" ];
+      };
+
+      blocking = {
+        denylists.ads = [
+          "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
+        ];
+        clientGroupsBlock.default = [ "ads" ];
+      };
+
+      # Forward .local and reverse-DNS queries to UDM Pro for DHCP hostname resolution
+      conditional.mapping = {
+        "local"                = "10.0.1.1";
+        "1.0.10.in-addr.arpa" = "10.0.1.1";
+      };
+
+      # Resolve client IPs to hostnames for Grafana panels and query logs.
+      # UDM Pro has PTR records for all DHCP leases.
+      # Static mappings for Podman containers (10.88.x.x, no PTR records).
+      clientLookup = {
+        upstream = "10.0.1.1";
+        clients = {
+          "uptime-kuma" = [ "10.88.0.6" ];
+        };
+      };
+
+      prometheus.enable = true;
+
+      queryLog = {
+        type             = "csv";
+        target           = "/var/log/blocky";
+        logRetentionDays = 30;
+      };
+
+      log.level = "warn";
+    };
   };
+
+  # Ensure Blocky starts after Unbound is ready, not just started
+  systemd.services.blocky.after = [ "unbound.service" ];
+  systemd.services.blocky.requires = [ "unbound.service" ];
 
   systemd.tmpfiles.rules = [
-    "d /var/lib/technitium/config 0755 root root -"
+    "d /var/log/blocky 0755 blocky blocky -"
   ];
+
+  networking.firewall = {
+    allowedTCPPorts = [ 53 4000 ];
+    allowedUDPPorts = [ 53 ];
+  };
 }

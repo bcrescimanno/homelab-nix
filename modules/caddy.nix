@@ -51,12 +51,11 @@ in
     virtualHosts = {
       # mirkwood backends
       "home.theshire.io".extraConfig           = proxy "mirkwood.local:3000";
-      "ns1.theshire.io".extraConfig            = proxy "mirkwood.local:5380";
+      "grafana.theshire.io".extraConfig        = proxy "mirkwood.local:3001";
       "mirkwood-stats.theshire.io".extraConfig = proxy "mirkwood.local:61208";
 
       # rivendell backends (Caddy runs here — use 127.0.0.1)
       "ha.theshire.io".extraConfig              = proxy "127.0.0.1:8123";
-      "ns2.theshire.io".extraConfig             = proxy "127.0.0.1:5380";
       "rivendell-stats.theshire.io".extraConfig = proxy "127.0.0.1:61208";
       "ntfy.theshire.io".extraConfig            = proxy "127.0.0.1:2586";
       "monitor.theshire.io".extraConfig         = proxy "127.0.0.1:3001";
@@ -76,8 +75,8 @@ in
       "nzb.theshire.io".extraConfig              = proxy "pirateship.local:8080";
       "pirateship-stats.theshire.io".extraConfig = proxy "pirateship.local:61208";
 
-      # HTTPS upstream — backend cert may be self-signed
-      "doh.theshire.io".extraConfig = httpsProxy "https://10.0.1.8:5381";
+      # Blocky DoH — plain HTTP locally, Caddy terminates TLS
+      "doh.theshire.io".extraConfig = proxy "127.0.0.1:4000";
     };
   };
 

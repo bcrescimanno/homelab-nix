@@ -2,7 +2,7 @@
 #
 # rivendell: Raspberry Pi 5, 8GB RAM
 # Role: Home Assistant, Matter Server, Caddy (reverse proxy),
-#       Technitium (secondary DNS), NUT (UPS), Glances
+#       Blocky + Unbound (secondary DNS), NUT (UPS), Glances
 
 { config, pkgs, lib, inputs, ... }:
 
@@ -75,7 +75,6 @@
     age.keyFile = "/var/lib/sops-nix/key.txt";
 
     secrets = {
-      technitium_env = {};
       nut_upsmon_password = {};
       nut_ha_password = {};
     };
@@ -92,7 +91,6 @@
     "/var/lib/homeassistant/config"
     "/var/lib/matter-server/data"
     "/var/lib/caddy"
-    "/var/lib/technitium/config"
     "/var/lib/uptime-kuma"
   ];
 }
