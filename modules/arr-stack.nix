@@ -78,7 +78,7 @@ in
     };
 
     transmission = {
-      image = "lscr.io/linuxserver/transmission:latest@sha256:d2183a00bbd5dbb083b14dcd65419379bfd91e0965b52849642354ec3d246452";
+      image = "lscr.io/linuxserver/transmission:latest@sha256:25e04da44850ac03f93c9a2cfc4275c67ff0973e49eca48b459b06e0b45d7b82";
       autoStart = true;
       dependsOn = [ "gluetun" ];
       extraOptions = [ "--network=container:gluetun" ];
