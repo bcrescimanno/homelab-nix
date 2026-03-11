@@ -474,3 +474,55 @@ Decision factors:
 - If the goal is a seamless couch gaming experience with minimal maintenance: **Bazzite**
 - If the goal is consistency with the rest of the NixOS fleet and you don't mind configuring Steam/gaming in Nix: **NixOS**
 - GPU make/model needed to assess driver situation (note this in hardware table above)
+
+---
+
+## Grafana DNS Dashboard — Pi-hole-style panels
+
+**Status:** [ ] todo
+
+Current dashboard (Grafana ID 13768) is high-level. Want Pi-hole-equivalent panels:
+- Top blocked domains
+- Top clients getting blocked
+- Per-client block breakdown over time
+
+### Option A — Prometheus only (simpler, no new services)
+
+Blocky exposes `blocky_query_total` with labels including:
+- `response_reason` — `"BLOCKED"`, `"CACHED"`, `"RESOLVED"`, etc.
+- `domain` — the queried domain
+- `client` — client hostname (after `clientLookup` resolves it)
+
+Build custom Grafana panels using PromQL:
+```promql
+# Top blocked domains
+topk(20, sum by (domain) (increase(blocky_query_total{response_reason="BLOCKED"}[24h])))
+
+# Top clients getting blocked
+topk(10, sum by (client) (increase(blocky_query_total{response_reason="BLOCKED"}[24h])))
+```
+
+Limitation: Prometheus scrapes at intervals (~15s default), so very short-lived domains or low-volume clients may be underrepresented. Domain cardinality may also be high enough to cause Prometheus performance issues.
+
+### Option B — Loki (richer, more Pi-hole-like, adds a service)
+
+Add Loki to mirkwood and ship Blocky's CSV query logs (`/var/log/blocky`) via Promtail. Gives full log-level detail — every query, every response, every client — and Grafana's LogQL for ad-hoc exploration.
+
+Rough implementation:
+```nix
+# modules/grafana.nix additions:
+services.loki = {
+  enable = true;
+  configuration = { ... };  # store logs locally on mirkwood
+};
+services.promtail = {
+  enable = true;
+  configuration.scrape_configs = [{
+    job_name = "blocky";
+    static_configs = [{ targets = ["localhost"]; labels.__path__ = "/var/log/blocky/*.csv"; }];
+  }];
+};
+```
+Add Loki as a second datasource in Grafana, then build panels with LogQL.
+
+**Recommendation:** Try Option A first — check if `blocky_query_total` has sufficient domain-level granularity by exploring the metrics at `http://mirkwood.local:4000/metrics`. If domain cardinality is too high or data is too coarse, add Loki.

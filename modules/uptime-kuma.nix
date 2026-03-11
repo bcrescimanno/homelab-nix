@@ -3,8 +3,8 @@
 # Web-based uptime monitoring with alerting. Polls configured services
 # on a schedule and sends alerts (via ntfy, email, etc.) when they go down.
 #
-# Port 3001 is LAN-accessible for direct access; also proxied via NPM
-# at https://status.theshire.io.
+# Port 3001 is LAN-accessible for direct access; also proxied via Caddy
+# at https://monitor.theshire.io
 #
 # All monitor configuration is done through the web UI — no config files.
 # Data persists in /var/lib/uptime-kuma.
@@ -21,7 +21,7 @@
     environment = {
       TZ = "America/Los_Angeles";
     };
-    ports = [ "3001:3001" ];
+    extraOptions = [ "--network=host" ];
   };
 
   networking.firewall.allowedTCPPorts = [ 3001 ];
