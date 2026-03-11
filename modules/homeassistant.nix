@@ -35,7 +35,7 @@
     };
 
     matter-server = {
-      image = "ghcr.io/home-assistant-libs/python-matter-server:stable";
+      image = "ghcr.io/home-assistant-libs/python-matter-server:stable@sha256:170aa093ce91c76cde4cc390918307590f0f5558fcec93f913af3cb019e6562a";
       autoStart = true;
       # --primary-interface eth0: bind mDNS/multicast to the Ethernet interface
       # so Matter Server can discover WiFi devices on the local network.
