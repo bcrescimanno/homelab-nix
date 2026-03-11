@@ -71,7 +71,7 @@
           ./hosts/rivendell.nix
           ./modules/dns.nix
           ./modules/homeassistant.nix
-          ./modules/proxy.nix
+          ./modules/caddy.nix
           ./modules/monitoring.nix
           ./modules/nut.nix
           ./modules/ntfy.nix

@@ -1,8 +1,8 @@
 # hosts/rivendell.nix — host-specific configuration.
 #
 # rivendell: Raspberry Pi 5, 8GB RAM
-# Role: Home Assistant, Matter Server, Nginx Proxy Manager,
-#       Portainer CE, Technitium (secondary DNS), Glances
+# Role: Home Assistant, Matter Server, Caddy (reverse proxy),
+#       Technitium (secondary DNS), NUT (UPS), Glances
 
 { config, pkgs, lib, inputs, ... }:
 
@@ -91,8 +91,7 @@
   homelab.backup.paths = [
     "/var/lib/homeassistant/config"
     "/var/lib/matter-server/data"
-    "/var/lib/npm/data"
-    "/var/lib/npm/letsencrypt"
+    "/var/lib/caddy"
     "/var/lib/technitium/config"
     "/var/lib/uptime-kuma"
   ];
