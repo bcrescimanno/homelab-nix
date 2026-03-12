@@ -122,5 +122,11 @@
       rivendell  = piProfile "rivendell"  self.nixosConfigurations.rivendell;
       mirkwood   = piProfile "mirkwood"   self.nixosConfigurations.mirkwood;
     };
+
+    # Expose deploy-rs schema checks so `nix flake check` validates the
+    # deploy output instead of warning about an unknown flake attribute.
+    checks = builtins.mapAttrs
+      (_system: lib: lib.deployChecks self.deploy)
+      deploy-rs.lib;
   };
 }
