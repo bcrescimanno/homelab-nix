@@ -26,18 +26,8 @@ Shell function in dotfiles `home/common.nix`. deploy-rs config in `flake.nix` un
 
 ## Known Issues & Technical Debt
 
-### Bugs
-
-- [ ] **`qbittorrent-port-sync` wrong dependency** (`arr-stack.nix:217`): `after` references `podman-qbittorrent.service` but the container is `transmission` → should be `podman-transmission.service`. Service still functions due to `Restart=always` but doesn't properly sequence startup. Also rename the service to `transmission-port-sync` to match reality.
-
-### Security
-
-- [ ] **Recyclarr API keys in plaintext** (`arr-stack.nix:13,28`): Sonarr and Radarr API keys are hardcoded in the Nix config, which means they live in `/nix/store` world-readable. Move to `secrets/pirateship.yaml` (sops); pass via a sops-managed config file mounted into the recyclarr container.
-
 ### Cleanup
 
-- [ ] **Delete `modules/proxy.nix`** — dead code. NPM fully replaced by Caddy; `proxy.nix` is imported nowhere. Leaving it creates false impression NPM is still in use.
-- [ ] **Delete `scripts/configure-technitium.sh`** — Technitium replaced by Blocky+Unbound; script is obsolete.
 - [ ] **home-manager nixpkgs overlay** (`flake.nix` piModules): patches `neovimUtils.makeVimPackageInfo` from dotfiles nixpkgs. Remove once `nixos-raspberrypi` updates its pin past Feb 2026. At that point: remove the overlay, restore `inputs.nixpkgs.follows = "nixpkgs"` to the home-manager input, drop the dotfiles-follows approach.
 
 ### Fragility
@@ -52,9 +42,6 @@ Shell function in dotfiles `home/common.nix`. deploy-rs config in `flake.nix` un
 
 ### High Priority
 
-- [ ] **Fix `qbittorrent-port-sync`** (see bug above)
-- [ ] **Move recyclarr API keys to sops** (see security above)
-- [ ] **Delete `modules/proxy.nix`** and `scripts/configure-technitium.sh` (see cleanup above)
 - [ ] **Backup restore dry run**: test restoring from restic snapshots — both local (erebor) and offsite (R2). Validate paths, passwords, and snapshot contents are correct.
 - [ ] **DHCP reservations**: lock IPs for all three Pis and erebor 10G MAC in UniFi to prevent address drift.
 
