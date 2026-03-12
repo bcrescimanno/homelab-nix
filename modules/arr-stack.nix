@@ -10,7 +10,7 @@ let
     sonarr:
       sonarr-main:
         base_url: http://localhost:8989
-        api_key: 6d398052e1bb412b967f58cadb972bf6
+        api_key: !env_var SONARR_API_KEY
         delete_old_custom_formats: true
         quality_definition:
           type: series
@@ -25,7 +25,7 @@ let
     radarr:
       radarr-main:
         base_url: http://localhost:7878
-        api_key: 2669eb7d758f4c0cb0eaeb2e1b8abc69
+        api_key: !env_var RADARR_API_KEY
         delete_old_custom_formats: true
         quality_definition:
           type: movie
@@ -166,7 +166,10 @@ in
       image = "ghcr.io/recyclarr/recyclarr:latest@sha256:55afe316d3e4e4e3b9120cef7c79436b1b5311f6a18d4ef4b7653e720499c90a";
       autoStart = true;
       dependsOn = [ "gluetun" "radarr" "sonarr" ];
-      extraOptions = [ "--network=container:gluetun" ];
+      extraOptions = [
+        "--network=container:gluetun"
+        "--env-file=${config.sops.secrets.recyclarr_env.path}"
+      ];
       environment = {
         TZ = "America/Los_Angeles";
       };
@@ -295,4 +298,6 @@ systemd.services.podman-gluetun = {
     "d /var/lib/media/usenet/incomplete 0755 brian users -"
     "d /var/lib/media/usenet/complete 0755 brian users -"
   ];
+
+  sops.secrets.recyclarr_env = {};
 }
