@@ -116,26 +116,133 @@
         ];
       }
       {
-        Monitoring = [
+        Mirkwood = [
           {
-            "Glances (mirkwood)" = {
-              href = "https://mirkwood-stats.theshire.io";
-              description = "System monitor";
-              icon = "glances.png";
+            CPU = {
+              href        = "https://mirkwood-stats.theshire.io";
+              description = "Processor";
+              icon        = "glances.png";
+              widget = {
+                type    = "glances";
+                url     = "http://mirkwood.local:61208";
+                metric  = "cpu";
+                version = 4;
+              };
             };
           }
           {
-            "Glances (rivendell)" = {
-              href = "https://rivendell-stats.theshire.io";
-              description = "System monitor";
-              icon = "glances.png";
+            Memory = {
+              href        = "https://mirkwood-stats.theshire.io";
+              description = "Memory";
+              icon        = "glances.png";
+              widget = {
+                type    = "glances";
+                url     = "http://mirkwood.local:61208";
+                metric  = "memory";
+                version = 4;
+              };
             };
           }
           {
-            "Glances (pirateship)" = {
-              href = "https://pirateship-stats.theshire.io";
-              description = "System monitor";
-              icon = "glances.png";
+            Network = {
+              href        = "https://mirkwood-stats.theshire.io";
+              description = "Network";
+              icon        = "glances.png";
+              widget = {
+                type    = "glances";
+                url     = "http://mirkwood.local:61208";
+                metric  = "network";
+                adapter = "eth0";
+                version = 4;
+              };
+            };
+          }
+        ];
+      }
+      {
+        Rivendell = [
+          {
+            CPU = {
+              href        = "https://rivendell-stats.theshire.io";
+              description = "Processor";
+              icon        = "glances.png";
+              widget = {
+                type    = "glances";
+                url     = "http://rivendell.local:61208";
+                metric  = "cpu";
+                version = 4;
+              };
+            };
+          }
+          {
+            Memory = {
+              href        = "https://rivendell-stats.theshire.io";
+              description = "Memory";
+              icon        = "glances.png";
+              widget = {
+                type    = "glances";
+                url     = "http://rivendell.local:61208";
+                metric  = "memory";
+                version = 4;
+              };
+            };
+          }
+          {
+            Network = {
+              href        = "https://rivendell-stats.theshire.io";
+              description = "Network";
+              icon        = "glances.png";
+              widget = {
+                type    = "glances";
+                url     = "http://rivendell.local:61208";
+                metric  = "network";
+                adapter = "eth0";
+                version = 4;
+              };
+            };
+          }
+        ];
+      }
+      {
+        Pirateship = [
+          {
+            CPU = {
+              href        = "https://pirateship-stats.theshire.io";
+              description = "Processor";
+              icon        = "glances.png";
+              widget = {
+                type    = "glances";
+                url     = "http://pirateship.local:61208";
+                metric  = "cpu";
+                version = 4;
+              };
+            };
+          }
+          {
+            Memory = {
+              href        = "https://pirateship-stats.theshire.io";
+              description = "Memory";
+              icon        = "glances.png";
+              widget = {
+                type    = "glances";
+                url     = "http://pirateship.local:61208";
+                metric  = "memory";
+                version = 4;
+              };
+            };
+          }
+          {
+            Network = {
+              href        = "https://pirateship-stats.theshire.io";
+              description = "Network";
+              icon        = "glances.png";
+              widget = {
+                type    = "glances";
+                url     = "http://pirateship.local:61208";
+                metric  = "network";
+                adapter = "eth0";
+                version = 4;
+              };
             };
           }
         ];
