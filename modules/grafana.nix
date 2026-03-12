@@ -13,8 +13,9 @@
 
 {
   services.prometheus = {
-    enable = true;
-    port   = 9090;
+    enable        = true;
+    port          = 9090;
+    retentionTime = "7d";
     scrapeConfigs = [{
       job_name       = "blocky";
       static_configs = [{
