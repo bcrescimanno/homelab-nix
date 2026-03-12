@@ -118,9 +118,9 @@
     };
 
     deploy.nodes = {
-      pirateship = piProfile "pirateship.local" self.nixosConfigurations.pirateship;
-      rivendell  = piProfile "rivendell.local"  self.nixosConfigurations.rivendell;
-      mirkwood   = piProfile "mirkwood.local"   self.nixosConfigurations.mirkwood;
+      pirateship = piProfile "pirateship" self.nixosConfigurations.pirateship;
+      rivendell  = piProfile "rivendell"  self.nixosConfigurations.rivendell;
+      mirkwood   = piProfile "mirkwood"   self.nixosConfigurations.mirkwood;
     };
   };
 }
