@@ -91,6 +91,5 @@
     "/var/lib/homeassistant/config"
     "/var/lib/matter-server/data"
     "/var/lib/caddy"
-    "/var/lib/uptime-kuma"
   ];
 }

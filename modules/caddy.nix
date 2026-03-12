@@ -58,7 +58,7 @@ in
       "ha.theshire.io".extraConfig              = proxy "127.0.0.1:8123";
       "rivendell-stats.theshire.io".extraConfig = proxy "127.0.0.1:61208";
       "ntfy.theshire.io".extraConfig            = proxy "127.0.0.1:2586";
-      "monitor.theshire.io".extraConfig         = proxy "127.0.0.1:3001";
+      "monitor.theshire.io".extraConfig         = proxy "127.0.0.1:8080";
 
       # pirateship backends
       "jellyfin.theshire.io".extraConfig         = proxy "pirateship.local:8096";

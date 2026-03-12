@@ -100,7 +100,7 @@
           ./modules/monitoring.nix
           ./modules/nut.nix
           ./modules/ntfy.nix
-          ./modules/uptime-kuma.nix
+          ./modules/gatus.nix
         ];
         specialArgs = { inherit inputs nixos-raspberrypi r2AccountId; };
       };
