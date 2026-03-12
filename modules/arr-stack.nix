@@ -212,9 +212,9 @@ in
     };
   };
 
-  systemd.services.qbittorrent-port-sync = {
-  description = "Sync gluetun forwarded port to qBittorrent";
-  after = [ "podman-gluetun.service" "podman-qbittorrent.service" ];
+  systemd.services.transmission-port-sync = {
+  description = "Sync gluetun forwarded port to Transmission";
+  after = [ "podman-gluetun.service" "podman-transmission.service" ];
   wantedBy = [ "multi-user.target" ];
   
   serviceConfig = {
