@@ -77,12 +77,8 @@
 
       # Resolve client IPs to hostnames for Grafana panels and query logs.
       # UDM Pro has PTR records for all DHCP leases.
-      # Static mappings for Podman containers (10.88.x.x, no PTR records).
       clientLookup = {
         upstream = "10.0.1.1";
-        clients = {
-          "uptime-kuma" = [ "10.88.0.6" ];
-        };
       };
 
       prometheus.enable = true;
