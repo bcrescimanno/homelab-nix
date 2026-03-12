@@ -14,6 +14,10 @@
     # both flakes always run the same HM version against the same nixpkgs.
     dotfiles.url = "github:bcrescimanno/dotfiles";
     home-manager.follows = "dotfiles/home-manager";
+    deploy-rs = {
+      url = "github:serokell/deploy-rs";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   nixConfig = {
@@ -23,7 +27,7 @@
     ];
   };
 
-  outputs = { self, nixpkgs, nixos-raspberrypi, disko, sops-nix, home-manager, ... }@inputs:
+  outputs = { self, nixpkgs, nixos-raspberrypi, disko, sops-nix, home-manager, deploy-rs, ... }@inputs:
     let
       # Not secret — appears in R2 endpoint URLs. Set this to your Cloudflare account ID.
       r2AccountId = "e10a637fb9ef49068ff75e106b7a7c19";
@@ -54,6 +58,27 @@
         ./modules/base.nix
         ./modules/backup.nix
       ] ++ extraModules;
+
+      # deploy-rs activate helper for aarch64-linux (all three Pis)
+      activate = deploy-rs.lib.aarch64-linux.activate.nixos;
+
+      # Common deploy profile settings:
+      # - sshUser: SSH as brian, sudo to root for activation
+      # - remoteBuild: build on the Pi itself (avoids x86_64 → aarch64 cross-compilation)
+      # - magicRollback: if activation breaks SSH, automatically roll back
+      # - autoRollback: roll back if the activation script exits non-zero
+      piProfile = hostname: config: {
+        inherit hostname;
+        profiles.system = {
+          sshUser      = "brian";
+          user         = "root";
+          remoteBuild  = true;
+          magicRollback = true;
+          autoRollback  = true;
+          fastConnection = true;
+          path         = activate config;
+        };
+      };
     in
     {
     nixosConfigurations = {
@@ -90,6 +115,12 @@
         ];
         specialArgs = { inherit inputs nixos-raspberrypi r2AccountId; };
       };
+    };
+
+    deploy.nodes = {
+      pirateship = piProfile "pirateship.local" self.nixosConfigurations.pirateship;
+      rivendell  = piProfile "rivendell.local"  self.nixosConfigurations.rivendell;
+      mirkwood   = piProfile "mirkwood.local"   self.nixosConfigurations.mirkwood;
     };
   };
 }

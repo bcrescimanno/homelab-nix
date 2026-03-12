@@ -40,7 +40,7 @@
       ];
       local-data = [
         ''"theshire.io. 3600 IN A 10.0.1.9"''
-        ''"erebor.theshire.io. 3600 IN A 10.0.1.21"''
+        ''"erebor.theshire.io. 3600 IN A 10.0.1.22"''
       ];
     };
   };
