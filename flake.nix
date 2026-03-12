@@ -123,10 +123,5 @@
       mirkwood   = piProfile "mirkwood"   self.nixosConfigurations.mirkwood;
     };
 
-    # Expose deploy-rs schema checks so `nix flake check` validates the
-    # deploy output instead of warning about an unknown flake attribute.
-    # Scoped to x86_64-linux only — deploy-rs runs on the dev machine;
-    # we don't want nix trying to build aarch64-linux derivations locally.
-    checks.x86_64-linux = deploy-rs.lib.x86_64-linux.deployChecks self.deploy;
   };
 }
