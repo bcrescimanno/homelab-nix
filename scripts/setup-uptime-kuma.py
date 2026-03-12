@@ -19,7 +19,7 @@
 import sys
 from uptime_kuma_api import UptimeKumaApi, MonitorType, NotificationType
 
-UPTIME_KUMA_URL = "http://rivendell:3001"
+UPTIME_KUMA_URL = "http://rivendell:3001"  # internal port; Caddy proxies monitor.theshire.io → here
 USERNAME = "brian"
 PASSWORD = sys.argv[1] if len(sys.argv) > 1 else input("Uptime Kuma password: ")
 
@@ -86,22 +86,21 @@ def add_port(name, hostname, port=22):
     print(f"  TCP:{port}: {name} -> {hostname}")
 
 print("\nAdding monitors...")
-add_http("Homepage",               "https://home.theshire.io")
-add_http("Home Assistant",         "https://ha.theshire.io")
-add_http("Jellyfin",               "https://jellyfin.theshire.io")
-add_http("Transmission",           "https://dl.theshire.io")
-add_http("Radarr",                 "https://movies.theshire.io")
-add_http("Sonarr",                 "https://tv.theshire.io")
-add_http("Prowlarr",               "https://prowlarr.theshire.io")
-add_http("Lidarr",                 "https://music.theshire.io")
-add_http("Technitium (Primary)",   "https://ns1.theshire.io")
-add_http("Technitium (Secondary)", "https://ns2.theshire.io")
-add_http("ntfy",                   "https://ntfy.theshire.io")
-add_http("Uptime Kuma",            "https://monitor.theshire.io")
-add_http("NPM",                    "https://proxy.theshire.io")
-add_port("pirateship", "10.0.1.35")
-add_port("rivendell",  "10.0.1.9")
-add_port("mirkwood",   "10.0.1.8")
+add_http("Homepage",       "https://home.theshire.io")
+add_http("Home Assistant", "https://ha.theshire.io")
+add_http("Jellyfin",       "https://jellyfin.theshire.io")
+add_http("Transmission",   "https://dl.theshire.io")
+add_http("SABnzbd",        "https://sabnzbd.theshire.io")
+add_http("Radarr",         "https://movies.theshire.io")
+add_http("Sonarr",         "https://tv.theshire.io")
+add_http("Prowlarr",       "https://prowlarr.theshire.io")
+add_http("Lidarr",         "https://music.theshire.io")
+add_http("Grafana",        "https://grafana.theshire.io")
+add_http("ntfy",           "https://ntfy.theshire.io")
+add_http("Uptime Kuma",    "https://monitor.theshire.io")
+add_port("pirateship", "pirateship")
+add_port("rivendell",  "rivendell")
+add_port("mirkwood",   "mirkwood")
 
 # ---------------------------------------------------------------------------
 # Status page
@@ -131,11 +130,11 @@ else:
         footerText="theshire.io",
         showPoweredBy=True,
         publicGroupList=[
-            {"name": "Infrastructure",   "monitorList": ids("pirateship", "rivendell", "mirkwood", "NPM")},
-            {"name": "Network & DNS",    "monitorList": ids("Technitium (Primary)", "Technitium (Secondary)", "ntfy")},
+            {"name": "Infrastructure",   "monitorList": ids("pirateship", "rivendell", "mirkwood")},
+            {"name": "Network & DNS",    "monitorList": ids("ntfy", "Uptime Kuma")},
             {"name": "Home",             "monitorList": ids("Homepage", "Home Assistant")},
-            {"name": "Media",            "monitorList": ids("Jellyfin", "Transmission", "Radarr", "Sonarr", "Prowlarr", "Lidarr")},
-            {"name": "Monitoring",       "monitorList": ids("Uptime Kuma")},
+            {"name": "Media",            "monitorList": ids("Jellyfin", "Transmission", "SABnzbd", "Radarr", "Sonarr", "Prowlarr", "Lidarr")},
+            {"name": "Observability",    "monitorList": ids("Grafana")},
         ],
     )
     print("\nStatus page created: https://monitor.theshire.io/status/homelab")
