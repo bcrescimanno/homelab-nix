@@ -119,12 +119,15 @@
     description = "Notify ntfy of successful NixOS upgrade";
     serviceConfig = {
       Type = "oneshot";
+      # --retry 5 / --retry-delay 15: handles ntfy container restarts and brief DNS
+      # unavailability (Blocky briefly restarts on the upgrading host).
       ExecStart = "${pkgs.curl}/bin/curl -s "
+        + "--connect-timeout 5 --max-time 30 --retry 5 --retry-delay 15 --retry-all-errors "
         + "-H 'Title: NixOS Updated' "
         + "-H 'Priority: 2' "
         + "-H 'Tags: white_check_mark' "
         + "-d '${config.networking.hostName} upgraded successfully' "
-        + "http://rivendell:2586/homelab";
+        + "http://10.0.1.9:2586/homelab";
     };
   };
 
@@ -133,11 +136,12 @@
     serviceConfig = {
       Type = "oneshot";
       ExecStart = "${pkgs.curl}/bin/curl -s "
+        + "--connect-timeout 5 --max-time 30 --retry 5 --retry-delay 15 --retry-all-errors "
         + "-H 'Title: NixOS Upgrade FAILED' "
         + "-H 'Priority: 4' "
         + "-H 'Tags: rotating_light' "
         + "-d '${config.networking.hostName} auto-upgrade failed — check journalctl -u nixos-upgrade' "
-        + "http://rivendell:2586/homelab";
+        + "http://10.0.1.9:2586/homelab";
     };
   };
 
