@@ -27,15 +27,12 @@
       NTFY_BASE_URL = "https://ntfy.theshire.io";
       NTFY_CACHE_FILE = "/var/cache/ntfy/cache.db";
       NTFY_BEHIND_PROXY = "true";
-      NTFY_LISTEN_HTTP = ":2586";
       # Required for iOS push delivery: ntfy.sh acts as APNs relay for
       # self-hosted instances. Without this, iOS devices never receive
       # notifications when the app is in the background.
       NTFY_UPSTREAM_BASE_URL = "https://ntfy.sh";
     };
-    # Host networking gives the container direct internet access (required for
-    # the ntfy.sh APNs relay). Port mapping is replaced by NTFY_LISTEN_HTTP above.
-    extraOptions = [ "--network=host" ];
+    ports = [ "2586:80" ];
   };
 
   # Expose on LAN so pirateship/mirkwood can publish notifications.
