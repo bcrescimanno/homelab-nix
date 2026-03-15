@@ -56,9 +56,9 @@
   # NixOS enables a firewall by default. We explicitly allow only what we need.
   # Services declared elsewhere in your config (like openssh above) will
   # automatically open their ports — you don't need to list port 22 here.
-  # Append .local to bare hostnames so `mirkwood` resolves as `mirkwood.local`.
-  # This lets containers and services reference each other without the suffix.
-  networking.search = [ "local" ];
+  # Append search domain so bare hostnames resolve (e.g. `mirkwood` → `mirkwood.home.theshire.io`).
+  # This lets containers and services reference each other without the full suffix.
+  networking.search = [ "home.theshire.io" ];
 
   networking.firewall = {
     enable = true;

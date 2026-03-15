@@ -4,8 +4,8 @@
 # Handles wildcard TLS for *.theshire.io via Cloudflare DNS-01 ACME challenge
 # (no inbound ports required — cert obtained entirely via Cloudflare API).
 #
-# Backends use .local hostnames which resolve via networking.search = ["local"]
-# (set in base.nix). Rivendell-local services use 127.0.0.1.
+# Backends use .home.theshire.io hostnames for mirkwood/pirateship.
+# Rivendell-local services use 127.0.0.1.
 #
 # Required sops secret (secrets/rivendell.yaml):
 #   caddy_cloudflare_env  — env file containing:
@@ -50,9 +50,9 @@ in
 
     virtualHosts = {
       # mirkwood backends
-      "home.theshire.io".extraConfig           = proxy "mirkwood.local:3000";
-      "grafana.theshire.io".extraConfig        = proxy "mirkwood.local:3001";
-      "mirkwood-stats.theshire.io".extraConfig = proxy "mirkwood.local:61208";
+      "home.theshire.io".extraConfig           = proxy "mirkwood.home.theshire.io:3000";
+      "grafana.theshire.io".extraConfig        = proxy "mirkwood.home.theshire.io:3001";
+      "mirkwood-stats.theshire.io".extraConfig = proxy "mirkwood.home.theshire.io:61208";
 
       # rivendell backends (Caddy runs here — use 127.0.0.1)
       "ha.theshire.io".extraConfig              = proxy "127.0.0.1:8123";
@@ -61,19 +61,19 @@ in
       "monitor.theshire.io".extraConfig         = proxy "127.0.0.1:8080";
 
       # pirateship backends
-      "jellyfin.theshire.io".extraConfig         = proxy "pirateship.local:8096";
-      "media.theshire.io".extraConfig            = proxy "pirateship.local:8096";
-      "movies.theshire.io".extraConfig           = proxy "pirateship.local:7878";
-      "radar.theshire.io".extraConfig            = proxy "pirateship.local:7878";
-      "sonarr.theshire.io".extraConfig           = proxy "pirateship.local:8989";
-      "tv.theshire.io".extraConfig               = proxy "pirateship.local:8989";
-      "prowlarr.theshire.io".extraConfig         = proxy "pirateship.local:9696";
-      "trackers.theshire.io".extraConfig         = proxy "pirateship.local:9696";
-      "lidarr.theshire.io".extraConfig           = proxy "pirateship.local:8686";
-      "music.theshire.io".extraConfig            = proxy "pirateship.local:8686";
-      "dl.theshire.io".extraConfig               = proxy "pirateship.local:9091";
-      "nzb.theshire.io".extraConfig              = proxy "pirateship.local:8080";
-      "pirateship-stats.theshire.io".extraConfig = proxy "pirateship.local:61208";
+      "jellyfin.theshire.io".extraConfig         = proxy "pirateship.home.theshire.io:8096";
+      "media.theshire.io".extraConfig            = proxy "pirateship.home.theshire.io:8096";
+      "movies.theshire.io".extraConfig           = proxy "pirateship.home.theshire.io:7878";
+      "radar.theshire.io".extraConfig            = proxy "pirateship.home.theshire.io:7878";
+      "sonarr.theshire.io".extraConfig           = proxy "pirateship.home.theshire.io:8989";
+      "tv.theshire.io".extraConfig               = proxy "pirateship.home.theshire.io:8989";
+      "prowlarr.theshire.io".extraConfig         = proxy "pirateship.home.theshire.io:9696";
+      "trackers.theshire.io".extraConfig         = proxy "pirateship.home.theshire.io:9696";
+      "lidarr.theshire.io".extraConfig           = proxy "pirateship.home.theshire.io:8686";
+      "music.theshire.io".extraConfig            = proxy "pirateship.home.theshire.io:8686";
+      "dl.theshire.io".extraConfig               = proxy "pirateship.home.theshire.io:9091";
+      "nzb.theshire.io".extraConfig              = proxy "pirateship.home.theshire.io:8080";
+      "pirateship-stats.theshire.io".extraConfig = proxy "pirateship.home.theshire.io:61208";
 
       # Blocky DoH — plain HTTP locally, Caddy terminates TLS
       "doh.theshire.io".extraConfig = proxy "127.0.0.1:4000";

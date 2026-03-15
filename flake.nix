@@ -118,9 +118,9 @@
     };
 
     deploy.nodes = {
-      pirateship = piProfile "pirateship" self.nixosConfigurations.pirateship;
-      rivendell  = piProfile "rivendell"  self.nixosConfigurations.rivendell;
-      mirkwood   = piProfile "mirkwood"   self.nixosConfigurations.mirkwood;
+      pirateship = piProfile "pirateship.home.theshire.io" self.nixosConfigurations.pirateship;
+      rivendell  = piProfile "rivendell.home.theshire.io"  self.nixosConfigurations.rivendell;
+      mirkwood   = piProfile "mirkwood.home.theshire.io"   self.nixosConfigurations.mirkwood;
     };
 
   };

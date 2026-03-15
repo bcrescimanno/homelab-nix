@@ -75,9 +75,9 @@
         clientGroupsBlock.default = [ "ads" ];
       };
 
-      # Forward .local and reverse-DNS queries to UDM Pro for DHCP hostname resolution
+      # Forward home.theshire.io and reverse-DNS queries to UDM Pro for DHCP hostname resolution
       conditional.mapping = {
-        "local"                = "10.0.1.1";
+        "home.theshire.io"     = "10.0.1.1";
         "1.0.10.in-addr.arpa" = "10.0.1.1";
       };
 
