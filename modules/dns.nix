@@ -103,6 +103,56 @@
   systemd.services.blocky.after = [ "unbound.service" ];
   systemd.services.blocky.requires = [ "unbound.service" ];
 
+  # Probe unbound health every 2 minutes. Sends ntfy alerts only on state
+  # transitions (ok→failed, failed→ok) to avoid notification spam.
+  # Probes port 5335 directly so Blocky's fallback to 1.1.1.1 doesn't mask failures.
+  systemd.services.unbound-health-check = {
+    description = "Unbound DNS health check";
+    serviceConfig = {
+      Type = "oneshot";
+      StateDirectory = "unbound-monitor";
+    };
+    script =
+      let
+        dig  = "${pkgs.dnsutils}/bin/dig";
+        curl = "${pkgs.curl}/bin/curl";
+        host = config.networking.hostName;
+        ntfy = "http://10.0.1.9:2586/homelab";
+      in ''
+        STATE_FILE=/var/lib/unbound-monitor/state
+        LAST=$(cat "$STATE_FILE" 2>/dev/null || echo ok)
+
+        if ${dig} @127.0.0.1 -p 5335 +time=5 +tries=1 cloudflare.com A >/dev/null 2>&1; then
+          NOW=ok
+        else
+          NOW=failed
+        fi
+
+        [ "$NOW" = "$LAST" ] && exit 0
+        echo "$NOW" > "$STATE_FILE"
+
+        if [ "$NOW" = failed ]; then
+          ${curl} -s --connect-timeout 5 --max-time 30 --retry 3 --retry-delay 10 --retry-all-errors \
+            -H 'Title: Unbound DNS failure' -H 'Priority: 4' -H 'Tags: rotating_light' \
+            -d '${host}: unbound cannot resolve — Blocky may be falling back to 1.1.1.1' \
+            ${ntfy}
+        else
+          ${curl} -s --connect-timeout 5 --max-time 30 --retry 3 --retry-delay 10 --retry-all-errors \
+            -H 'Title: Unbound DNS recovered' -H 'Priority: 2' -H 'Tags: white_check_mark' \
+            -d '${host}: unbound is resolving normally again' \
+            ${ntfy}
+        fi
+      '';
+  };
+
+  systemd.timers.unbound-health-check = {
+    wantedBy = [ "timers.target" ];
+    timerConfig = {
+      OnBootSec = "2min";
+      OnUnitActiveSec = "2min";
+    };
+  };
+
   systemd.tmpfiles.rules = [
     "d /var/log/blocky 0755 blocky blocky -"
   ];
