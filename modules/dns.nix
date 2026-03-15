@@ -54,7 +54,13 @@
         http = 4000;    # DoH (/dns-query) + Prometheus metrics (/metrics)
       };
 
-      upstreams.groups.default = [ "127.0.0.1:5335" ];
+      upstreams = {
+        # strict strategy: try unbound first, fall back to 1.1.1.1 if unbound
+        # can't prime its DNSSEC trust anchor or otherwise fails to respond
+        groups.default = [ "127.0.0.1:5335" "1.1.1.1" ];
+        strategy = "strict";
+        timeout = "5s";
+      };
 
       # Bootstrap for initial blocklist downloads before Unbound is ready
       bootstrapDns = {
