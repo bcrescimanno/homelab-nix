@@ -50,7 +50,7 @@ in
 
     virtualHosts = {
       # mirkwood backends
-      "home.theshire.io".extraConfig           = proxy "mirkwood.home.theshire.io:3000";
+      "homepage.theshire.io".extraConfig       = proxy "mirkwood.home.theshire.io:3000";
       "grafana.theshire.io".extraConfig        = proxy "mirkwood.home.theshire.io:3001";
       "mirkwood-stats.theshire.io".extraConfig = proxy "mirkwood.home.theshire.io:61208";
 

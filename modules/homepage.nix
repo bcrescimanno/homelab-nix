@@ -13,7 +13,7 @@
     enable = true;
     listenPort = 3000;
     openFirewall = true;
-    allowedHosts = "mirkwood.local:3000,mirkwood:3000,10.0.1.8:3000,home.theshire.io";
+    allowedHosts = "mirkwood.home.theshire.io:3000,mirkwood:3000,10.0.1.8:3000,homepage.theshire.io";
 
     settings = {
       title = "Homelab";

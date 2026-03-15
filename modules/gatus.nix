@@ -52,7 +52,7 @@ in
         (mkTcp { name = "mirkwood";   host = "mirkwood";   group = "Infrastructure"; })
 
         # Home
-        (mkHttp { name = "Homepage";       url = "https://home.theshire.io"; group = "Home"; })
+        (mkHttp { name = "Homepage";       url = "https://homepage.theshire.io"; group = "Home"; })
         (mkHttp { name = "Home Assistant"; url = "https://ha.theshire.io";   group = "Home"; })
 
         # Media
