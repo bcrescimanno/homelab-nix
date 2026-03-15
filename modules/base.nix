@@ -185,6 +185,10 @@
   # Allow the nix daemon to be used by wheel users for building.
   nix.settings.trusted-users = [ "root" "@wheel" ];
 
+  # Increase download buffer to avoid "download buffer is full" warnings during
+  # deploys. Default is 64MB; 256MB is comfortable on Pi 5 (4-8GB RAM).
+  nix.settings.download-buffer-size = 256 * 1024 * 1024;
+
   # Periodically clean up old generations to free disk space.
   # Keeps the last 7 days of builds. You can always roll back within that window.
   nix.gc = {
