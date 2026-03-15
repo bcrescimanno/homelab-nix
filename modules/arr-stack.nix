@@ -50,7 +50,7 @@ in
       environment = {
         VPN_SERVICE_PROVIDER = "protonvpn";
         VPN_TYPE = "wireguard";
-        SERVER_COUNTRIES = "Netherlands";
+        # No SERVER_COUNTRIES filter — allow any server that supports port forwarding
         VPN_PORT_FORWARDING = "on";
         PORT_FORWARD_ONLY = "on";
         WIREGUARD_IMPLEMENTATION = "userspace";
