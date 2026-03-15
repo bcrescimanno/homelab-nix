@@ -57,10 +57,10 @@
       {
         Downloads = [
           {
-            Transmission = {
+            qBittorrent = {
               href = "https://dl.theshire.io";
               description = "Torrent client";
-              icon = "transmission.png";
+              icon = "qbittorrent.png";
             };
           }
           {

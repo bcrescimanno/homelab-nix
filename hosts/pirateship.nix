@@ -99,7 +99,7 @@
   # Backup
   # ---------------------------------------------------------------------------
   homelab.backup.paths = [
-    "/var/lib/transmission/config"
+    "/var/lib/qbittorrent/config"
     "/var/lib/radarr/config"
     "/var/lib/sonarr/config"
     "/var/lib/prowlarr/config"

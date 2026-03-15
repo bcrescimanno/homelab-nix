@@ -57,7 +57,7 @@ in
 
         # Media
         (mkHttp { name = "Jellyfin";    url = "https://jellyfin.theshire.io"; group = "Media"; })
-        (mkHttp { name = "Transmission"; url = "https://dl.theshire.io";      group = "Media"; })
+        (mkHttp { name = "qBittorrent";  url = "https://dl.theshire.io";      group = "Media"; })
         (mkHttp { name = "SABnzbd";     url = "https://nzb.theshire.io";      group = "Media"; })
         (mkHttp { name = "Radarr";      url = "https://movies.theshire.io";   group = "Media"; })
         (mkHttp { name = "Sonarr";      url = "https://tv.theshire.io";       group = "Media"; })

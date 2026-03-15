@@ -61,7 +61,7 @@ SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops secrets/mirkwood.yaml
 - `flake.nix` — entry point; defines NixOS configurations and deploy-rs nodes for all three hosts
 - `hosts/{pirateship,rivendell,mirkwood}.nix` — machine-specific config: hostname, disk layout (disko), networking, SOPS secret declarations, home-manager user config, backup paths
 - `modules/base.nix` — shared config for all devices: user accounts, SSH, firewall, Podman, auto-upgrade, ntfy upgrade notifications, common packages
-- `modules/arr-stack.nix` — pirateship media stack containers (gluetun VPN kill switch, transmission, radarr, sonarr, prowlarr, lidarr, recyclarr, sabnzbd, jellyfin); `transmission-port-sync` systemd service syncs the gluetun forwarded port to Transmission
+- `modules/arr-stack.nix` — pirateship media stack containers (gluetun VPN kill switch, qbittorrent, radarr, sonarr, prowlarr, lidarr, recyclarr, sabnzbd, jellyfin); `qbittorrent-port-sync` systemd service syncs the gluetun forwarded port to qBittorrent
 - `modules/backup.nix` — restic backups to erebor NFS (local) and Cloudflare R2 (offsite); paths declared per-host via `homelab.backup.paths`
 - `modules/caddy.nix` — Caddy reverse proxy on rivendell; wildcard TLS via Cloudflare DNS-01; proxies all `*.theshire.io` vhosts
 - `modules/dns.nix` — Blocky (port 53 + port 4000 DoH/metrics) + Unbound (port 5335, localhost) on both rivendell and mirkwood; fully declarative, replaces Technitium
@@ -92,11 +92,36 @@ User dotfiles are managed via the `home-manager` NixOS module, pulling from the 
 All arr containers share gluetun's network namespace (`--network=container:gluetun`). If the VPN drops, all dependent containers lose internet access — this is the kill switch.
 
 - **gluetun**: ProtonVPN WireGuard gateway; holds all exposed ports for the arr containers
-- **transmission**: torrent client (port 9091 via gluetun)
+- **qbittorrent**: torrent client (port 9091 via gluetun); image `lscr.io/linuxserver/qbittorrent:libtorrentv1`; `dl.theshire.io` via Caddy
 - **sabnzbd**: Usenet client (port 8080 via gluetun)
 - **radarr/sonarr/prowlarr/lidarr**: media managers (ports 7878/8989/9696/8686 via gluetun)
 - **recyclarr**: syncs TRaSH quality profiles to radarr/sonarr; API keys via sops secret `recyclarr_env`
 - **jellyfin**: media server (port 8096, direct — not through VPN)
+
+#### qBittorrent + gluetun: how it works
+
+qBittorrent (libtorrent-rasterbar) requires careful setup to work in gluetun's network namespace. The `podman-qbittorrent` systemd service has a `preStart` hook (in `arr-stack.nix`) that:
+
+1. **Resolves tun0's IP and sets `Session\Interface=<IP>`** — This is the critical one. Three approaches were tried and only one works:
+   - `Interface=tun0` (name): libtorrent 5.x fails to bind to TUN devices by name → zero UDP sockets, DHT dead.
+   - `Interface=""` (any): libtorrent enumerates physical interfaces only, creating sockets on eth0 (10.88.0.12). gluetun policy rule 100 routes `from 10.88.0.12 → table 200 → eth0`, which iptables then DROPs for external destinations. DHT still dead.
+   - `Interface=10.2.0.2` (tun0's IP, resolved each restart via `podman exec gluetun ip addr show tun0`): libtorrent binds sockets to that IP. Traffic from 10.2.0.2 hits policy rule 101 (non-fwmark → table 51820 → default dev tun0) and routes correctly through the VPN. **This works.**
+   - Fallback IP source: parses `WIREGUARD_ADDRESSES` from `/run/secrets/vpn_env` if `podman exec gluetun` fails.
+   - Note: qBittorrent 5.x saves `Session\Interface` on graceful shutdown, re-writing the value. The preStart strips it and re-adds the fresh IP on every restart — this is required.
+2. **Generates a PBKDF2-SHA512 password hash** from `QBT_PASSWORD` in `qbt_credentials` and writes it to `qBittorrent.conf` — prevents the linuxserver init from regenerating an unknown default password on every start.
+3. **Sets `WebUI\LocalHostAuth=false`** — prevents arr apps (connecting via localhost inside gluetun's netns) from triggering IP bans.
+4. **Clears `WebUI\BanList`** on every restart — prevents ban-loop from stale login attempts persisting across restarts.
+5. **Waits up to 90s for `/var/lib/gluetun/tmp/forwarded_port`** — ensures tun0 is up and port forwarding is active before qBittorrent initializes libtorrent.
+
+The `qbittorrent-port-sync` systemd service (runs continuously, `Restart=always`) keeps the forwarded port synced into qBittorrent via the API every 5 minutes. It reads credentials from the `qbt_credentials` sops secret.
+
+The `qbt_credentials` sops secret must contain `QBT_USERNAME` and `QBT_PASSWORD`. After changing the WebUI password, update the secret and redeploy.
+
+**gluetun's routing for reference:**
+- Policy rule 98: traffic to 10.88.0.0/16 → main table (container bridge, direct)
+- Policy rule 100: traffic from 10.88.0.12 (gluetun itself) → table 200 → eth0 (for WireGuard UDP)
+- Policy rule 101: all other traffic without fwmark 0xca6c → table 51820 → default dev tun0 (VPN)
+- iptables OUTPUT: allows tun0 (all), blocks eth0 (except bridge + WireGuard UDP to VPN server)
 
 ### DNS (dns.nix)
 
@@ -117,7 +142,7 @@ Secrets use `sops-nix` with age encryption. Rendered at runtime to `/run/secrets
 
 **pirateship** (`secrets/pirateship.yaml`):
 - `vpn_env` — WireGuard credentials for gluetun
-- `qbt_credentials` — `TRANSMISSION_USERNAME`/`TRANSMISSION_PASSWORD`
+- `qbt_credentials` — `QBT_USERNAME`/`QBT_PASSWORD` (used by preStart to generate PBKDF2 hash and by qbittorrent-port-sync)
 - `recyclarr_env` — `SONARR_API_KEY`/`RADARR_API_KEY`
 
 **rivendell** (`secrets/rivendell.yaml`):
