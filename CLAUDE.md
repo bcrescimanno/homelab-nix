@@ -67,7 +67,7 @@ SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops secrets/mirkwood.yaml
 - `modules/dns.nix` — Blocky (port 53 + port 4000 DoH/metrics) + Unbound (port 5335, localhost) on both rivendell and mirkwood; fully declarative, replaces Technitium
 - `modules/gatus.nix` — Gatus service health monitor on rivendell (native NixOS service, port 8080); all monitors declared in Nix, alerts via ntfy
 - `modules/grafana.nix` — Prometheus (port 9090) + Grafana (port 3001) on mirkwood; scrapes Blocky metrics from both DNS hosts
-- `modules/homeassistant.nix` — Home Assistant + Matter Server containers on rivendell (host networking for mDNS)
+- `modules/homeassistant.nix` — Home Assistant + Matter Server containers on rivendell (host networking for mDNS); both containers use `--privileged` so USB dongles (Zigbee, Thread) are auto-accessible
 - `modules/homepage.nix` — Homepage dashboard as native NixOS service via `services.homepage-dashboard` (mirkwood, port 3000)
 - `modules/monitoring.nix` — Glances system monitor as native NixOS service (all three hosts, port 61208)
 - `modules/ntfy.nix` — ntfy push notification server container on rivendell (port 2586 LAN, proxied via Caddy)
@@ -122,6 +122,14 @@ The `qbt_credentials` sops secret must contain `QBT_USERNAME` and `QBT_PASSWORD`
 - Policy rule 100: traffic from 10.88.0.12 (gluetun itself) → table 200 → eth0 (for WireGuard UDP)
 - Policy rule 101: all other traffic without fwmark 0xca6c → table 51820 → default dev tun0 (VPN)
 - iptables OUTPUT: allows tun0 (all), blocks eth0 (except bridge + WireGuard UDP to VPN server)
+
+### IoT VLAN — Wake-on-LAN (hosts/rivendell.nix)
+
+rivendell has a `eth0.4` tagged VLAN subinterface (VLAN ID 4, `10.0.12.2/22`) on its existing ethernet port. This gives Home Assistant the ability to send WoL magic packet broadcasts directly onto the IoT VLAN (broadcast address `10.0.15.255`) without rivendell being a member of the IoT network. The UniFi switch port uses "Allow All" tagged VLANs, so no controller changes were required. The NixOS firewall default-drops inbound on `eth0.4`, preventing IoT devices from reaching rivendell's services.
+
+HA WoL integrations targeting IoT VLAN devices must set `broadcast_address: 10.0.15.255` (not `255.255.255.255`, which stays on the main VLAN).
+
+**Pending — Thread border router**: Home Assistant Connect ZBT-2 USB dongle ordered. When it arrives, add an OTBR (OpenThread Border Router) container to `modules/homeassistant.nix` (`--privileged` + host networking, same as HA/Matter Server), then configure HA's Thread integration to point at it.
 
 ### DNS (dns.nix)
 

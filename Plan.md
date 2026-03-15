@@ -4,14 +4,14 @@
 
 ---
 
-## Current State (as of 2026-03-11)
+## Current State (as of 2026-03-15)
 
 All three hosts are live on NixOS. Migration from Docker/Technitium/NPM is complete.
 
 | Host | OS | Services |
 |---|---|---|
-| `pirateship` | NixOS | gluetun VPN, transmission, radarr, sonarr, prowlarr, lidarr, recyclarr, sabnzbd, jellyfin, Glances |
-| `rivendell` | NixOS | Home Assistant, Matter Server, Caddy (reverse proxy + TLS), Blocky+Unbound DNS (secondary), NUT (UPS), ntfy, Uptime Kuma, Glances |
+| `pirateship` | NixOS | gluetun VPN, qbittorrent, radarr, sonarr, prowlarr, lidarr, recyclarr, sabnzbd, jellyfin, Glances |
+| `rivendell` | NixOS | Home Assistant, Matter Server, Caddy (reverse proxy + TLS), Blocky+Unbound DNS (secondary), NUT (UPS), ntfy, Gatus, Glances |
 | `mirkwood` | NixOS | Blocky+Unbound DNS (primary), Homepage, Prometheus, Grafana, Glances |
 | `erebor` | UniFi OS | NAS (UNAS Pro 4, 4×12TB RAID 6 ~24TB usable); NFS shares for pirateship media + backups |
 
@@ -61,6 +61,11 @@ erebor is online (10G SFP+ at 10.0.1.22, 1G ethernet at 10.0.1.21 for management
   - `services.loki` + `services.promtail` NixOS modules
   - Add Loki datasource to Grafana on mirkwood
   - Build LogQL panels for top clients, top blocked domains, per-client breakdown
+
+### Home Assistant / IoT
+
+- [x] **Wake-on-LAN across IoT VLAN** — rivendell has `eth0.4` (VLAN 4, 10.0.12.2/22) tagged subinterface on its existing port (UniFi "Allow All" was already set). HA sends WoL broadcasts to `10.0.15.255` (IoT /22 broadcast); no UDM Pro changes required.
+- [ ] **Thread border router (ZBT-2)** — Home Assistant Connect ZBT-2 USB dongle ordered. When it arrives: add OTBR (OpenThread Border Router) container to `modules/homeassistant.nix` alongside HA and Matter Server (`--privileged` + host networking), then wire HA's Thread integration to it. The ZBT-2 will be auto-accessible inside privileged containers.
 
 ### Future Services
 
