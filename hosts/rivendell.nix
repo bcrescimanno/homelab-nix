@@ -59,6 +59,23 @@
 
   networking.interfaces.eth0.useDHCP = true;
 
+  # VLAN 4 subinterface for IoT network — used exclusively to send Wake-on-LAN
+  # broadcasts to IoT VLAN devices from Home Assistant. The switch port is
+  # already a trunk ("Allow All" tagged VLANs), so no UniFi changes are needed.
+  # HA sends magic packets to 10.0.15.255 (IoT /22 broadcast); the kernel routes
+  # them out eth0.4 as a tagged L2 broadcast on VLAN 4. The NixOS firewall
+  # default-drops inbound on this interface, so IoT devices cannot reach rivendell.
+  networking.vlans."eth0.4" = {
+    id = 4;
+    interface = "eth0";
+  };
+  networking.interfaces."eth0.4" = {
+    ipv4.addresses = [{
+      address = "10.0.12.2";
+      prefixLength = 22;
+    }];
+  };
+
   # ---------------------------------------------------------------------------
   # System state version
   # ---------------------------------------------------------------------------
