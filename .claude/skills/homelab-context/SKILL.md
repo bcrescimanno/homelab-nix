@@ -17,6 +17,7 @@ This skill provides full situational awareness for the `homelab-nix` NixOS flake
   - Home Manager configuration for all users; consumed as a flake input in `homelab-nix` and applied automatically on every deployment via the `home-manager` NixOS module
   - Active on all homelab hosts (`pirateship`, `rivendell`, `mirkwood`) and on local machines where Claude Code is run — assume the dotfiles repo state is available in the current environment
   - Machine-specific Home Manager configs live at `machines/{pirateship,rivendell,mirkwood}.nix` within the dotfiles repo
+  - The `deploy` shell function is defined in `home/common.nix` in the dotfiles repo. It is a zsh function and is only available in interactive zsh sessions — not in subprocesses or non-interactive shells. The exact equivalent command to use in scripts or agents is: `nix run github:serokell/deploy-rs -- ~/code/homelab-nix#<hostname>`. The flake has `remoteBuild = true` so the build runs on the target Pi (aarch64), not locally (x86_64) — no extra flags needed.
 
 ## Hosts
 

@@ -41,7 +41,7 @@ Before deploying, establish a clear baseline.
 
 ## Phase 2: Deploy
 
-Run the deployment using deploy-rs:
+Run the deployment using the `deploy` shell function:
 
 ```bash
 deploy <hostname>
@@ -49,15 +49,27 @@ deploy <hostname>
 
 Where `<hostname>` is one of: `pirateship`, `rivendell`, `mirkwood`.
 
+**Important**: `deploy` is a zsh shell function and is only available in interactive zsh sessions — it will not be present in non-interactive shells or subprocesses. Always invoke deploy-rs using the exact command below, which is what the `deploy` function does internally:
+
+```bash
+# Deploy a specific host:
+nix run github:serokell/deploy-rs -- ~/code/homelab-nix#<hostname>
+
+# Deploy all hosts:
+nix run github:serokell/deploy-rs -- ~/code/homelab-nix
+```
+
+The flake is configured with `remoteBuild = true` — the build runs on the target Pi, not locally. This is required because the Pis are aarch64 and the local machine is x86_64. Do not add `--remote-build` or other flags; the flake already encodes the correct settings.
+
 **deploy-rs behavior to know:**
-- Builds on the target Pi (`remoteBuild = true`) — build output will stream; this is normal
+- Build output will stream from the remote Pi; this is normal and expected
 - `magicRollback = true` — if SSH is lost during activation, the host rolls back automatically
 - `autoRollback = true` — if the activation script exits non-zero, the host rolls back automatically
 - A successful deploy exits 0 and prints confirmation; a rolled-back deploy will show the rollback in output
 
 **If deploy-rs rolls back**: Report the rollback to the user with the relevant error output. Do not attempt to re-deploy or work around the rollback. Stop and wait for user instructions.
 
-**If deploy-rs is unavailable**, fall back to:
+**If deploy-rs is genuinely unavailable**, fall back to:
 ```bash
 nixos-rebuild switch --flake .#<host> --target-host brian@<host> --build-host brian@<host> --sudo
 ```

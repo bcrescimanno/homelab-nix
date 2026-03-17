@@ -4,7 +4,7 @@
 # Runs identically on mirkwood (primary) and rivendell (secondary) —
 # no zone sync required; the Nix config is the source of truth.
 #
-# Blocky handles: ad blocking, conditional forwarding (.local → UDM Pro),
+# Blocky handles: ad blocking, conditional forwarding (.theshire.io → UDM Pro),
 #   DoH server (port 4000), Prometheus metrics (/metrics on port 4000)
 # Unbound handles: recursive resolution to root servers, DNSSEC validation,
 #   and the theshire.io split-horizon zone via local-zone/local-data
@@ -69,10 +69,22 @@
       };
 
       blocking = {
-        denylists.ads = [
-          "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
-        ];
-        clientGroupsBlock.default = [ "ads" ];
+        denylists = {
+          ads = [
+            "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
+          ];
+          # Suppress Windows WPAD (Web Proxy Auto-Discovery) queries.
+          # Windows polls for a proxy config script continuously; without a clean
+          # NXDOMAIN it bypasses cache and hammers DNS. No proxy exists on this
+          # network so these should never resolve.
+          local-noise = [
+            ''
+              wpad.theshire.io
+              wpad.home.theshire.io
+            ''
+          ];
+        };
+        clientGroupsBlock.default = [ "ads" "local-noise" ];
       };
 
       # Forward home.theshire.io and reverse-DNS queries to UDM Pro for DHCP hostname resolution
