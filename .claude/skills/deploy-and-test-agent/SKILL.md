@@ -41,6 +41,18 @@ Before deploying, establish a clear baseline.
 
 ## Phase 2: Deploy
 
+### Deployment order
+
+For most changes, deploy hosts in whatever order makes sense for the task. **Exception: DNS changes follow a strict order.**
+
+**If the change touches `modules/dns.nix` or any DNS-related configuration:**
+1. Deploy and fully verify **rivendell first** (secondary DNS)
+2. Only proceed to deploy **mirkwood second** (primary DNS) once rivendell is confirmed healthy
+
+Rationale: mirkwood is the primary DNS server for the network. Deploying rivendell first ensures a known-good secondary is available in case the mirkwood deployment causes an issue. Never deploy mirkwood first for DNS changes.
+
+### Running the deployment
+
 Run the deployment using the `deploy` shell function:
 
 ```bash
