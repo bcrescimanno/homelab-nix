@@ -133,9 +133,7 @@ HA WoL integrations targeting IoT VLAN devices must set `broadcast_address: 10.0
 
 ### DNS (dns.nix)
 
-Blocky handles ad blocking, conditional forwarding (`.local` → UDM Pro at 10.0.1.1), DoH, and Prometheus metrics. Unbound handles recursive resolution to root servers and the `theshire.io` split-horizon zone:
-- `theshire.io` → 10.0.1.9 (Caddy on rivendell, wildcard redirect)
-- `erebor.theshire.io` → 10.0.1.22 (NAS 10G SFP+)
+Blocky handles ad blocking, conditional forwarding (`.theshire.io` → UDM Pro at 10.0.1.1), DoH, and Prometheus metrics. Unbound handles recursive resolution to root servers.
 
 ### Reverse Proxy (caddy.nix)
 
