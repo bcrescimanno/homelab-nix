@@ -1,17 +1,23 @@
-# modules/homeassistant.nix — Home Assistant + Matter Server
+# modules/homeassistant.nix — Home Assistant + Matter Server + OTBR
 #
 # Home Assistant: home automation platform (port 8123)
 # Matter Server: bridges Matter-protocol IoT devices into HA
+# OTBR (OpenThread Border Router): Thread border router via ZBT-2 USB dongle
 #
-# Both containers use host networking — required for mDNS/Zeroconf
-# device discovery and Matter commissioning to work correctly.
+# All containers use host networking — required for mDNS/Zeroconf
+# device discovery and Matter/Thread commissioning to work correctly.
 # With host networking, HA and Matter Server communicate via localhost
 # (Matter Server WebSocket on port 5580 is not exposed externally).
+# OTBR REST API on port 8086 is accessed by HA's Thread integration via localhost.
 #
 # --privileged is used for full hardware access: USB dongles (Zigbee,
-# Z-Wave), Bluetooth (Matter commissioning), and multicast networking.
-# If a USB device is plugged in (e.g., a Zigbee coordinator), it will
-# be accessible inside the HA container automatically.
+# Z-Wave, Thread/ZBT-2), Bluetooth (Matter commissioning), and multicast
+# networking. Any USB device plugged in will be accessible inside the
+# container automatically.
+#
+# ZBT-2 (Nabu Casa, 303a:831a) presents as /dev/ttyACM0 in Thread RCP mode.
+# If running Multi-PAN firmware (Zigbee + Thread concurrently), a cpcd
+# container would be required between the USB device and OTBR.
 
 { config, pkgs, lib, ... }:
 
@@ -52,6 +58,55 @@
       ];
     };
 
+    # OpenThread Border Router — Thread border router for HA's Thread integration.
+    # ZBT-2 USB dongle (/dev/ttyACM0) acts as the Thread radio (RCP mode).
+    # HA Thread integration URL: http://localhost:8081
+    #
+    # The REST API binds to 127.0.0.1:8081 by default in this image version.
+    # HA reaches it via localhost (both share host networking). No LAN exposure.
+    #
+    # NAT64/NAT44 disabled (NAT64=0, DOCKER=0):
+    #   The openthread/otbr image defaults NAT64=1 and DOCKER=1, which causes
+    #   the startup script to configure NAT via iptables-legacy. NixOS uses
+    #   nftables and does not load the ip_tables kernel modules, so iptables
+    #   fails with "Table does not exist" and the container exits.
+    #
+    #   For our use case — HA local control over Thread — NAT64 is not needed.
+    #   Thread devices communicate with HA directly over the mesh; they do not
+    #   need to reach IPv4 internet resources through the border router.
+    #
+    #   If internet-connected Thread devices are ever needed (e.g., devices that
+    #   phone home to IPv4 cloud services via the border router), re-enable NAT64
+    #   by removing the NAT64/DOCKER env vars and loading the required iptables
+    #   kernel modules in NixOS instead:
+    #
+    #     boot.kernelModules = [
+    #       "ip_tables" "iptable_filter" "iptable_nat" "iptable_mangle"
+    #       "ip6_tables" "ip6table_filter" "ip6table_nat"
+    #     ];
+    #
+    #   With those modules loaded, iptables-legacy inside the container can
+    #   coexist with the host's nftables firewall.
+    otbr = {
+      image = "openthread/otbr:latest@sha256:df6f439c023d13fbd9e62bd06873851584736a115f33005aca92d1a2164a7558";
+      autoStart = true;
+      cmd = [
+        "--radio-url" "spinel+hdlc+uart:///dev/ttyACM0?uart-baudrate=460800"
+        "--backbone-interface" "eth0"
+      ];
+      environment = {
+        NAT64 = "0";
+        DOCKER = "0";
+      };
+      volumes = [
+        "/var/lib/otbr/data:/var/lib/thread"
+      ];
+      extraOptions = [
+        "--network=host"
+        "--privileged"
+      ];
+    };
+
   };
 
   # Enable Bluetooth userspace daemon (bluetoothd) so HA and Matter Server
@@ -61,11 +116,14 @@
   # Port 5580 (Matter Server WebSocket) is localhost-only — HA connects
   # to it internally and it does not need to be reachable from the network.
   # UDP 4001: Govee Local — devices send status updates to this port on the host.
+  # OTBR REST API (8081) is localhost-only — HA connects via localhost, no LAN
+  # exposure needed or possible (bound to 127.0.0.1 by the container).
   networking.firewall.allowedTCPPorts = [ 8123 ];
   networking.firewall.allowedUDPPorts = [ 4001 ];
 
   systemd.tmpfiles.rules = [
     "d /var/lib/homeassistant/config 0755 root root -"
     "d /var/lib/matter-server/data 0755 root root -"
+    "d /var/lib/otbr/data 0755 root root -"
   ];
 }

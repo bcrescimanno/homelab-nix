@@ -107,6 +107,7 @@
   homelab.backup.paths = [
     "/var/lib/homeassistant/config"
     "/var/lib/matter-server/data"
+    "/var/lib/otbr/data"
     "/var/lib/caddy"
   ];
 }
