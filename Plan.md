@@ -43,13 +43,11 @@ Shell function in dotfiles `home/common.nix`. deploy-rs config in `flake.nix` un
 ### High Priority
 
 - [ ] **Backup restore dry run**: test restoring from restic snapshots — both local (erebor) and offsite (R2). Validate paths, passwords, and snapshot contents are correct.
-- [ ] **DHCP reservations**: lock IPs for all three Pis and erebor 10G MAC in UniFi to prevent address drift.
 
 ### NAS (erebor) — Remaining Work
 
 erebor is online (10G SFP+ at 10.0.1.22, 1G ethernet at 10.0.1.21 for management).
 
-- [ ] **Media migration**: move existing media from pirateship local disk (`/var/lib/media/`) to erebor NFS shares. Once complete, update arr-stack volume mounts — the `pirateship.nix` NFS mounts are already wired; just migrate the data.
 - [ ] **Monthly Btrfs scrub**: SSH into erebor and add `btrfs scrub start /` to crontab. Btrfs has no scheduled scrub in the UniFi Drive GUI.
 - [ ] **Backup coverage**: verify R2 restic snapshots include erebor-resident data after media migration.
 

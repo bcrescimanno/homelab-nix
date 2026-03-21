@@ -55,9 +55,14 @@
       };
 
       upstreams = {
-        # strict strategy: try unbound first, fall back to 1.1.1.1 if unbound
-        # can't prime its DNSSEC trust anchor or otherwise fails to respond
-        groups.default = [ "127.0.0.1:5335" "1.1.1.1" ];
+        # strict strategy: try unbound first (recursive + DNSSEC), then fall
+        # back to DoH. DoH uses port 443 which avoids ISP UDP/53 interception
+        # or cable modem states that break plain DNS while leaving HTTPS intact.
+        groups.default = [
+          "127.0.0.1:5335"
+          "https://1.1.1.1/dns-query"
+          "https://1.0.0.1/dns-query"
+        ];
         strategy = "strict";
         timeout = "5s";
       };

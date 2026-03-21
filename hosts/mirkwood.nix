@@ -59,6 +59,14 @@
 
   networking.interfaces.eth0.useDHCP = true;
 
+  # Unbound requests a 4MB UDP send/receive buffer but the default kernel max
+  # is ~425KB, causing "so-sndbuf was not granted" warnings at startup.
+  # Under high query load this can cause silent UDP packet drops.
+  boot.kernel.sysctl = {
+    "net.core.rmem_max" = 4194304;
+    "net.core.wmem_max" = 4194304;
+  };
+
   # ---------------------------------------------------------------------------
   # System state version
   # ---------------------------------------------------------------------------

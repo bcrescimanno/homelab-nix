@@ -26,6 +26,20 @@ let
     conditions = [ "[CONNECTED] == true" ];
     alerts = [{ type = "ntfy"; }];
   };
+
+  # DNS resolution check — verifies the resolver can actually resolve, not just that port 53 is open.
+  # Uses cloudflare.com as a canary: it's globally routable, always available, and not in any blocklist.
+  mkDns = { name, host, group }: {
+    inherit name group;
+    url = "${host}:53";
+    dns = {
+      "query-name" = "cloudflare.com";
+      "query-type" = "A";
+    };
+    interval = "1m";
+    conditions = [ "[DNS_RCODE] == NOERROR" ];
+    alerts = [{ type = "ntfy"; }];
+  };
 in
 
 {
@@ -50,6 +64,10 @@ in
         (mkTcp { name = "pirateship"; host = "pirateship"; group = "Infrastructure"; })
         (mkTcp { name = "rivendell";  host = "rivendell";  group = "Infrastructure"; })
         (mkTcp { name = "mirkwood";   host = "mirkwood";   group = "Infrastructure"; })
+
+        # DNS — resolution checks (port 53 open is not enough; verify actual recursive resolution)
+        (mkDns { name = "mirkwood DNS"; host = "mirkwood"; group = "Infrastructure"; })
+        (mkDns { name = "rivendell DNS"; host = "rivendell"; group = "Infrastructure"; })
 
         # Home
         (mkHttp { name = "Homepage";       url = "https://homepage.theshire.io"; group = "Home"; })
