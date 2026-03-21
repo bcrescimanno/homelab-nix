@@ -30,10 +30,11 @@
       "automerge": true
     },
     {
-      "description": "Open PRs for container image updates as soon as new digests are available",
+      "description": "Automerge container image digest updates after CI passes",
       "matchManagers": ["custom.regex"],
       "pinDigests": true,
-      "dependencyDashboardApproval": false
+      "dependencyDashboardApproval": false,
+      "automerge": true
     }
   ]
 }
