@@ -24,10 +24,9 @@
   ],
   "packageRules": [
     {
-      "description": "Automerge nix flake input updates after CI passes",
+      "description": "Open PRs for nix flake input updates on Saturdays — no automerge, review manually to catch Caddy plugin hash changes",
       "matchManagers": ["nix"],
-      "schedule": ["on saturday"],
-      "automerge": true
+      "schedule": ["on saturday"]
     },
     {
       "description": "Automerge container image digest updates after CI passes",
