@@ -54,7 +54,7 @@
         http = 4000;    # DoH (/dns-query) + Prometheus metrics (/metrics)
       };
 
-      upstreams = {
+upstreams = {
         # strict strategy: try unbound first (recursive + DNSSEC), then fall
         # back to DoH. DoH uses port 443 which avoids ISP UDP/53 interception
         # or cable modem states that break plain DNS while leaving HTTPS intact.
@@ -90,6 +90,12 @@
           ];
         };
         clientGroupsBlock.default = [ "ads" "local-noise" ];
+      };
+
+      # Static entries for machines with DHCP reservations — resolves immediately
+      # without waiting for UDM Pro to have an active lease (e.g. after WoL).
+      customDNS.mapping = {
+        "terra.home.theshire.io" = "10.0.1.215";
       };
 
       # Forward home.theshire.io and reverse-DNS queries to UDM Pro for DHCP hostname resolution
