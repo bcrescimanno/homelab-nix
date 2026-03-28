@@ -122,32 +122,8 @@
   # needs no changes. _netdev tells systemd to wait for network; x-systemd.automount
   # mounts on first access so boot doesn't hang if erebor is temporarily unavailable.
   # ---------------------------------------------------------------------------
-  fileSystems."/var/lib/media/movies" = {
-    device = "erebor.theshire.io:/var/nfs/shared/movies";
-    fsType = "nfs";
-    options = [ "_netdev" "nofail" "x-systemd.automount" "noauto" ];
-  };
-
-  fileSystems."/var/lib/media/tv" = {
-    device = "erebor.theshire.io:/var/nfs/shared/tv";
-    fsType = "nfs";
-    options = [ "_netdev" "nofail" "x-systemd.automount" "noauto" ];
-  };
-
-  fileSystems."/var/lib/media/music" = {
-    device = "erebor.theshire.io:/var/nfs/shared/music";
-    fsType = "nfs";
-    options = [ "_netdev" "nofail" "x-systemd.automount" "noauto" ];
-  };
-
-  fileSystems."/var/lib/media/torrents" = {
-    device = "erebor.theshire.io:/var/nfs/shared/torrents";
-    fsType = "nfs";
-    options = [ "_netdev" "nofail" "x-systemd.automount" "noauto" ];
-  };
-
-  fileSystems."/var/lib/media/usenet" = {
-    device = "erebor.theshire.io:/var/nfs/shared/usenet";
+  fileSystems."/var/lib/media" = {
+    device = "erebor.theshire.io:/var/nfs/shared/media";
     fsType = "nfs";
     options = [ "_netdev" "nofail" "x-systemd.automount" "noauto" ];
   };
