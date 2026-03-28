@@ -64,11 +64,11 @@
         "nixpkgs": "nixpkgs"
       },
       "locked": {
-        "lastModified": 1774580842,
-        "narHash": "sha256-EhYQu9jgngE2Gd5nj5ilXBROEspJdtcEzuJj3haDrlU=",
+        "lastModified": 1774710675,
+        "narHash": "sha256-xI+JalIH0vUO36eH6b5EDrDY6SOSbl4/AwXkanFLdU4=",
         "owner": "bcrescimanno",
         "repo": "dotfiles",
-        "rev": "483a16ad8df03759ec79370434ad2dfa353f4ada",
+        "rev": "fd216cba0595b58bb3e2cf1f6050a24d9860ba1a",
         "type": "github"
       },
       "original": {
