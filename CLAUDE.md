@@ -49,7 +49,7 @@ SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops secrets/mirkwood.yaml
 
 | Host | Hardware | Role |
 |---|---|---|
-| `pirateship` | Raspberry Pi 5 | Media stack (arr apps, Jellyfin, SABnzbd, gluetun VPN), Glances |
+| `pirateship` | Raspberry Pi 5 | Media stack (arr apps, Jellyfin, SABnzbd, Navidrome, gluetun VPN), Glances |
 | `rivendell` | Raspberry Pi 5, 8GB | Home Assistant, Matter Server, Caddy (reverse proxy + TLS), Blocky+Unbound DNS (secondary), NUT (UPS), ntfy, Gatus, Glances |
 | `mirkwood` | Raspberry Pi 5, 4GB | Blocky+Unbound DNS (primary), Homepage, Prometheus, Grafana, Glances |
 | `erebor` | UniFi UNAS Pro 4 | NAS — 4×12TB RAID 6 (~24TB usable); NFS shares for pirateship media + restic backups |
@@ -62,6 +62,7 @@ SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops secrets/mirkwood.yaml
 - `hosts/{pirateship,rivendell,mirkwood}.nix` — machine-specific config: hostname, disk layout (disko), networking, SOPS secret declarations, home-manager user config, backup paths
 - `modules/base.nix` — shared config for all devices: user accounts, SSH, firewall, Podman, auto-upgrade, ntfy upgrade notifications, common packages
 - `modules/arr-stack.nix` — pirateship media stack containers (gluetun VPN kill switch, qbittorrent, radarr, sonarr, prowlarr, lidarr, recyclarr, sabnzbd, jellyfin); `qbittorrent-port-sync` systemd service syncs the gluetun forwarded port to qBittorrent
+- `modules/navidrome.nix` — Navidrome music streaming server on pirateship (native NixOS service, port 4533); Subsonic-compatible API for WiiM/Symfonium clients; music library at `/var/lib/media/music`
 - `modules/backup.nix` — restic backups to erebor NFS (local) and Cloudflare R2 (offsite); paths declared per-host via `homelab.backup.paths`
 - `modules/caddy.nix` — Caddy reverse proxy on rivendell; wildcard TLS via Cloudflare DNS-01; proxies all `*.theshire.io` vhosts
 - `modules/dns.nix` — Blocky (port 53 + port 4000 DoH/metrics) + Unbound (port 5335, localhost) on both rivendell and mirkwood; fully declarative, replaces Technitium
@@ -97,6 +98,7 @@ All arr containers share gluetun's network namespace (`--network=container:gluet
 - **radarr/sonarr/prowlarr/lidarr**: media managers (ports 7878/8989/9696/8686 via gluetun)
 - **recyclarr**: syncs TRaSH quality profiles to radarr/sonarr; API keys via sops secret `recyclarr_env`
 - **jellyfin**: media server (port 8096, direct — not through VPN)
+- **navidrome**: music streaming server (port 4533, native NixOS service — not a container, not through VPN); declared in `modules/navidrome.nix`
 
 #### qBittorrent + gluetun: how it works
 
@@ -129,7 +131,7 @@ rivendell has a `eth0.4` tagged VLAN subinterface (VLAN ID 4, `10.0.12.2/22`) on
 
 HA WoL integrations targeting IoT VLAN devices must set `broadcast_address: 10.0.15.255` (not `255.255.255.255`, which stays on the main VLAN).
 
-**Pending — Thread border router**: Home Assistant Connect ZBT-2 USB dongle ordered. When it arrives, add an OTBR (OpenThread Border Router) container to `modules/homeassistant.nix` (`--privileged` + host networking, same as HA/Matter Server), then configure HA's Thread integration to point at it.
+**Thread border router**: Home Assistant Connect ZBT-2 is running as an OTBR container in `modules/homeassistant.nix` (`--privileged` + host networking); ZBT-2 at `/dev/ttyACM0` (Thread RCP firmware); OTBR REST API at `localhost:8081`. NAT64/DOCKER disabled due to NixOS nftables incompatibility with iptables-legacy in the container.
 
 ### DNS (dns.nix)
 
@@ -139,8 +141,8 @@ Blocky handles ad blocking, conditional forwarding (`.theshire.io` → UDM Pro a
 
 Caddy runs on rivendell with the Cloudflare DNS plugin for DNS-01 ACME. All `*.theshire.io` services are proxied with automatic TLS. Key vhosts:
 - Local backends (`127.0.0.1`): ha, ntfy, monitor, doh, rivendell-stats
-- mirkwood backends: home, grafana, mirkwood-stats
-- pirateship backends: jellyfin, dl, nzb, movies, tv, prowlarr, music, pirateship-stats
+- mirkwood backends: homepage, grafana, mirkwood-stats
+- pirateship backends: jellyfin, dl, nzb, movies, tv, prowlarr, music, listen, pirateship-stats
 
 ### Secrets
 
@@ -165,6 +167,8 @@ All hosts pull and apply updates from `github:bcrescimanno/homelab-nix` daily at
 
 ### Media Storage
 
-Media lives on erebor NFS shares, mounted on pirateship via `fileSystems` in `pirateship.nix`:
-- `/var/lib/media/{movies,tv,music,torrents,usenet}` — NFS mounts from erebor
+Media lives on a single erebor NFS share, mounted on pirateship via `fileSystems` in `pirateship.nix`:
+- `/var/lib/media` — single NFS mount from erebor (`/var/nfs/shared/media`); contains subdirectories `movies/`, `tv/`, `music/`, `torrents/`, `usenet/`
 - `/var/lib/<service>/config` — per-service config directories (local, declared via `systemd.tmpfiles.rules`)
+
+All subdirectories share the same filesystem, enabling hardlinks between them. Lidarr, Radarr, and Sonarr all have **Use Hardlinks instead of Copy** enabled — downloads imported from `torrents/` are hardlinked into the media library at zero additional disk cost, allowing qBittorrent to keep seeding the original.
