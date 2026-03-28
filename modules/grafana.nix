@@ -39,6 +39,7 @@
       security = {
         admin_user     = "admin";
         admin_password = "$__env{GF_SECURITY_ADMIN_PASSWORD}";
+        secret_key     = "$__env{GF_SECURITY_SECRET_KEY}";
       };
     };
 

@@ -109,5 +109,29 @@
     "/var/lib/matter-server/data"
     "/var/lib/otbr/data"
     "/var/lib/caddy"
+    "/var/lib/music-assistant"
   ];
+
+  # ---------------------------------------------------------------------------
+  # NFS client support
+  # ---------------------------------------------------------------------------
+  boot.supportedFilesystems = [ "nfs" ];
+  services.rpcbind.enable = true;
+
+  # ---------------------------------------------------------------------------
+  # NAS mounts (erebor — music library, read-only)
+  #
+  # Music Assistant reads the library directly from erebor rather than going
+  # through Navidrome. Mount is read-only since rivendell never writes media.
+  # _netdev + automount ensures boot doesn't hang if erebor is unavailable.
+  #
+  # Note: the music-assistant service user must be able to read the mounted
+  # files. Configure the erebor NFS export with appropriate uid mapping
+  # (e.g. all_squash + anonuid/anongid, or world-readable file permissions).
+  # ---------------------------------------------------------------------------
+  fileSystems."/var/lib/media/music" = {
+    device = "erebor.theshire.io:/var/nfs/shared/media/music";
+    fsType = "nfs";
+    options = [ "_netdev" "nofail" "x-systemd.automount" "noauto" "ro" ];
+  };
 }

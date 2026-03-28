@@ -4,6 +4,7 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     nixos-raspberrypi.url = "github:nvmd/nixos-raspberrypi/main";
+    nixos-raspberrypi.inputs.nixpkgs.follows = "nixpkgs";
     disko.url = "github:nix-community/disko";
     disko.inputs.nixpkgs.follows = "nixpkgs";
     sops-nix = {
@@ -43,13 +44,22 @@
         sops-nix.nixosModules.sops
         home-manager.nixosModules.home-manager
         {
-          # nixos-raspberrypi pins an older nixpkgs that predates
-          # neovimUtils.makeVimPackageInfo. Overlay it in from the dotfiles
-          # nixpkgs so home-manager's neovim module evaluation succeeds.
+          # glances test_phys_core_returns_int fails on aarch64 in the Nix
+          # sandbox because psutil.cpu_count(logical=False) returns None when
+          # CPU topology is unavailable. Deselect the specific test via
+          # pytestFlagsArray — runtime is unaffected.
+          # test_restful and test_xmlrpc require a running server/network
+          # connection that the sandbox blocks; ignore the entire files.
           nixpkgs.overlays = [
-            (final: prev:
-              let newerPkgs = inputs.dotfiles.inputs.nixpkgs.legacyPackages.${prev.system};
-              in { neovimUtils = prev.neovimUtils // { inherit (newerPkgs.neovimUtils) makeVimPackageInfo; }; })
+            (final: prev: {
+              glances = prev.glances.overrideAttrs (oldAttrs: {
+                pytestFlagsArray = (oldAttrs.pytestFlagsArray or []) ++ [
+                  "--deselect=tests/test_plugin_load.py::TestLoadHelperFunctions::test_phys_core_returns_int"
+                  "--ignore=tests/test_restful.py"
+                  "--ignore=tests/test_xmlrpc.py"
+                ];
+              });
+            })
           ];
           home-manager.useGlobalPkgs = true;
           home-manager.useUserPackages = true;
@@ -86,7 +96,6 @@
         modules = piModules [
           ./hosts/pirateship.nix
           ./modules/arr-stack.nix
-          ./modules/navidrome.nix
           ./modules/monitoring.nix
         ];
         specialArgs = { inherit inputs nixos-raspberrypi r2AccountId; };
@@ -102,6 +111,7 @@
           ./modules/nut.nix
           ./modules/ntfy.nix
           ./modules/gatus.nix
+          ./modules/music-assistant.nix
         ];
         specialArgs = { inherit inputs nixos-raspberrypi r2AccountId; };
       };

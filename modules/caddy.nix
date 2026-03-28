@@ -43,7 +43,7 @@ in
 
     package = pkgs.caddy.withPlugins {
       plugins = [ "github.com/caddy-dns/cloudflare@v0.2.3" ];
-      hash = "sha256-bL1cpMvDogD/pdVxGA8CAMEXazWpFDBiGBxG83SmXLA=";
+      hash = "sha256-20o+14cn/eeLuf1c8uGE1ODRZGC0oxocaIVlv4tFSvA=";
     };
 
     globalConfig = "";
@@ -60,6 +60,9 @@ in
       "ntfy.theshire.io".extraConfig            = proxy "127.0.0.1:2586";
       "monitor.theshire.io".extraConfig         = proxy "127.0.0.1:8080";
 
+      # rivendell backends (continued)
+      "listen.theshire.io".extraConfig = proxy "127.0.0.1:8095";
+
       # pirateship backends
       "jellyfin.theshire.io".extraConfig         = proxy "pirateship.home.theshire.io:8096";
       "media.theshire.io".extraConfig            = proxy "pirateship.home.theshire.io:8096";
@@ -71,7 +74,6 @@ in
       "trackers.theshire.io".extraConfig         = proxy "pirateship.home.theshire.io:9696";
       "lidarr.theshire.io".extraConfig           = proxy "pirateship.home.theshire.io:8686";
       "music.theshire.io".extraConfig            = proxy "pirateship.home.theshire.io:8686";
-      "listen.theshire.io".extraConfig           = proxy "pirateship.home.theshire.io:4533";
       "dl.theshire.io".extraConfig               = proxy "pirateship.home.theshire.io:9091";
       "nzb.theshire.io".extraConfig              = proxy "pirateship.home.theshire.io:8080";
       "pirateship-stats.theshire.io".extraConfig = proxy "pirateship.home.theshire.io:61208";
