@@ -71,6 +71,7 @@ in
       "trackers.theshire.io".extraConfig         = proxy "pirateship.home.theshire.io:9696";
       "lidarr.theshire.io".extraConfig           = proxy "pirateship.home.theshire.io:8686";
       "music.theshire.io".extraConfig            = proxy "pirateship.home.theshire.io:8686";
+      "listen.theshire.io".extraConfig           = proxy "pirateship.home.theshire.io:4533";
       "dl.theshire.io".extraConfig               = proxy "pirateship.home.theshire.io:9091";
       "nzb.theshire.io".extraConfig              = proxy "pirateship.home.theshire.io:8080";
       "pirateship-stats.theshire.io".extraConfig = proxy "pirateship.home.theshire.io:61208";

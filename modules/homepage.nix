@@ -52,6 +52,13 @@
               icon = "jellyfin.png";
             };
           }
+          {
+            Navidrome = {
+              href = "https://listen.theshire.io";
+              description = "Music server";
+              icon = "navidrome.png";
+            };
+          }
         ];
       }
       {
