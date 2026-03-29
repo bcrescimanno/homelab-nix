@@ -81,7 +81,7 @@ in
         (mkHttp { name = "Sonarr";      url = "https://tv.theshire.io";       group = "Media"; })
         (mkHttp { name = "Prowlarr";    url = "https://prowlarr.theshire.io"; group = "Media"; })
         (mkHttp { name = "Lidarr";      url = "https://music.theshire.io";    group = "Media"; })
-        (mkHttp { name = "Navidrome";   url = "https://listen.theshire.io";   group = "Media"; })
+        (mkHttp { name = "Music Assistant"; url = "https://listen.theshire.io"; group = "Media"; })
 
         # Observability
         (mkHttp { name = "Grafana";     url = "https://grafana.theshire.io";  group = "Observability"; })
