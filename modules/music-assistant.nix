@@ -18,11 +18,16 @@
 #   8097  — audio streams server (internal, used by players)
 #   7000  — AirPlay receiver (allows iOS/macOS to cast to MA)
 #   8927  — Sendspin
+#   1900  — SSDP/UPnP multicast discovery (UDP, required for DLNA)
 
 { config, pkgs, lib, ... }:
 
 {
-  services.music-assistant.enable = true;
+  services.music-assistant = {
+    enable = true;
+    providers = [ "sendspin" "dlna" ];
+  };
 
   networking.firewall.allowedTCPPorts = [ 8095 8097 7000 8927 ];
+  networking.firewall.allowedUDPPorts = [ 1900 ];
 }
