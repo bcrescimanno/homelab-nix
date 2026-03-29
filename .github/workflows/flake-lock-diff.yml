@@ -1,0 +1,108 @@
+name: Flake lock diff
+
+on:
+  pull_request:
+    paths:
+      - flake.lock
+
+jobs:
+  diff:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+
+      - uses: actions/checkout@v4
+        with:
+          path: pr
+
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            const oldLock = JSON.parse(fs.readFileSync('base/flake.lock', 'utf8'));
+            const newLock = JSON.parse(fs.readFileSync('pr/flake.lock', 'utf8'));
+
+            // Direct inputs (declared in flake.nix) vs transitive
+            const directInputs = new Set(Object.values(newLock.nodes.root?.inputs ?? {}));
+
+            const allInputs = Object.keys(newLock.nodes)
+              .filter(n => n !== 'root')
+              .sort();
+
+            const directRows = [];
+            const transitiveRows = [];
+
+            for (const name of allInputs) {
+              const oldLocked = oldLock.nodes[name]?.locked ?? {};
+              const newLocked = newLock.nodes[name]?.locked ?? {};
+              const oldRev = oldLocked.rev;
+              const newRev = newLocked.rev;
+
+              if (!oldRev || !newRev || oldRev === newRev) continue;
+
+              let compare = '';
+              if (newLocked.type === 'github' && newLocked.owner && newLocked.repo) {
+                const url = `https://github.com/${newLocked.owner}/${newLocked.repo}/compare/${oldRev}...${newRev}`;
+                compare = `[compare](${url})`;
+              }
+
+              const row = `| \`${name}\` | \`${oldRev.slice(0, 7)}\` | \`${newRev.slice(0, 7)}\` | ${compare} |`;
+              if (directInputs.has(name)) {
+                directRows.push(row);
+              } else {
+                transitiveRows.push(row);
+              }
+            }
+
+            const header = ['| Input | Old | New | Compare |', '|-------|-----|-----|---------|'];
+
+            let body;
+            if (directRows.length === 0 && transitiveRows.length === 0) {
+              body = '## Flake input updates\n\nNo input revisions changed.';
+            } else {
+              const sections = ['## Flake input updates', ''];
+              if (directRows.length > 0) {
+                sections.push('### Direct inputs', '', ...header, ...directRows, '');
+              }
+              if (transitiveRows.length > 0) {
+                sections.push(
+                  '<details><summary>Transitive inputs</summary>',
+                  '',
+                  ...header,
+                  ...transitiveRows,
+                  '',
+                  '</details>'
+                );
+              }
+              body = sections.join('\n');
+            }
+
+            const marker = '## Flake input updates';
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const existing = comments.find(c => c.body.startsWith(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
