@@ -112,6 +112,7 @@
           ./modules/ntfy.nix
           ./modules/gatus.nix
           ./modules/music-assistant.nix
+          ./modules/nixpkgs-watch.nix
         ];
         specialArgs = { inherit inputs nixos-raspberrypi r2AccountId; };
       };
