@@ -189,6 +189,12 @@
   # deploys. Default is 64MB; 256MB is comfortable on Pi 5 (4-8GB RAM).
   nix.settings.download-buffer-size = 256 * 1024 * 1024;
 
+  # zram swap: gives 4GB Pis breathing room during memory-intensive builds
+  # (e.g. kernel compilation). zram compresses pages in RAM — no disk I/O,
+  # ~2x memory multiplier typical. Without this, parallel `make` during kernel
+  # builds OOM-kills the process on 4GB Pis.
+  zramSwap.enable = true;
+
   # Periodically clean up old generations to free disk space.
   # Keeps the last 7 days of builds. You can always roll back within that window.
   nix.gc = {
