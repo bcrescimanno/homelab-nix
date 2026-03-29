@@ -19,6 +19,11 @@
 #   7000  — AirPlay receiver (allows iOS/macOS to cast to MA)
 #   8927  — Sendspin
 #   1900  — SSDP/UPnP multicast discovery (UDP, required for DLNA)
+#
+# Firewall note: eth0 is added to trustedInterfaces so that DLNA/UPnP works.
+# MA sends M-SEARCH to 239.255.255.250 (multicast), but multicast UDP doesn't
+# create conntrack entries, so the unicast SSDP replies from players appear as
+# NEW packets and get dropped. Trusting eth0 (the LAN interface) unblocks them.
 
 { config, pkgs, lib, ... }:
 
@@ -30,4 +35,12 @@
 
   networking.firewall.allowedTCPPorts = [ 8095 8097 7000 8927 ];
   networking.firewall.allowedUDPPorts = [ 1900 ];
+
+  # DLNA/UPnP discovery: MA sends M-SEARCH to the multicast group
+  # (239.255.255.250:1900), but multicast UDP doesn't create conntrack entries.
+  # WiiMs respond unicast back to MA's ephemeral source port, which the firewall
+  # sees as NEW (not ESTABLISHED/RELATED) and drops. Trusting eth0 (the LAN
+  # interface) lets those unicast SSDP responses — and subsequent UPnP HTTP
+  # control traffic — reach MA unblocked.
+  networking.firewall.trustedInterfaces = [ "eth0" ];
 }
