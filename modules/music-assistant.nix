@@ -30,7 +30,7 @@
 {
   services.music-assistant = {
     enable = true;
-    providers = [ "airplay" "sendspin" "dlna" ];
+    providers = [ "airplay" "chromecast" "sendspin" "dlna" ];
   };
 
   networking.firewall.allowedTCPPorts = [ 8095 8097 7000 8927 ];
