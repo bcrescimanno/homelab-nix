@@ -53,23 +53,18 @@ Rationale: mirkwood is the primary DNS server for the network. Deploying rivende
 
 ### Running the deployment
 
-Run the deployment using the `deploy` shell function:
-
-```bash
-deploy <hostname>
-```
-
-Where `<hostname>` is one of: `pirateship`, `rivendell`, `mirkwood`.
-
-**Important**: `deploy` is a zsh shell function and is only available in interactive zsh sessions — it will not be present in non-interactive shells or subprocesses. Always invoke deploy-rs using the exact command below, which is what the `deploy` function does internally:
+Run the deployment using the deploy script:
 
 ```bash
 # Deploy a specific host:
-nix run github:serokell/deploy-rs -- ~/code/homelab-nix#<hostname>
+~/code/homelab-nix/scripts/deploy <hostname>
 
-# Deploy all hosts:
-nix run github:serokell/deploy-rs -- ~/code/homelab-nix
+# Deploy all hosts (mirkwood first to prime the attic cache, then rivendell
+# and pirateship in parallel):
+~/code/homelab-nix/scripts/deploy
 ```
+
+Where `<hostname>` is one of: `pirateship`, `rivendell`, `mirkwood`.
 
 The flake is configured with `remoteBuild = true` — the build runs on the target Pi, not locally. This is required because the Pis are aarch64 and the local machine is x86_64. Do not add `--remote-build` or other flags; the flake already encodes the correct settings.
 

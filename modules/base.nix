@@ -27,6 +27,9 @@
     # Generate with `ssh-keygen -t ed25519` if you don't have one.
     openssh.authorizedKeys.keys = [
       "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBEjcQUPpiMkeQJFlkrERftafbT/CpjaeRzbHUv/0P2W"
+      # mirkwood deploy key — used by homelab-upgrade-orchestrator to trigger
+      # upgrades on rivendell and pirateship via SSH.
+      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAhkgX/cR02Vac+4OZRkfzFjW+3TxwmlIQ9Ge3cxfutn mirkwood-deploy"
     ];
   };
 
@@ -95,32 +98,43 @@
   # Automatic updates
   # ---------------------------------------------------------------------------
 
-  # NixOS can automatically apply security updates. This fetches the latest
-  # nixpkgs for your channel and rebuilds — but only if the build succeeds
-  # and the system can be rolled back. It will NOT auto-reboot by default.
-  system.autoUpgrade = {
-    enable = true;
-    # Point this at your flake in git so upgrades pull your actual config.
-    # Replace with your real repo URL.
-    flake = "github:bcrescimanno/homelab-nix#${config.networking.hostName}";
-    flags = [ "--refresh" ];
-    dates = "04:00"; # Run at 4am
-    randomizedDelaySec = "30m"; # Stagger if multiple devices run this
-  };
-
-  # Notify ntfy when auto-upgrade succeeds or fails.
-  # Uses the LAN port on rivendell directly — avoids NPM dependency.
-  systemd.services.nixos-upgrade = {
-    unitConfig.OnSuccess = "nixos-upgrade-notify-success.service";
-    unitConfig.OnFailure = "nixos-upgrade-notify-failure.service";
-  };
-
-  systemd.services.nixos-upgrade-notify-success = {
-    description = "Notify ntfy of successful NixOS upgrade";
+  # homelab-upgrade is a shared oneshot service present on all three hosts.
+  # On mirkwood it is triggered by homelab-upgrade-orchestrator (declared in
+  # hosts/mirkwood.nix), which builds first and primes the attic cache.
+  # On rivendell and pirateship it is triggered via SSH by that same
+  # orchestrator after mirkwood's own upgrade completes.
+  #
+  # All three hosts share the same service definition — each runs
+  # nixos-rebuild switch against its own hostname and sends its own ntfy
+  # notification on success or failure.
+  systemd.services.homelab-upgrade = {
+    description = "Homelab NixOS upgrade";
+    requires = [ "network-online.target" ];
+    after = [ "network-online.target" ];
     serviceConfig = {
       Type = "oneshot";
-      # --retry 5 / --retry-delay 15: handles ntfy container restarts and brief DNS
-      # unavailability (Blocky briefly restarts on the upgrading host).
+      # --refresh re-fetches the latest flake revision from GitHub.
+      ExecStart = toString (pkgs.writeShellScript "homelab-upgrade-run" ''
+        exec /run/current-system/sw/bin/nixos-rebuild switch \
+          --flake "github:bcrescimanno/homelab-nix#${config.networking.hostName}" \
+          --refresh
+      '');
+    };
+    unitConfig = {
+      OnSuccess = "homelab-upgrade-notify-success.service";
+      OnFailure = "homelab-upgrade-notify-failure.service";
+    };
+  };
+
+  # Notify ntfy when this host's upgrade succeeds or fails.
+  # Uses the LAN address of rivendell directly — avoids DNS dependency
+  # during the brief window when Blocky restarts on the upgrading host.
+  systemd.services.homelab-upgrade-notify-success = {
+    description = "Notify ntfy of successful homelab upgrade";
+    serviceConfig = {
+      Type = "oneshot";
+      # --retry 5 / --retry-delay 15: tolerates ntfy container restarts and
+      # brief DNS unavailability while Blocky restarts on the upgrading host.
       ExecStart = "${pkgs.curl}/bin/curl -s "
         + "--connect-timeout 5 --max-time 30 --retry 5 --retry-delay 15 --retry-all-errors "
         + "-H 'Title: NixOS Updated' "
@@ -131,8 +145,8 @@
     };
   };
 
-  systemd.services.nixos-upgrade-notify-failure = {
-    description = "Notify ntfy of failed NixOS upgrade";
+  systemd.services.homelab-upgrade-notify-failure = {
+    description = "Notify ntfy of failed homelab upgrade";
     serviceConfig = {
       Type = "oneshot";
       ExecStart = "${pkgs.curl}/bin/curl -s "
@@ -140,7 +154,7 @@
         + "-H 'Title: NixOS Upgrade FAILED' "
         + "-H 'Priority: 4' "
         + "-H 'Tags: rotating_light' "
-        + "-d '${config.networking.hostName} auto-upgrade failed — check journalctl -u nixos-upgrade' "
+        + "-d '${config.networking.hostName} upgrade failed — check journalctl -u homelab-upgrade' "
         + "http://10.0.1.9:2586/homelab";
     };
   };
