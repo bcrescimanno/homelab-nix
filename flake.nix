@@ -2,7 +2,7 @@
   description = "Homelab NixOS configurations";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     nixos-raspberrypi.url = "github:nvmd/nixos-raspberrypi/main";
     nixos-raspberrypi.inputs.nixpkgs.follows = "nixpkgs";
     disko.url = "github:nix-community/disko";
