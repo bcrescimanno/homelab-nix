@@ -17,7 +17,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FLAKE="${SCRIPT_DIR}/.."
 
 run_deploy() {
-  nix run github:serokell/deploy-rs -- "$FLAKE#$1"
+  nix run --option accept-flake-config true github:serokell/deploy-rs -- "$FLAKE#$1"
 }
 
 case "${1:-all}" in
