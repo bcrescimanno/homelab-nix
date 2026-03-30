@@ -51,6 +51,15 @@
 { config, pkgs, lib, ... }:
 
 {
+  # Declare atticd user/group explicitly so sops-nix can resolve the group
+  # for the attic_env secret. The atticd NixOS module uses systemd dynamic
+  # users internally, which don't appear in config.users.users.
+  users.users.atticd = {
+    isSystemUser = true;
+    group = "atticd";
+  };
+  users.groups.atticd = {};
+
   services.atticd = {
     enable = true;
 
@@ -75,7 +84,7 @@
 
       garbage-collection = {
         # Run GC every 12 hours to keep storage bounded.
-        interval = 43200;
+        interval = "12h";
         # Evict cache entries not accessed within 2 weeks.
         default-retention-period = "2 weeks";
       };
