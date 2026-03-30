@@ -142,7 +142,7 @@
         # Each host fetches shared derivations (kernel, etc.) from attic and
         # handles its own ntfy notification.
         _upgrade_remote() {
-          ssh \
+          ${pkgs.openssh}/bin/ssh \
             -i /run/secrets/deploy_key \
             -o BatchMode=yes \
             -o StrictHostKeyChecking=accept-new \
@@ -164,6 +164,13 @@
         exit $status
       '');
     };
+    # Prevent switch-to-configuration from stopping/restarting the orchestrator
+    # mid-run when mirkwood upgrades itself (step 1). Without this, the upgrade
+    # activation would kill the running orchestrator and restart it, causing a
+    # deadlock: the new orchestrator waits for homelab-upgrade to finish, while
+    # switch-to-configuration waits for the new orchestrator to finish.
+    stopIfChanged = false;
+    restartIfChanged = false;
     unitConfig = {
       OnFailure = "homelab-upgrade-orchestrator-notify-failure.service";
     };
