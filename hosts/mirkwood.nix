@@ -147,6 +147,8 @@
             -o BatchMode=yes \
             -o StrictHostKeyChecking=accept-new \
             -o ConnectTimeout=30 \
+            -o ServerAliveInterval=60 \
+            -o ServerAliveCountMax=10 \
             brian@"$1".home.theshire.io \
             "sudo systemctl start homelab-upgrade"
         }
