@@ -85,13 +85,21 @@
     secrets = {
       # SSH private key used by the upgrade orchestrator to trigger
       # homelab-upgrade.service on rivendell and pirateship via SSH.
-      # Generate with: ssh-keygen -t ed25519 -f homelab-deploy -C "mirkwood-deploy" -N ""
-      # Then: sops secrets/mirkwood.yaml  (add deploy_key: <base64 or raw key>)
-      # And add the public key to users.users.brian.openssh.authorizedKeys.keys in base.nix.
       deploy_key = {
         owner = "root";
         mode = "0600";
       };
+
+      # JWT RS256 signing key for atticd.
+      # See modules/attic.nix for generation instructions.
+      attic_env = {
+        owner = "atticd";
+      };
+
+      # JWT push token for the post-build hook — provisioned in phase 2
+      # after atticd is running and the nixpkgs cache is created.
+      # See step 5-6 in modules/attic.nix for setup instructions.
+      attic_push_token = {};
     };
   };
 
@@ -190,5 +198,8 @@
   # ---------------------------------------------------------------------------
   homelab.backup.paths = [
     "/var/lib/grafana"
+    # attic DB + storage — the storage dir can grow to several GB over time
+    # as packages accumulate (GC keeps entries from the last 2 weeks).
+    "/var/lib/atticd"
   ];
 }

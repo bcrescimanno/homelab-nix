@@ -22,9 +22,14 @@
   };
 
   nixConfig = {
-    extra-substituters = [ "https://nixos-raspberrypi.cachix.org" ];
+    extra-substituters = [
+      "https://nixos-raspberrypi.cachix.org"
+      "https://cache.theshire.io"
+    ];
     extra-trusted-public-keys = [
       "nixos-raspberrypi.cachix.org-1:4iMO9LXa8BqhU+Rpg6LQKiGa2lsNh/j2oiYLNOQ5sPI="
+      # TODO: add attic signing public key after first deployment (step 4 in modules/attic.nix)
+      # "cache.theshire.io-1:<base64-public-key>"
     ];
   };
 
@@ -124,6 +129,7 @@
           ./modules/homepage.nix
           ./modules/monitoring.nix
           ./modules/grafana.nix
+          ./modules/attic.nix
         ];
         specialArgs = { inherit inputs nixos-raspberrypi r2AccountId; };
       };

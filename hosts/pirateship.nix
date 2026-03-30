@@ -88,6 +88,9 @@
     secrets = {
       vpn_env = {};
       qbt_credentials = {};
+      # JWT push token for the attic post-build hook — provisioned in phase 2.
+      # See step 5-6 in modules/attic.nix for setup instructions.
+      attic_push_token = {};
     };
   };
 

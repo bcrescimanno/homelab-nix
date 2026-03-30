@@ -53,6 +53,7 @@ in
       "homepage.theshire.io".extraConfig       = proxy "mirkwood.home.theshire.io:3000";
       "grafana.theshire.io".extraConfig        = proxy "mirkwood.home.theshire.io:3001";
       "mirkwood-stats.theshire.io".extraConfig = proxy "mirkwood.home.theshire.io:61208";
+      "cache.theshire.io".extraConfig          = proxy "mirkwood.home.theshire.io:8080";
 
       # rivendell backends (Caddy runs here — use 127.0.0.1)
       "ha.theshire.io".extraConfig              = proxy "127.0.0.1:8123";

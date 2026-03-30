@@ -196,6 +196,36 @@
   # /run/current-system/configuration. Handy for debugging.
   nix.settings.experimental-features = [ "nix-command" "flakes" ];
 
+  # Attic binary cache — served from mirkwood as cache.theshire.io.
+  # The post-build hook pushes every built path to the cache so subsequent
+  # hosts (and future upgrades) can fetch instead of rebuilding.
+  #
+  # The hook exits gracefully if attic_push_token is not yet provisioned —
+  # this lets all hosts deploy before the cache is fully set up.
+  # Add the signing public key to extra-trusted-public-keys once the cache
+  # is created (see step 4 in modules/attic.nix).
+  nix.settings.extra-substituters = [ "https://cache.theshire.io" ];
+  # TODO: uncomment and fill in after cache creation (step 4 in modules/attic.nix)
+  # nix.settings.extra-trusted-public-keys = [ "cache.theshire.io-1:<key>" ];
+
+  nix.settings.post-build-hook = toString (pkgs.writeShellScript "attic-push" ''
+    set -eu
+    set -f  # Disable glob expansion on $OUT_PATHS
+
+    # No-op until the push token is provisioned (step 5-6 in modules/attic.nix).
+    [ -f /run/secrets/attic_push_token ] || exit 0
+    [ -n "$OUT_PATHS" ] || exit 0
+
+    ATTIC_TOKEN=$(cat /run/secrets/attic_push_token)
+    ATTIC_CFG=$(mktemp --suffix=.toml)
+    trap 'rm -f "$ATTIC_CFG"' EXIT
+
+    printf '[servers.homelab]\nendpoint = "https://cache.theshire.io/"\ntoken = "%s"\n' \
+      "$ATTIC_TOKEN" > "$ATTIC_CFG"
+
+    exec ${pkgs.attic-client}/bin/attic --config "$ATTIC_CFG" push homelab:nixpkgs $OUT_PATHS
+  '');
+
   # Allow the nix daemon to be used by wheel users for building.
   nix.settings.trusted-users = [ "root" "@wheel" ];
 

@@ -86,6 +86,18 @@ in
         # Observability
         (mkHttp { name = "Grafana";     url = "https://grafana.theshire.io";  group = "Observability"; })
         (mkHttp { name = "ntfy";        url = "https://ntfy.theshire.io";     group = "Observability"; })
+
+        # Nix binary cache — attic on mirkwood. Root returns 404 (no UI);
+        # condition accepts anything below 500 so a healthy-but-empty 404
+        # is treated as up.
+        {
+          name = "Nix Cache";
+          url = "https://cache.theshire.io/";
+          group = "Observability";
+          interval = "1m";
+          conditions = [ "[STATUS] < 500" ];
+          alerts = [{ type = "ntfy"; }];
+        }
       ];
     };
   };
