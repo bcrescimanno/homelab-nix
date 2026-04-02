@@ -36,6 +36,7 @@
     let
       # Not secret — appears in R2 endpoint URLs. Set this to your Cloudflare account ID.
       r2AccountId = "e10a637fb9ef49068ff75e106b7a7c19";
+      brianSshKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBEjcQUPpiMkeQJFlkrERftafbT/CpjaeRzbHUv/0P2W";
 
       piModules = extraModules: [
         ({ ... }: {
@@ -71,10 +72,12 @@
         }
         ./modules/base.nix
         ./modules/backup.nix
+        ./modules/remote-builder-client.nix
       ] ++ extraModules;
 
-      # deploy-rs activate helper for aarch64-linux (all three Pis)
-      activate = deploy-rs.lib.aarch64-linux.activate.nixos;
+      # deploy-rs activate helpers per architecture
+      activate    = deploy-rs.lib.aarch64-linux.activate.nixos;
+      activateX86 = deploy-rs.lib.x86_64-linux.activate.nixos;
 
       # Common deploy profile settings:
       # - sshUser: SSH as brian, sudo to root for activation
@@ -132,12 +135,69 @@
         ];
         specialArgs = { inherit inputs nixos-raspberrypi r2AccountId; };
       };
+      orthanc = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = [
+          disko.nixosModules.disko
+          sops-nix.nixosModules.sops
+          home-manager.nixosModules.home-manager
+          {
+            home-manager.useGlobalPkgs = true;
+            home-manager.useUserPackages = true;
+            home-manager.backupFileExtension = "backup";
+          }
+          ./modules/base.nix
+          ./modules/backup.nix
+          ./modules/monitoring.nix
+          ./modules/minecraft.nix
+          ./hosts/orthanc.nix
+        ];
+        specialArgs = { inherit inputs r2AccountId; };
+      };
+
+      # Custom installer ISO for orthanc (x86_64).
+      # Build: nix build .#nixosConfigurations.orthanc-installer.config.system.build.isoImage
+      # Write:  sudo dd if=result/iso/*.iso of=/dev/sdX bs=4M status=progress oflag=sync
+      orthanc-installer = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = [
+          "${nixpkgs}/nixos/modules/installer/cd-dvd/installation-cd-minimal.nix"
+          {
+            # SSH enabled with key auth so nixos-anywhere can connect remotely.
+            services.openssh = {
+              enable = true;
+              settings = {
+                PermitRootLogin = "yes";
+                PasswordAuthentication = false;
+              };
+            };
+
+            users.users.root.openssh.authorizedKeys.keys = [ brianSshKey ];
+
+            # Suppress the "what are you trying to do?" nag on first boot.
+            system.stateVersion = "25.11";
+          }
+        ];
+      };
     };
 
     deploy.nodes = {
       pirateship = piProfile "pirateship.home.theshire.io" self.nixosConfigurations.pirateship;
       rivendell  = piProfile "rivendell.home.theshire.io"  self.nixosConfigurations.rivendell;
       mirkwood   = piProfile "mirkwood.home.theshire.io"   self.nixosConfigurations.mirkwood;
+      orthanc = {
+        hostname = "orthanc.home.theshire.io";
+        profiles.system = {
+          sshUser       = "brian";
+          user          = "root";
+          # x86_64: build locally (same arch as deploy machine), push result
+          remoteBuild   = false;
+          magicRollback = true;
+          autoRollback  = true;
+          fastConnection = true;
+          path          = activateX86 self.nixosConfigurations.orthanc;
+        };
+      };
     };
 
   };

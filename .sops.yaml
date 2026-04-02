@@ -2,6 +2,7 @@ keys:
   - &pirateship age1pxxlxkd648efrgfdr5r3yfxnv5zmqqp57k7yrc06h7x3r367eqcqdel4uy
   - &rivendell age1v6fjpzeu847h3qj7wnxwhdvyjsl42hj2uams8r5p9tjj246v9a3q6va7s7
   - &mirkwood age1wgxr6uc3hh52kh7pfju9hyxdvrn45dcqs705zdplvzpduxknnp9s3085tg
+  - &orthanc age170fgg0z30vu0as5q08eawyy0n30k6lnswq7ufe9zutfzwftxfs5s0dsvvu
   - &liquidark age1tl6nxc9gl080x7vxy8l9mc5eps0sp33rwdlylt2uvhkuy6l6hvsqmcx0av
 
 creation_rules:
@@ -19,4 +20,9 @@ creation_rules:
     key_groups:
       - age:
         - *mirkwood
+        - *liquidark
+  - path_regex: secrets/orthanc.yaml$
+    key_groups:
+      - age:
+        - *orthanc
         - *liquidark
