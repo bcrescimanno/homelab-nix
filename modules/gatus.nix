@@ -64,6 +64,7 @@ in
         (mkTcp { name = "pirateship"; host = "pirateship"; group = "Infrastructure"; })
         (mkTcp { name = "rivendell";  host = "rivendell";  group = "Infrastructure"; })
         (mkTcp { name = "mirkwood";   host = "mirkwood";   group = "Infrastructure"; })
+        (mkTcp { name = "orthanc";    host = "orthanc";    group = "Infrastructure"; })
 
         # DNS — resolution checks (port 53 open is not enough; verify actual recursive resolution)
         (mkDns { name = "mirkwood DNS"; host = "mirkwood"; group = "Infrastructure"; })
@@ -82,6 +83,16 @@ in
         (mkHttp { name = "Prowlarr";    url = "https://prowlarr.theshire.io"; group = "Media"; })
         (mkHttp { name = "Lidarr";      url = "https://music.theshire.io";    group = "Media"; })
         (mkHttp { name = "Music Assistant"; url = "https://listen.theshire.io"; group = "Media"; })
+
+        # Gaming
+        {
+          name = "Minecraft";
+          url = "tcp://orthanc:25565";
+          group = "Gaming";
+          interval = "1m";
+          conditions = [ "[CONNECTED] == true" ];
+          alerts = [{ type = "ntfy"; }];
+        }
 
         # Observability
         (mkHttp { name = "Grafana";     url = "https://grafana.theshire.io";  group = "Observability"; })
