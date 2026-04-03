@@ -117,8 +117,7 @@
   };
 
   home-manager.users.brian = {
-    # Minimal stub until machines/orthanc.nix is added to the dotfiles repo.
-    home.stateVersion = "25.11";
+    imports = [ "${inputs.dotfiles}/machines/orthanc.nix" ];
   };
 
   # ---------------------------------------------------------------------------
