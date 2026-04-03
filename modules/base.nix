@@ -27,9 +27,6 @@
     # Generate with `ssh-keygen -t ed25519` if you don't have one.
     openssh.authorizedKeys.keys = [
       "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBEjcQUPpiMkeQJFlkrERftafbT/CpjaeRzbHUv/0P2W"
-      # mirkwood deploy key — used by homelab-upgrade-orchestrator to trigger
-      # upgrades on rivendell and pirateship via SSH.
-      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAhkgX/cR02Vac+4OZRkfzFjW+3TxwmlIQ9Ge3cxfutn mirkwood-deploy"
     ];
   };
 
@@ -123,6 +120,18 @@
     unitConfig = {
       OnSuccess = "homelab-upgrade-notify-success.service";
       OnFailure = "homelab-upgrade-notify-failure.service";
+    };
+  };
+
+  systemd.timers.homelab-upgrade = {
+    description = "Daily NixOS upgrade";
+    wantedBy = [ "timers.target" ];
+    timerConfig = {
+      OnCalendar = "04:00";
+      Persistent = true;
+      # Spread host upgrades randomly within a 15-minute window so they
+      # don't all hammer orthanc and attic at the exact same second.
+      RandomizedDelaySec = "15m";
     };
   };
 
