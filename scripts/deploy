@@ -2,11 +2,12 @@
 # scripts/deploy — homelab deploy helper
 #
 # Usage:
-#   deploy                    Deploy all hosts: mirkwood first (cache primer),
+#   deploy                    Deploy all Pi hosts: mirkwood first (cache primer),
 #                             then rivendell + pirateship in parallel
 #   deploy mirkwood           Deploy a single host
 #   deploy rivendell
 #   deploy pirateship
+#   deploy orthanc
 #
 # NOTE: For DNS changes (modules/dns.nix), always deploy rivendell before
 # mirkwood manually — this script does not enforce that ordering.
@@ -21,7 +22,7 @@ run_deploy() {
 }
 
 case "${1:-all}" in
-  mirkwood|rivendell|pirateship)
+  mirkwood|rivendell|pirateship|orthanc)
     run_deploy "$1"
     ;;
   all)
@@ -41,7 +42,7 @@ case "${1:-all}" in
     exit $status
     ;;
   *)
-    echo "Usage: deploy [mirkwood|rivendell|pirateship]" >&2
+    echo "Usage: deploy [mirkwood|rivendell|pirateship|orthanc]" >&2
     exit 1
     ;;
 esac

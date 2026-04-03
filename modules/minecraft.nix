@@ -68,7 +68,7 @@
   systemd.services.minecraft-server.serviceConfig = {
     CPUQuota = "400%"; # 4 of 16 logical cores (systemd: percent of one core)
     MemoryMax = "8G";
-    Restart = "on-failure";
+    Restart = lib.mkForce "on-failure";
   };
 
   networking.firewall = {

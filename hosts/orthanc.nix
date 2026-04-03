@@ -88,9 +88,10 @@
   users.users.nix-remote-builder = {
     isSystemUser = true;
     group = "nix-remote-builder";
+    shell = pkgs.bash;
     # Paste the PUBLIC half of the generated key pair here after first boot.
     openssh.authorizedKeys.keys = [
-      # "ssh-ed25519 AAAA... nix-remote-builder"
+      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICyHPFyzAf2wHEmlE82PwR0rG9phC70lZk3ErsfXuF6H nix-remote-builder"
     ];
   };
   users.groups.nix-remote-builder = {};

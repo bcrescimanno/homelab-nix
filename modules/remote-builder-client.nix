@@ -24,7 +24,16 @@
 { config, ... }:
 
 {
+  programs.ssh.knownHosts.orthanc = {
+    hostNames = [ "orthanc" "orthanc.home.theshire.io" ];
+    publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHkrkkYch/Q5K4XUn58yLX4lfg9s7qqZu9s/Y71uxaAA";
+  };
+
   nix.distributedBuilds = true;
+
+  # Never build locally on the Pi — always use orthanc or a substituter.
+  # Prevents large builds (kernels, etc.) from running on the Pi CPUs.
+  nix.settings.max-jobs = 0;
 
   nix.buildMachines = [{
     hostName = "orthanc.home.theshire.io";
