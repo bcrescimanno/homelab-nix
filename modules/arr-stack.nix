@@ -30,7 +30,19 @@ let
         quality_definition:
           type: movie
         quality_profiles:
+          - trash_id: fd161a61e3ab826d3a22d53f935696dd # Remux + WEB 2160p
+            reset_unmatched_scores:
+              enabled: true
           - trash_id: 64fb5f9858489bdac2af690e27c8f42f # UHD Bluray + WEB
+            reset_unmatched_scores:
+              enabled: true
+          - trash_id: e91c9adaca0231493f4af0d571b907f9 # [SQP] SQP-1 WEB (2160p)
+            reset_unmatched_scores:
+              enabled: true
+          - trash_id: 9ca12ea80aa55ef916e3751f4b874151 # Remux + WEB 1080p
+            reset_unmatched_scores:
+              enabled: true
+          - trash_id: d1d67249d3890e49bc12e275d989a7e9 # HD Bluray + WEB
             reset_unmatched_scores:
               enabled: true
   '';
