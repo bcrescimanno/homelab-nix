@@ -109,6 +109,7 @@
     "/var/lib/lidarr/config"
     "/var/lib/sabnzbd/config"
     "/var/lib/jellyfin/config"
+    "/var/lib/bazarr"
   ];
 
   # ---------------------------------------------------------------------------

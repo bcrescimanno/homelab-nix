@@ -80,6 +80,7 @@ in
       "dl.theshire.io".extraConfig               = proxy "pirateship.home.theshire.io:9091";
       "nzb.theshire.io".extraConfig              = proxy "pirateship.home.theshire.io:8080";
       "pirateship-stats.theshire.io".extraConfig = proxy "pirateship.home.theshire.io:61208";
+      "subtitles.theshire.io".extraConfig        = proxy "pirateship.home.theshire.io:6767";
 
       # Blocky DoH — plain HTTP locally, Caddy terminates TLS
       "doh.theshire.io".extraConfig = proxy "127.0.0.1:4000";

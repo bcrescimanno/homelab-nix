@@ -103,6 +103,7 @@
         modules = piModules [
           ./hosts/pirateship.nix
           ./modules/arr-stack.nix
+          ./modules/bazarr.nix
           ./modules/monitoring.nix
         ];
         specialArgs = { inherit inputs nixos-raspberrypi r2AccountId; };
