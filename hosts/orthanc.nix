@@ -162,6 +162,18 @@
     defaultSopsFile = ../secrets/orthanc.yaml;
     defaultSopsFormat = "yaml";
     age.keyFile = "/var/lib/sops-nix/key.txt";
+
+    secrets = {
+      # JWT RS256 signing key for atticd — same secret format as was on mirkwood.
+      # See modules/attic.nix for generation instructions.
+      attic_env = {
+        owner = "atticd";
+      };
+
+      # JWT push token for the post-build hook (orthanc is the builder, so it
+      # also pushes its own outputs to the cache).
+      attic_push_token = {};
+    };
   };
 
   home-manager.users.brian = {
@@ -175,5 +187,6 @@
   homelab.backup.paths = [
     "/var/lib/minecraft"
     "/var/lib/jellyfin"   # library database, config, plugins (not cache — auto-regenerates)
+    "/var/lib/atticd"     # attic DB + NAR storage (GC retains last 2 weeks of entries)
   ];
 }

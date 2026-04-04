@@ -214,7 +214,7 @@
   # Add the signing public key to extra-trusted-public-keys once the cache
   # is created (see step 4 in modules/attic.nix).
   nix.settings.extra-substituters = [ "https://cache.theshire.io/nixpkgs" ];
-  nix.settings.extra-trusted-public-keys = [ "nixpkgs:cvTaBAiyUokh+jj9TS6B6pjRaWl3XJpsENUk/Om+SKc=" ];
+  nix.settings.extra-trusted-public-keys = [ "nixpkgs:4zoHH4lPBJuJfPmH0/FjKl5yIYfG0yCZc39m492t+jM=" ];
 
   nix.settings.post-build-hook = toString (pkgs.writeShellScript "attic-push" ''
     set -f  # Disable glob expansion on $OUT_PATHS

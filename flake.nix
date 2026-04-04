@@ -28,7 +28,7 @@
     ];
     extra-trusted-public-keys = [
       "nixos-raspberrypi.cachix.org-1:4iMO9LXa8BqhU+Rpg6LQKiGa2lsNh/j2oiYLNOQ5sPI="
-      "nixpkgs:cvTaBAiyUokh+jj9TS6B6pjRaWl3XJpsENUk/Om+SKc="
+      "nixpkgs:4zoHH4lPBJuJfPmH0/FjKl5yIYfG0yCZc39m492t+jM="
     ];
   };
 
@@ -131,7 +131,6 @@
           ./modules/homepage.nix
           ./modules/monitoring.nix
           ./modules/grafana.nix
-          ./modules/attic.nix
         ];
         specialArgs = { inherit inputs nixos-raspberrypi r2AccountId; };
       };
@@ -151,6 +150,7 @@
           ./modules/monitoring.nix
           ./modules/minecraft.nix
           ./modules/jellyfin.nix
+          ./modules/attic.nix
           ./hosts/orthanc.nix
         ];
         specialArgs = { inherit inputs r2AccountId; };

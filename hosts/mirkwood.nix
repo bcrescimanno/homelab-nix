@@ -83,15 +83,8 @@
     age.keyFile = "/var/lib/sops-nix/key.txt";
 
     secrets = {
-      # JWT RS256 signing key for atticd.
-      # See modules/attic.nix for generation instructions.
-      attic_env = {
-        owner = "atticd";
-      };
-
-      # JWT push token for the post-build hook — provisioned in phase 2
-      # after atticd is running and the nixpkgs cache is created.
-      # See step 5-6 in modules/attic.nix for setup instructions.
+      # JWT push token for the attic post-build hook (mirkwood builds push to
+      # orthanc-hosted cache). See modules/attic.nix for setup instructions.
       attic_push_token = {};
     };
   };
@@ -105,8 +98,5 @@
   # ---------------------------------------------------------------------------
   homelab.backup.paths = [
     "/var/lib/grafana"
-    # attic DB + storage — the storage dir can grow to several GB over time
-    # as packages accumulate (GC keeps entries from the last 2 weeks).
-    "/var/lib/atticd"
   ];
 }

@@ -26,10 +26,6 @@ Shell function in dotfiles `home/common.nix`. deploy-rs config in `flake.nix` un
 
 ## Known Issues & Technical Debt
 
-### Cleanup
-
-- [ ] **home-manager nixpkgs overlay** (`flake.nix` piModules): patches `neovimUtils.makeVimPackageInfo` from dotfiles nixpkgs. Remove once `nixos-raspberrypi` updates its pin past Feb 2026. At that point: remove the overlay, restore `inputs.nixpkgs.follows = "nixpkgs"` to the home-manager input, drop the dotfiles-follows approach.
-
 ### Fragility
 
 - **Hardcoded IPs**: UDM Pro (`10.0.1.1`) in `dns.nix`, erebor (`10.0.1.22`) in `dns.nix`, mirkwood (`10.0.1.8`) in `homepage.nix` allowedHosts. Set DHCP reservations in UniFi for all Pi IPs + erebor 10G MAC to prevent drift.
@@ -69,7 +65,6 @@ erebor is online (10G SFP+ at 10.0.1.22, 1G ethernet at 10.0.1.21 for management
 
 - [ ] **Immich** — self-hosted photo library (Google Photos replacement). Mobile backup app, face recognition, albums, map. Host on pirateship; storage on erebor NFS. High value.
 - [ ] **Tailscale** — mesh VPN for remote homelab access without port forwarding. Add `modules/tailscale.nix` or extend `base.nix` for all hosts. Consider Headscale (self-hosted control plane) once comfortable.
-- [ ] **Navidrome** — lightweight Subsonic-compatible music server. Pairs with Lidarr, streams to Symfonium on iOS. Host on pirateship, music library on erebor.
 - [ ] **Paperless-ngx** — document management with OCR. Tax docs, warranties, receipts. Host on pirateship.
 - [ ] **SSO (Authelia)** — plan complete, implementation deferred. See `memory/sso-plan.md`.
 - [ ] **Node-RED** — visual flow editor for HA automations. More powerful than HA's built-in engine for complex logic. Container on rivendell alongside HA.

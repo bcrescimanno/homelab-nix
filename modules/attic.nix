@@ -1,13 +1,13 @@
 # modules/attic.nix — attic self-hosted Nix binary cache server
 #
-# Runs atticd on mirkwood at port 8080. Served publicly as cache.theshire.io
+# Runs atticd on orthanc at port 8080. Served publicly as cache.theshire.io
 # via Caddy on rivendell (TLS termination + reverse proxy).
 #
-# Storage: SQLite DB + NAR storage both on mirkwood's local NVMe at
-# /var/lib/atticd/. GC retains entries used within the last 2 weeks.
+# Storage: SQLite DB + NAR storage on orthanc's NVMe at /var/lib/atticd/.
+# GC retains entries used within the last 2 weeks.
 #
 # ---------------------------------------------------------------------------
-# Required sops secret (secrets/mirkwood.yaml):
+# Required sops secret (secrets/orthanc.yaml):
 #   attic_env  — env file with the JWT RS256 signing key:
 #                  ATTIC_SERVER_TOKEN_RS256_SECRET_BASE64=<base64-encoded-rsa-key>
 #                Generate:
@@ -17,8 +17,8 @@
 #
 # Post-deployment setup (one-time, after first deploy):
 #
-#   1. Get the root token from the journal on mirkwood:
-#        ssh brian@mirkwood journalctl -u atticd | grep -i token
+#   1. Get the root token from the journal on orthanc:
+#        ssh brian@orthanc journalctl -u atticd | grep -i token
 #
 #   2. Install attic-client locally and log in:
 #        nix run nixpkgs#attic-client -- login homelab https://cache.theshire.io <root-token>
@@ -31,14 +31,15 @@
 #        # Copy the "Cache Public Key" value
 #
 #   5. Generate a push token for the post-build hook:
-#        ssh brian@mirkwood sudo atticd-atticadm make-token \
+#        ssh brian@orthanc sudo atticd-atticadm make-token \
 #          --sub "post-build-hook" \
 #          --validity "100y" \
 #          --pull "nixpkgs" \
 #          --push "nixpkgs"
 #
-#   6. Add the push token to all three sops secrets files as attic_push_token,
+#   6. Add the push token to all host sops secrets files as attic_push_token,
 #      declare it in each host's sops.secrets block, and redeploy:
+#        SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops secrets/orthanc.yaml
 #        SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops secrets/mirkwood.yaml
 #        SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops secrets/rivendell.yaml
 #        SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops secrets/pirateship.yaml
@@ -95,6 +96,7 @@
     owner = "atticd";
   };
 
-  # Allow Caddy on rivendell to reach atticd, and Pis to push via post-build hook.
+  # Allow Caddy on rivendell to reach atticd (public proxy) and any hosts that
+  # push directly over LAN.
   networking.firewall.allowedTCPPorts = [ 8080 ];
 }
