@@ -64,9 +64,11 @@ in
       # rivendell backends (continued)
       "listen.theshire.io".extraConfig = proxy "127.0.0.1:8095";
 
+      # orthanc backends
+      "jellyfin.theshire.io".extraConfig         = proxy "orthanc.home.theshire.io:8096";
+      "media.theshire.io".extraConfig            = proxy "orthanc.home.theshire.io:8096";
+
       # pirateship backends
-      "jellyfin.theshire.io".extraConfig         = proxy "pirateship.home.theshire.io:8096";
-      "media.theshire.io".extraConfig            = proxy "pirateship.home.theshire.io:8096";
       "movies.theshire.io".extraConfig           = proxy "pirateship.home.theshire.io:7878";
       "radar.theshire.io".extraConfig            = proxy "pirateship.home.theshire.io:7878";
       "sonarr.theshire.io".extraConfig           = proxy "pirateship.home.theshire.io:8989";

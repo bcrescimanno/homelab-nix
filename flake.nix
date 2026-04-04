@@ -150,6 +150,7 @@
           ./modules/backup.nix
           ./modules/monitoring.nix
           ./modules/minecraft.nix
+          ./modules/jellyfin.nix
           ./hosts/orthanc.nix
         ];
         specialArgs = { inherit inputs r2AccountId; };

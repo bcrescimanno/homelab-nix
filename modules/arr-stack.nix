@@ -202,24 +202,6 @@ in
       ];
     };
 
-    jellyfin = {
-      image = "ghcr.io/linuxserver/jellyfin:latest@sha256:200e4b4b02bb26725e38b90160c8b648bb9f6a69f62b64cb38798d4e8d85e8b7";
-      autoStart = true;
-      environment = {
-        PUID = "1000";
-        PGID = "1000";
-        TZ = "America/Los_Angeles";
-      };
-      ports = [
-        "8096:8096"
-      ];
-      volumes = [
-        "/var/lib/jellyfin/config:/config"
-        "/var/lib/media/movies:/movies"
-        "/var/lib/media/tv:/tv"
-        "/var/lib/media/music:/music"
-      ];
-    };
   };
 
   # Seed qBittorrent.conf before the container starts, then wait for gluetun's
@@ -481,7 +463,6 @@ PYEOF
     "d /var/lib/lidarr/config 0755 brian users -"
     "d /var/lib/recyclarr/config 0755 brian users -"
     "d /var/lib/media/music 0755 brian users -"
-    "d /var/lib/jellyfin/config 0755 brian users -"
     "d /var/lib/sabnzbd/config 0755 brian users -"
     "d /var/lib/media/usenet 0755 brian users -"
     "d /var/lib/media/usenet/incomplete 0755 brian users -"

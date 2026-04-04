@@ -94,6 +94,25 @@
   networking.useDHCP = lib.mkDefault true;
 
   # ---------------------------------------------------------------------------
+  # NFS client support
+  # ---------------------------------------------------------------------------
+  boot.supportedFilesystems = [ "nfs" ];
+  services.rpcbind.enable = true;
+
+  # ---------------------------------------------------------------------------
+  # NAS mounts (erebor — UniFi UNAS Pro 4, RAID 6 ~24TB)
+  #
+  # Same media share as pirateship. _netdev + x-systemd.automount means systemd
+  # waits for network and mounts on first access — boot doesn't hang if erebor
+  # is temporarily unavailable.
+  # ---------------------------------------------------------------------------
+  fileSystems."/var/lib/media" = {
+    device = "erebor.theshire.io:/var/nfs/shared/media";
+    fsType = "nfs";
+    options = [ "_netdev" "nofail" "x-systemd.automount" "noauto" ];
+  };
+
+  # ---------------------------------------------------------------------------
   # Nix remote builder — server side
   # ---------------------------------------------------------------------------
   #
@@ -155,5 +174,6 @@
 
   homelab.backup.paths = [
     "/var/lib/minecraft"
+    "/var/lib/jellyfin"   # library database, config, plugins (not cache — auto-regenerates)
   ];
 }
