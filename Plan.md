@@ -77,6 +77,127 @@ erebor is online (10G SFP+ at 10.0.1.22, 1G ethernet at 10.0.1.21 for management
 
 ---
 
+## Orthanc: Power Optimization + Service Migration
+
+The goal is two-fold: minimize Orthanc's idle power draw (it's already always-on), and
+right-size the service placement across the fleet — moving workloads that benefit from
+Orthanc's x86_64/5950X/RX550 hardware away from the Pis.
+
+**Power context**: Orthanc at idle draws ~40–65W (CPU + mobo + RAM + NVMe). Three Pis
+together draw ~15–25W. With tuning, Orthanc's idle can drop to the low end (~40–50W).
+Services that would hammer a Pi at 100% CPU run at <10% on the 5950X, so the overall
+system power under load is often *lower* with the migration than without.
+
+**GPU context**: RX 550 (Polaris, 2GB VRAM) supports VAAPI H.264 + HEVC decode/encode.
+Tone mapping (HDR→SDR) falls back to CPU on Polaris (ROCm dropped GFX8). On a 5950X
+this is a minor CPU cost — decode and encode still run in hardware. Mesa `rusticl` OpenCL
+may enable GPU tone mapping — worth testing after Jellyfin is running.
+
+### Phase 1 — Power optimization [ ]
+
+**Status**: Config written (`hosts/orthanc.nix`), needs deploy.
+
+Changes applied:
+- `boot.kernelParams = [ "amd_pstate=active" ]` — enables AMD P-State EPP driver (replaces acpi-cpufreq)
+- `hardware.cpu.amd.updateMicrocode = true` — apply latest CPU microcode on boot
+- `services.auto-cpufreq` — powersave governor + `balance_power` EPP + `turbo = auto`
+
+Deploy:
+```bash
+deploy orthanc
+```
+
+After deploying, verify with:
+```bash
+ssh brian@orthanc cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_driver
+# should output: amd-pstate-epp
+ssh brian@orthanc cat /sys/devices/system/cpu/cpu0/cpufreq/energy_performance_preference
+# should output: balance_power
+```
+
+If idle power is still high, consider setting `turbo = "never"` — the 5950X boost clocks
+draw significant power even for brief bursts; disabling boost eliminates those spikes at
+the cost of burst performance (remote builds will be slower).
+
+### Phase 2 — Jellyfin → Orthanc [ ]
+
+**Depends on**: Phase 1 deployed and stable.
+
+Jellyfin is the highest-value migration. Pi 5 has no working HW transcode path in Jellyfin;
+the 5950X + RX 550 gives full VAAPI hardware H.264 + HEVC encode/decode.
+
+Steps:
+1. Add erebor NFS mount to `hosts/orthanc.nix` (same `fileSystems` block as pirateship, just `/var/lib/media`)
+2. Create `modules/jellyfin.nix` (or add inline to `hosts/orthanc.nix`):
+   - `services.jellyfin.enable = true`
+   - `users.users.jellyfin.extraGroups = [ "video" "render" ]`
+   - `hardware.graphics.enable = true` + `extraPackages = [ libva-mesa-driver mesa ]`
+3. Add Caddy vhost on rivendell pointing jellyfin.theshire.io → `orthanc.local:8096`
+4. Deploy orthanc, then rivendell
+5. In Jellyfin admin UI: enable VAAPI, set render device to `/dev/dri/renderD128`
+6. Test HDR tone mapping — if broken, it falls back to CPU automatically (acceptable)
+7. Optionally test Mesa `rusticl` OpenCL for GPU tone mapping: add `mesa` with OpenCL support
+8. Disable jellyfin in `modules/arr-stack.nix` (pirateship) after verifying orthanc instance
+
+Note: Jellyfin config/metadata lives at `/var/lib/jellyfin` — a fresh Jellyfin on orthanc will
+re-scan the library. Metadata can be migrated manually if desired (copy `/var/lib/jellyfin`
+from pirateship → orthanc via rsync before first start) but a clean scan is also fine.
+
+### Phase 3 — Arr stack + SABnzbd + qBittorrent + gluetun → Orthanc [ ]
+
+**Depends on**: Phase 2 complete and stable. erebor NFS mount already in place from Phase 2.
+
+The VPN kill switch (gluetun network namespace) and container pattern from `arr-stack.nix`
+work identically on x86_64. This is a near-copy of the existing module.
+
+Steps:
+1. Extract `modules/arr-stack.nix` logic into a form that can target orthanc — or simply
+   import the module from `hosts/orthanc.nix` (it's already OS-agnostic)
+2. Copy sops secrets: `vpn_env`, `qbt_credentials`, `recyclarr_env` → `secrets/orthanc.yaml`
+3. Add those secrets to the orthanc sops config in `hosts/orthanc.nix`
+4. Deploy orthanc; verify gluetun comes up, confirm tun0 IP, verify qBittorrent preStart
+5. Update Caddy vhosts on rivendell: dl/nzb/movies/tv/prowlarr/music now point to orthanc instead of pirateship
+6. Switch arr apps' download clients from Transmission → qBittorrent (localhost:9091) — this was already a pending task
+7. Disable arr-stack on pirateship after confirming orthanc stack is healthy
+
+### Phase 4 — Retire pirateship [ ]
+
+**Depends on**: Phases 2 and 3 complete and stable (Jellyfin + arr stack fully running on orthanc).
+
+After migration, pirateship runs nothing except Glances + backups — not worth keeping on.
+
+Steps:
+1. Remove pirateship from `flake.nix` deploy nodes (or mark as disabled)
+2. Remove pirateship-related Caddy vhosts from `caddy.nix`
+3. Remove pirateship-stats Caddy vhost and Glances config
+4. Remove pirateship from Gatus monitors in `gatus.nix`
+5. Remove pirateship from Prometheus scrape targets in `grafana.nix`
+6. Remove pirateship from Homepage widgets in `homepage.nix`
+7. Update `CLAUDE.md` host table
+8. Physically unplug; repurpose Pi 5 for experiments or keep as a spare
+
+Net change: ~5–8W saved (one Pi off), two fewer hosts to maintain.
+
+Note: any future services that were targeted at pirateship (Immich, Paperless-ngx, Navidrome)
+should now target orthanc instead.
+
+### Phase 5 — Attic binary cache → Orthanc [ ]
+
+**Depends on**: Phase 4 complete. Lower priority — mirkwood handles Attic fine today.
+
+Orthanc is already the remote builder. Co-locating Attic here means post-build hooks push to
+localhost (fast) instead of over the network (slow). Also frees mirkwood's NVMe for other use.
+
+Steps:
+1. Migrate Attic NVMe data: rsync `/var/lib/attic` from mirkwood → orthanc (with atticd stopped on both)
+2. Move `modules/attic.nix` import from `hosts/mirkwood.nix` → `hosts/orthanc.nix`
+3. Update Caddy on rivendell: `cache.theshire.io` → orthanc instead of mirkwood
+4. Update post-build hook in `modules/base.nix` — URL stays the same (`cache.theshire.io`),
+   no change needed if DNS resolves through Caddy
+5. Verify cache hits after a clean build on any Pi
+
+---
+
 ## Personal Machines — NixOS Migration
 
 ### Hardware

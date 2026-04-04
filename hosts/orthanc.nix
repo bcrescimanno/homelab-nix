@@ -29,6 +29,35 @@
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
 
+  # amd_pstate=active enables the EPP (Energy Performance Preference) driver,
+  # which replaces acpi-cpufreq and gives the CPU hardware-level power hints.
+  # Required for auto-cpufreq's EPP mode to work on Zen 3.
+  boot.kernelParams = [ "amd_pstate=active" ];
+
+  # AMD microcode updates — apply latest CPU microcode on boot.
+  hardware.cpu.amd.updateMicrocode = true;
+
+  # ---------------------------------------------------------------------------
+  # Power management
+  # ---------------------------------------------------------------------------
+  #
+  # auto-cpufreq dynamically scales the CPU governor and EPP based on system
+  # load. On a plugged-in desktop with bursty workloads (remote builds, game
+  # server), "powersave" governor + "balance_power" EPP idles efficiently while
+  # still boosting for short bursts. "turbo = auto" lets the CPU boost when
+  # needed but doesn't hold boost clocks during idle periods.
+
+  services.auto-cpufreq = {
+    enable = true;
+    settings = {
+      charger = {
+        governor = "powersave";
+        energy_performance_preference = "balance_power";
+        turbo = "auto";
+      };
+    };
+  };
+
   disko.devices = {
     disk.main = {
       type = "disk";
