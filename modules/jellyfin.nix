@@ -53,6 +53,13 @@
 
   systemd.services.jellyfin.environment = {
     XDG_CACHE_HOME = "/var/cache/jellyfin";
+    # ASP.NET Core DataProtection needs HOME to persist its signing keys across
+    # restarts. Without this, keys are ephemeral (in-memory only) and any
+    # DataProtection-protected tokens/cookies become invalid on every restart.
+    # The linuxserver container set HOME=/config (mapped to /var/lib/jellyfin),
+    # which is why it didn't have this problem. Keys land in:
+    #   /var/lib/jellyfin/.aspnet/DataProtection-Keys/
+    HOME = "/var/lib/jellyfin";
   };
 
   # /dev/dri/* access for VAAPI render nodes
