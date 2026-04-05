@@ -21,9 +21,13 @@
 #   3. Add private key to secrets/{pirateship,rivendell,mirkwood}.yaml
 #   4. Deploy orthanc first, then redeploy Pi hosts
 
-{ config, ... }:
+{ config, pkgs, ... }:
 
 {
+  # nix-daemon runs in a restricted systemd PATH and cannot find ssh on its own.
+  # Without this, remote builder connections fail with "Could not find executable 'ssh'".
+  systemd.services.nix-daemon.path = [ pkgs.openssh ];
+
   programs.ssh.knownHosts.orthanc = {
     hostNames = [ "orthanc" "orthanc.home.theshire.io" ];
     publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHkrkkYch/Q5K4XUn58yLX4lfg9s7qqZu9s/Y71uxaAA";
