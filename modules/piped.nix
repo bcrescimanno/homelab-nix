@@ -29,6 +29,9 @@ let
     HTTP_WORKERS=2
     PROXY_PART=https://piped-proxy.theshire.io
     FRONTEND_URL=https://piped.theshire.io
+    # Required for PubSubHubbub: backend constructs its callback URL from this.
+    # Without it, subscriptions sent to YouTube's hub use localhost and are rejected.
+    PUBSUB_URL=https://piped-api.theshire.io
     COMPROMISED_PASSWORD_CHECK=false
     DISABLE_REGISTRATION=false
     hibernate.connection.url=jdbc:postgresql://piped-postgres:5432/piped
@@ -102,7 +105,11 @@ in
       volumes = [
         "${backendConfig}:/app/config.properties:ro"
       ];
-      extraOptions = [ "--network=piped" ];
+      # Pin to 1 CPU core so availableProcessors()=1 → PubSub thread pool size=1.
+      # Without this, orthanc's 32-thread pool fires all subscription requests
+      # simultaneously, triggering YouTube's hub throttle (429) on every attempt.
+      # Sequential requests at ~200ms each clear the throttle easily.
+      extraOptions = [ "--network=piped" "--cpuset-cpus=0" ];
       ports = [ "8180:8080" ];
     };
 

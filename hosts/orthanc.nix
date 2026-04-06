@@ -173,6 +173,42 @@
       # JWT push token for the post-build hook (orthanc is the builder, so it
       # also pushes its own outputs to the cache).
       attic_push_token = {};
+
+      # Cloudflare Tunnel credentials for piped-backend WebSub (PubSubHubbub).
+      # JSON file downloaded from Cloudflare Zero Trust → Networks → Tunnels.
+      # Allows YouTube's hub to POST subscription notifications to piped-api.theshire.io
+      # without requiring any inbound ports on the UDM Pro.
+      cloudflared_piped_credentials = {
+        owner = "cloudflared";
+      };
+    };
+  };
+
+  # ---------------------------------------------------------------------------
+  # Cloudflare Tunnel — piped-backend WebSub ingress
+  # ---------------------------------------------------------------------------
+  #
+  # Allows YouTube's PubSubHubbub hub to reach piped-backend at
+  # piped-api.theshire.io without opening any inbound ports on the UDM Pro.
+  # cloudflared opens an outbound connection to Cloudflare's edge; the hub
+  # POSTs new video notifications inbound through that tunnel.
+  #
+  # DNS: after first deploy, create a CNAME in the Cloudflare dashboard:
+  #   piped-api  →  <tunnel-id>.cfargotunnel.com  (Proxied)
+  # This makes piped-api.theshire.io publicly reachable via Cloudflare.
+  # Internal clients continue to hit Caddy on rivendell via split-horizon DNS.
+
+  # cloudflared uses DynamicUser=true internally, but sops-nix resolves group
+  # ownership at eval time — it needs static user/group declarations to exist.
+  users.users.cloudflared = { isSystemUser = true; group = "cloudflared"; };
+  users.groups.cloudflared = {};
+
+  services.cloudflared = {
+    enable = true;
+    tunnels."piped-api" = {
+      credentialsFile = config.sops.secrets.cloudflared_piped_credentials.path;
+      ingress."piped-api.theshire.io" = "http://localhost:8180";
+      default = "http_status:404";
     };
   };
 
