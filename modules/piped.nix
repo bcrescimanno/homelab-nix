@@ -83,7 +83,7 @@ in
 
   virtualisation.oci-containers.containers = {
     piped-postgres = {
-      image = "docker.io/postgres:16-alpine";
+      image = "docker.io/postgres:16-alpine@sha256:20edbde7749f822887a1a022ad526fde0a47d6b2be9a8364433605cf65099416";
       autoStart = true;
       environment = {
         POSTGRES_DB = "piped";
@@ -97,7 +97,7 @@ in
     };
 
     piped-backend = {
-      image = "1337kavin/piped:latest";
+      image = "1337kavin/piped:latest@sha256:b0462b15a951061878d13abf3e3706b60a33c1941cb28bb48f86227d0fbeb730";
       autoStart = true;
       volumes = [
         "${backendConfig}:/app/config.properties:ro"
@@ -107,7 +107,7 @@ in
     };
 
     piped-frontend = {
-      image = "1337kavin/piped-frontend:latest";
+      image = "1337kavin/piped-frontend:latest@sha256:94fa98556a92ca50e96d1f59f8d1578ee12af7a0e4a0edb66d662eb00e5c2362";
       autoStart = true;
       # The image entrypoint generates config.json from BACKEND_HOSTNAME at startup.
       environment = {
@@ -121,7 +121,7 @@ in
     };
 
     piped-proxy = {
-      image = "1337kavin/piped-proxy:latest";
+      image = "1337kavin/piped-proxy:latest@sha256:d68333be011dc2faa12eb8f1dd91c5a0fdbab78d2a15759c4b3abe430ae42fbc";
       autoStart = true;
       extraOptions = [ "--network=piped" ];
       ports = [ "8182:8080" ];
