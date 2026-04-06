@@ -67,6 +67,9 @@ in
       # orthanc backends
       "jellyfin.theshire.io".extraConfig         = proxy "orthanc.home.theshire.io:8096";
       "media.theshire.io".extraConfig            = proxy "orthanc.home.theshire.io:8096";
+      "piped.theshire.io".extraConfig            = proxy "orthanc.home.theshire.io:8181";
+      "piped-api.theshire.io".extraConfig        = proxy "orthanc.home.theshire.io:8180";
+      "piped-proxy.theshire.io".extraConfig      = proxy "orthanc.home.theshire.io:8182";
 
       # pirateship backends
       "movies.theshire.io".extraConfig           = proxy "pirateship.home.theshire.io:7878";
