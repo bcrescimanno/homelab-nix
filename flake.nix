@@ -105,6 +105,7 @@
           ./modules/arr-stack.nix
           ./modules/bazarr.nix
           ./modules/monitoring.nix
+          ./modules/navidrome.nix
         ];
         specialArgs = { inherit inputs nixos-raspberrypi r2AccountId; };
       };

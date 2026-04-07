@@ -110,6 +110,7 @@
     "/var/lib/sabnzbd/config"
     "/var/lib/jellyfin/config"
     "/var/lib/bazarr"
+    "/var/lib/navidrome"   # music library DB + user accounts/playlists
   ];
 
   # ---------------------------------------------------------------------------

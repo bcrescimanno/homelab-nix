@@ -72,6 +72,7 @@ in
       "piped-proxy.theshire.io".extraConfig      = proxy "orthanc.home.theshire.io:8182";
 
       # pirateship backends
+      "stream.theshire.io".extraConfig           = proxy "pirateship.home.theshire.io:4533";
       "movies.theshire.io".extraConfig           = proxy "pirateship.home.theshire.io:7878";
       "radar.theshire.io".extraConfig            = proxy "pirateship.home.theshire.io:7878";
       "sonarr.theshire.io".extraConfig           = proxy "pirateship.home.theshire.io:8989";

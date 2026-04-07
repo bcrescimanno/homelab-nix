@@ -208,6 +208,7 @@
     tunnels."piped-api" = {
       credentialsFile = config.sops.secrets.cloudflared_piped_credentials.path;
       ingress."piped-api.theshire.io" = "http://localhost:8180";
+      ingress."stream.theshire.io"    = "http://pirateship.home.theshire.io:4533";
       default = "http_status:404";
     };
   };

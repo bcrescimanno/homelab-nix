@@ -1,11 +1,14 @@
 # modules/navidrome.nix — Navidrome music streaming server
 #
-# Subsonic-compatible music server for the FLAC library on erebor.
-# Proxied via Caddy at listen.theshire.io.
+# OpenSubsonic-compatible music server for remote/mobile access.
+# Music library is read from the erebor NFS mount at /var/lib/media/music.
 #
-# On first access, navigate to listen.theshire.io to create the admin account.
-# The Subsonic API (for WiiM devices, Symfonium, etc.) is available at
-# listen.theshire.io/rest — configure clients with this base URL.
+# Internal access: stream.theshire.io → Caddy (rivendell) → pirateship:4533
+# External access: stream.theshire.io → Cloudflare Tunnel (orthanc) → pirateship:4533
+#
+# After first deploy, create an admin account at http://pirateship:4533 —
+# Navidrome locks new registrations after the first user is created.
+# iOS client: Amperfy (App Store, free) — configure with stream.theshire.io.
 #
 # Port: 4533
 
