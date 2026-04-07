@@ -383,9 +383,14 @@ PYEOF
     '';
   };
 
-  # Sync the gluetun-forwarded port into qBittorrent every 5 minutes.
-  # Without this, qBittorrent announces the wrong port to trackers and shows
-  # "Firewalled" status, which severely limits peer connectivity.
+  # Sync the gluetun-forwarded port into qBittorrent immediately when it changes.
+  #
+  # Uses inotifywait to watch /var/lib/gluetun/tmp/ for writes to forwarded_port,
+  # so a port change after VPN reconnect is picked up within ~1 second instead of
+  # waiting for the next 5-minute polling cycle.  A 5-minute timeout on inotifywait
+  # also acts as a periodic heartbeat — if qBittorrent's port was reset externally
+  # (e.g. after a container restart) it will be corrected without waiting for gluetun
+  # to write a new port.
   #
   # Credentials (QBT_USERNAME / QBT_PASSWORD) come from the qbt_credentials
   # sops secret — the same secret the preStart uses to generate the WebUI
@@ -398,55 +403,170 @@ PYEOF
     serviceConfig = {
       Type = "simple";
       Restart = "always";
-      RestartSec = "30s";
+      RestartSec = "10s";
       EnvironmentFile = "/run/secrets/qbt_credentials";
     };
 
     script = ''
       PORT_FILE="/var/lib/gluetun/tmp/forwarded_port"
-      COOKIE_FILE=$(${pkgs.coreutils}/bin/mktemp)
+      PORT_DIR="/var/lib/gluetun/tmp"
 
-      trap "${pkgs.coreutils}/bin/rm -f $COOKIE_FILE" EXIT
+      # Alert after this many consecutive login failures (~15 min at 5-min intervals)
+      LOGIN_FAIL_THRESHOLD=3
+      login_fail_count=0
 
-      if [ ! -f "$PORT_FILE" ]; then
-        echo "Port file not found yet, waiting..."
-        sleep 30
-        exit 0
+      sync_port() {
+        local PORT COOKIE_FILE LOGIN
+        PORT=$(cat "$PORT_FILE" 2>/dev/null | tr -d '[:space:]')
+        if [ -z "$PORT" ] || [ "$PORT" = "0" ]; then
+          echo "Port file empty — gluetun port forwarding not yet established"
+          return 0
+        fi
+
+        echo "Syncing forwarded port $PORT to qBittorrent..."
+        COOKIE_FILE=$(${pkgs.coreutils}/bin/mktemp)
+
+        LOGIN=$(${pkgs.curl}/bin/curl -sf --max-time 15 \
+          -c "$COOKIE_FILE" \
+          --data "username=$QBT_USERNAME&password=$QBT_PASSWORD" \
+          http://localhost:9091/api/v2/auth/login 2>&1) || LOGIN="curl_error"
+
+        if [ "$LOGIN" != "Ok." ]; then
+          ${pkgs.coreutils}/bin/rm -f "$COOKIE_FILE"
+          echo "qBittorrent login failed: $LOGIN"
+          login_fail_count=$(( login_fail_count + 1 ))
+          if [ "$login_fail_count" -ge "$LOGIN_FAIL_THRESHOLD" ]; then
+            echo "WARN: qBittorrent WebUI unreachable for $login_fail_count consecutive attempts — alerting"
+            ${pkgs.curl}/bin/curl -sf --max-time 5 \
+              -d "qBittorrent WebUI unreachable — port sync failing (''${login_fail_count} consecutive login failures)" \
+              http://rivendell:2586/homelab || true
+            login_fail_count=0  # reset so alert fires again after another threshold if still broken
+          fi
+          return 1
+        fi
+
+        login_fail_count=0  # reset on successful login
+
+        ${pkgs.curl}/bin/curl -sf \
+          -b "$COOKIE_FILE" \
+          --data "json={\"listen_port\":$PORT}" \
+          http://localhost:9091/api/v2/app/setPreferences \
+          && echo "Updated qBittorrent listening port to $PORT" \
+          || echo "Warning: setPreferences API call failed"
+
+        ${pkgs.curl}/bin/curl -sf \
+          -b "$COOKIE_FILE" \
+          http://localhost:9091/api/v2/auth/logout || true
+
+        ${pkgs.coreutils}/bin/rm -f "$COOKIE_FILE"
+      }
+
+      # Sync once at startup (covers the case where the service restarts
+      # after a valid port is already in the file)
+      sync_port
+
+      while true; do
+        # Block until forwarded_port is written (or 5-minute timeout for
+        # periodic verification in case qBittorrent's port was reset externally)
+        ${pkgs.inotify-tools}/bin/inotifywait -q -t 300 \
+          -e close_write,create,moved_to \
+          --include 'forwarded_port' \
+          "$PORT_DIR" 2>/dev/null
+        STATUS=$?
+
+        if [ "$STATUS" -ge 2 ]; then
+          # inotifywait error — directory may not exist yet, back off
+          echo "inotifywait error (status $STATUS), sleeping 30s before retry..."
+          sleep 30
+          continue
+        fi
+
+        # status 0 = file event; status 1 = 5-minute timeout — sync either way
+        sleep 1  # brief debounce in case gluetun writes in multiple steps
+        sync_port || echo "Port sync failed, will retry on next event or timeout"
+      done
+    '';
+  };
+
+  # Watchdog that auto-restarts gluetun if port forwarding stays broken.
+  #
+  # When gluetun's NAT-PMP renewal fails it clears forwarded_port and logs
+  # "port forwarding starting" — but it can silently get stuck there for hours
+  # without establishing a new port.  This service detects that condition and
+  # kicks gluetun to reconnect to a fresh server.
+  #
+  # Thresholds:
+  #   STUCK_THRESHOLD   — 15 min without a valid port → restart gluetun
+  #   COOLDOWN          — 30 min minimum between auto-restarts (avoid storms)
+  #
+  # A ntfy notification is sent to rivendell on every auto-restart so the
+  # event is visible even if it self-heals without intervention.
+  systemd.services.gluetun-watchdog = {
+    description = "Restart gluetun if port forwarding stays broken";
+    after = [ "podman-gluetun.service" ];
+    wantedBy = [ "multi-user.target" ];
+
+    serviceConfig = {
+      Type = "simple";
+      Restart = "always";
+      RestartSec = "10s";
+    };
+
+    script = ''
+      PORT_FILE="/var/lib/gluetun/tmp/forwarded_port"
+      PORT_DIR="/var/lib/gluetun/tmp"
+      STUCK_THRESHOLD=900   # 15 minutes in seconds
+      COOLDOWN=1800          # 30 minutes in seconds
+
+      last_valid=$(${pkgs.coreutils}/bin/date +%s)
+      last_restart=0
+
+      check_port() {
+        local PORT
+        PORT=$(cat "$PORT_FILE" 2>/dev/null | tr -d '[:space:]')
+        [ -n "$PORT" ] && [ "$PORT" != "0" ] && echo "$PORT"
+      }
+
+      # If we restart with a valid port already in the file, mark now as valid
+      if check_port > /dev/null; then
+        last_valid=$(${pkgs.coreutils}/bin/date +%s)
       fi
 
-      PORT=$(cat "$PORT_FILE" | tr -d '[:space:]')
+      while true; do
+        # Wait for any write to forwarded_port (or 60s timeout for periodic check)
+        ${pkgs.inotify-tools}/bin/inotifywait -q -t 60 \
+          -e close_write,create,moved_to \
+          --include 'forwarded_port' \
+          "$PORT_DIR" 2>/dev/null || true
 
-      if [ -z "$PORT" ] || [ "$PORT" = "0" ]; then
-        echo "No forwarded port available yet, waiting..."
-        sleep 30
-        exit 0
-      fi
+        sleep 1  # debounce
 
-      echo "Forwarded port: $PORT"
+        now=$(${pkgs.coreutils}/bin/date +%s)
 
-      LOGIN=$(${pkgs.curl}/bin/curl -sf --max-time 10 \
-        -c "$COOKIE_FILE" \
-        --data "username=$QBT_USERNAME&password=$QBT_PASSWORD" \
-        http://localhost:9091/api/v2/auth/login 2>&1 || echo "curl_error")
+        if check_port > /dev/null; then
+          # Port is valid — reset the stuck timer
+          last_valid=$now
+        else
+          # Port file is empty — check how long it's been gone
+          empty_for=$(( now - last_valid ))
+          since_restart=$(( now - last_restart ))
 
-      if [ "$LOGIN" != "Ok." ]; then
-        echo "qBittorrent login failed: $LOGIN"
-        sleep 30
-        exit 0
-      fi
+          if [ "$empty_for" -ge "$STUCK_THRESHOLD" ] && [ "$since_restart" -ge "$COOLDOWN" ]; then
+            echo "Port forwarding absent for ''${STUCK_THRESHOLD}s — auto-restarting gluetun"
 
-      ${pkgs.curl}/bin/curl -sf \
-        -b "$COOKIE_FILE" \
-        --data "json={\"listen_port\":$PORT}" \
-        http://localhost:9091/api/v2/app/setPreferences
+            ${pkgs.curl}/bin/curl -sf --max-time 5 \
+              -d "gluetun port forwarding stuck (''${empty_for}s) — auto-restarting" \
+              http://rivendell:2586/homelab || true
 
-      echo "Updated qBittorrent listening port to $PORT"
+            ${pkgs.systemd}/bin/systemctl restart podman-gluetun || true
 
-      ${pkgs.curl}/bin/curl -sf \
-        -b "$COOKIE_FILE" \
-        http://localhost:9091/api/v2/auth/logout || true
-
-      sleep 300
+            last_restart=$now
+            last_valid=$now  # reset; let the port sync service confirm success
+          else
+            echo "Port forwarding absent for ''${empty_for}s (threshold: ''${STUCK_THRESHOLD}s, cooldown remaining: $(( COOLDOWN - since_restart ))s)"
+          fi
+        fi
+      done
     '';
   };
 

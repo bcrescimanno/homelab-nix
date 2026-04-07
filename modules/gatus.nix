@@ -76,6 +76,19 @@ in
 
         # Media
         (mkHttp { name = "Jellyfin";    url = "https://jellyfin.theshire.io"; group = "Media"; })
+        # TCP check on gluetun's control port — all arr container ports (including qBT's
+        # 9091) live in gluetun's network namespace, so this is the right signal for
+        # "VPN container is up and the media stack has network". Complements the Caddy-
+        # proxied qBittorrent check below with a direct LAN path that doesn't depend on
+        # Caddy or external DNS.
+        {
+          name = "gluetun VPN";
+          url = "tcp://pirateship:8000";
+          group = "Media";
+          interval = "1m";
+          conditions = [ "[CONNECTED] == true" ];
+          alerts = [{ type = "ntfy"; }];
+        }
         (mkHttp { name = "qBittorrent";  url = "https://dl.theshire.io";      group = "Media"; })
         (mkHttp { name = "SABnzbd";     url = "https://nzb.theshire.io";      group = "Media"; })
         (mkHttp { name = "Radarr";      url = "https://movies.theshire.io";   group = "Media"; })
