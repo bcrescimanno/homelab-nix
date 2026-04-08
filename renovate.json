@@ -33,7 +33,9 @@
       "matchManagers": ["custom.regex"],
       "pinDigests": true,
       "dependencyDashboardApproval": false,
-      "automerge": true
+      "automerge": true,
+      "automergeType": "pr-comment",
+      "automergeComment": "automerge"
     }
   ]
 }

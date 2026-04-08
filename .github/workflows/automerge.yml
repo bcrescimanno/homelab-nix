@@ -1,0 +1,23 @@
+name: Automerge
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  automerge:
+    runs-on: ubuntu-latest
+    if: >
+      github.event.issue.pull_request != null &&
+      github.event.comment.user.login == 'renovate[bot]' &&
+      github.event.comment.body == 'automerge'
+    permissions:
+      pull-requests: write
+      contents: write
+    steps:
+      - name: Enable auto-merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+        run: gh pr merge "$PR_NUMBER" --auto --merge --repo "$REPO"
