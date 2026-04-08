@@ -28,6 +28,13 @@
   # Without this, remote builder connections fail with "Could not find executable 'ssh'".
   systemd.services.nix-daemon.path = [ pkgs.openssh ];
 
+  # homelab-upgrade.service also needs openssh: in Nix 2.28+, the nix build
+  # client process (running inside that service) makes the SSH connection to
+  # the remote builder directly, not the daemon. Without this, auto-upgrades
+  # fail with "Could not find executable 'ssh'" whenever new derivations need
+  # to be built (cache misses after container image digest bumps, etc.).
+  systemd.services.homelab-upgrade.path = [ pkgs.openssh ];
+
   programs.ssh.knownHosts.orthanc = {
     hostNames = [ "orthanc" "orthanc.home.theshire.io" ];
     publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHkrkkYch/Q5K4XUn58yLX4lfg9s7qqZu9s/Y71uxaAA";
