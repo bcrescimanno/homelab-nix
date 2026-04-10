@@ -34,8 +34,7 @@
       "pinDigests": true,
       "dependencyDashboardApproval": false,
       "automerge": true,
-      "automergeType": "pr-comment",
-      "automergeComment": "automerge"
+      "automergeType": "pr"
     }
   ]
 }
