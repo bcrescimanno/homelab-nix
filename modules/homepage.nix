@@ -53,8 +53,22 @@
             };
           }
           {
-            Navidrome = {
+            Piped = {
+              href = "https://piped.theshire.io";
+              description = "YouTube frontend";
+              icon = "piped.png";
+            };
+          }
+          {
+            "Music Assistant" = {
               href = "https://listen.theshire.io";
+              description = "Multi-room audio";
+              icon = "music-assistant.png";
+            };
+          }
+          {
+            Navidrome = {
+              href = "https://stream.theshire.io";
               description = "Music server";
               icon = "navidrome.png";
             };
@@ -71,6 +85,13 @@
             };
           }
           {
+            SABnzbd = {
+              href = "https://nzb.theshire.io";
+              description = "Usenet client";
+              icon = "sabnzbd.png";
+            };
+          }
+          {
             Radarr = {
               href = "https://movies.theshire.io";
               description = "Movie manager";
@@ -79,7 +100,7 @@
           }
           {
             Sonarr = {
-              href = "https://sonarr.theshire.io";
+              href = "https://tv.theshire.io";
               description = "TV manager";
               icon = "sonarr.png";
             };
@@ -96,6 +117,13 @@
               href = "https://lidarr.theshire.io";
               description = "Music manager";
               icon = "lidarr.png";
+            };
+          }
+          {
+            Bazarr = {
+              href = "https://subtitles.theshire.io";
+              description = "Subtitle manager";
+              icon = "bazarr.png";
             };
           }
         ];
@@ -120,6 +148,13 @@
               icon        = "grafana.png";
             };
           }
+          {
+            Gatus = {
+              href        = "https://monitor.theshire.io";
+              description = "Service health monitor";
+              icon        = "gatus.png";
+            };
+          }
         ];
       }
       {
@@ -131,7 +166,7 @@
               icon        = "glances.png";
               widget = {
                 type    = "glances";
-                url     = "http://mirkwood.local:61208";
+                url     = "http://127.0.0.1:61208";
                 metric  = "cpu";
                 version = 4;
               };
@@ -144,7 +179,7 @@
               icon        = "glances.png";
               widget = {
                 type    = "glances";
-                url     = "http://mirkwood.local:61208";
+                url     = "http://127.0.0.1:61208";
                 metric  = "memory";
                 version = 4;
               };
@@ -157,7 +192,7 @@
               icon        = "glances.png";
               widget = {
                 type    = "glances";
-                url     = "http://mirkwood.local:61208";
+                url     = "http://127.0.0.1:61208";
                 metric  = "network";
                 adapter = "eth0";
                 version = 4;
@@ -175,7 +210,7 @@
               icon        = "glances.png";
               widget = {
                 type    = "glances";
-                url     = "http://rivendell.local:61208";
+                url     = "http://rivendell.home.theshire.io:61208";
                 metric  = "cpu";
                 version = 4;
               };
@@ -188,7 +223,7 @@
               icon        = "glances.png";
               widget = {
                 type    = "glances";
-                url     = "http://rivendell.local:61208";
+                url     = "http://rivendell.home.theshire.io:61208";
                 metric  = "memory";
                 version = 4;
               };
@@ -201,7 +236,7 @@
               icon        = "glances.png";
               widget = {
                 type    = "glances";
-                url     = "http://rivendell.local:61208";
+                url     = "http://rivendell.home.theshire.io:61208";
                 metric  = "network";
                 adapter = "eth0";
                 version = 4;
@@ -219,7 +254,7 @@
               icon        = "glances.png";
               widget = {
                 type    = "glances";
-                url     = "http://pirateship.local:61208";
+                url     = "http://pirateship.home.theshire.io:61208";
                 metric  = "cpu";
                 version = 4;
               };
@@ -232,7 +267,7 @@
               icon        = "glances.png";
               widget = {
                 type    = "glances";
-                url     = "http://pirateship.local:61208";
+                url     = "http://pirateship.home.theshire.io:61208";
                 metric  = "memory";
                 version = 4;
               };
@@ -245,7 +280,51 @@
               icon        = "glances.png";
               widget = {
                 type    = "glances";
-                url     = "http://pirateship.local:61208";
+                url     = "http://pirateship.home.theshire.io:61208";
+                metric  = "network";
+                adapter = "eth0";
+                version = 4;
+              };
+            };
+          }
+        ];
+      }
+      {
+        Orthanc = [
+          {
+            CPU = {
+              href        = "http://orthanc.home.theshire.io:61208";
+              description = "Processor";
+              icon        = "glances.png";
+              widget = {
+                type    = "glances";
+                url     = "http://orthanc.home.theshire.io:61208";
+                metric  = "cpu";
+                version = 4;
+              };
+            };
+          }
+          {
+            Memory = {
+              href        = "http://orthanc.home.theshire.io:61208";
+              description = "Memory";
+              icon        = "glances.png";
+              widget = {
+                type    = "glances";
+                url     = "http://orthanc.home.theshire.io:61208";
+                metric  = "memory";
+                version = 4;
+              };
+            };
+          }
+          {
+            Network = {
+              href        = "http://orthanc.home.theshire.io:61208";
+              description = "Network";
+              icon        = "glances.png";
+              widget = {
+                type    = "glances";
+                url     = "http://orthanc.home.theshire.io:61208";
                 metric  = "network";
                 adapter = "eth0";
                 version = 4;
