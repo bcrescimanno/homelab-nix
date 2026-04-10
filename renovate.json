@@ -18,7 +18,7 @@
       "matchStrings": [
         "image = \"(?<depName>[^:\"]+):(?<currentValue>[^@:\"]+)(?:@(?<currentDigest>[^\"]+))?\""
       ],
-      "autoReplaceStringTemplate": "image = \"{{{depName}}}:{{{currentValue}}}@{{{newDigest}}}\"",
+      "autoReplaceStringTemplate": "image = \"{{{depName}}}:{{{newValue}}}@{{{newDigest}}}\"",
       "datasourceTemplate": "docker"
     }
   ],
@@ -35,6 +35,12 @@
       "dependencyDashboardApproval": false,
       "automerge": true,
       "automergeType": "pr"
+    },
+    {
+      "description": "Ignore postgres major version bumps — requires manual data migration",
+      "matchDepNames": ["docker.io/postgres"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
     }
   ]
 }
