@@ -11,10 +11,14 @@
       url = "github:Mic92/sops-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    # dotfiles is the source of home configs; use its pinned home-manager so
-    # both flakes always run the same HM version against the same nixpkgs.
+    # home-manager: homelab-nix owns this pin; dotfiles follows it when consumed
+    # here so both always run the same HM version against the same nixpkgs.
+    # dotfiles continues to declare its own home-manager for standalone use.
+    home-manager.url = "github:nix-community/home-manager";
+    home-manager.inputs.nixpkgs.follows = "nixpkgs";
     dotfiles.url = "github:bcrescimanno/dotfiles";
-    home-manager.follows = "dotfiles/home-manager";
+    dotfiles.inputs.nixpkgs.follows = "nixpkgs";
+    dotfiles.inputs.home-manager.follows = "home-manager";
     deploy-rs = {
       url = "github:serokell/deploy-rs";
       inputs.nixpkgs.follows = "nixpkgs";
