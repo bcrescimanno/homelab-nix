@@ -234,9 +234,13 @@
     printf '[servers.homelab]\nendpoint = "https://cache.theshire.io/"\ntoken = "%s"\n' \
       "$ATTIC_TOKEN" > "$ATTIC_HOME/.config/attic/config.toml"
 
-    # Push is best-effort — failure should not fail the build.
-    HOME="$ATTIC_HOME" ${pkgs.attic-client}/bin/attic push homelab:nixpkgs $OUT_PATHS \
-      || echo "attic-push: push failed (non-fatal)" >&2
+    # Push one path at a time — the attic client (0-unstable-2025-09-24) has a
+    # panic_in_cleanup bug in Pusher::worker that triggers when batching multiple
+    # paths. Pushing serially avoids it. Remove the loop once attic is fixed upstream.
+    for path in $OUT_PATHS; do
+      HOME="$ATTIC_HOME" ${pkgs.attic-client}/bin/attic push homelab:nixpkgs "$path" \
+        || echo "attic-push: push failed for $path (non-fatal)" >&2
+    done
   '');
 
   # Allow the nix daemon to be used by wheel users for building.

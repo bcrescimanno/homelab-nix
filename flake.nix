@@ -42,6 +42,25 @@
       r2AccountId = "e10a637fb9ef49068ff75e106b7a7c19";
       brianSshKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBEjcQUPpiMkeQJFlkrERftafbT/CpjaeRzbHUv/0P2W";
 
+      # glances test failures in the Nix sandbox:
+      # - test_phys_core_returns_int: psutil.cpu_count(logical=False) returns None on aarch64 (no CPU topology)
+      # - test_api.py, test_memoryleak.py: psutil.net_if_stats() → ioctl(SIOCETHTOOL) fails in sandbox
+      # - test_restful / test_xmlrpc / test_browser_restful: require a running server/network
+      # - test_core.py: test_000_update fails in sandbox (no real system stats available)
+      glancesOverlay = final: prev: {
+        glances = prev.glances.overrideAttrs (oldAttrs: {
+          pytestFlagsArray = (oldAttrs.pytestFlagsArray or []) ++ [
+            "--deselect=tests/test_plugin_load.py::TestLoadHelperFunctions::test_phys_core_returns_int"
+            "--ignore=tests/test_api.py"
+            "--ignore=tests/test_browser_restful.py"
+            "--ignore=tests/test_core.py"
+            "--ignore=tests/test_memoryleak.py"
+            "--ignore=tests/test_restful.py"
+            "--ignore=tests/test_xmlrpc.py"
+          ];
+        });
+      };
+
       piModules = extraModules: [
         ({ ... }: {
           imports = with nixos-raspberrypi.nixosModules; [
@@ -53,23 +72,7 @@
         sops-nix.nixosModules.sops
         home-manager.nixosModules.home-manager
         {
-          # glances test_phys_core_returns_int fails on aarch64 in the Nix
-          # sandbox because psutil.cpu_count(logical=False) returns None when
-          # CPU topology is unavailable. Deselect the specific test via
-          # pytestFlagsArray — runtime is unaffected.
-          # test_restful and test_xmlrpc require a running server/network
-          # connection that the sandbox blocks; ignore the entire files.
-          nixpkgs.overlays = [
-            (final: prev: {
-              glances = prev.glances.overrideAttrs (oldAttrs: {
-                pytestFlagsArray = (oldAttrs.pytestFlagsArray or []) ++ [
-                  "--deselect=tests/test_plugin_load.py::TestLoadHelperFunctions::test_phys_core_returns_int"
-                  "--ignore=tests/test_restful.py"
-                  "--ignore=tests/test_xmlrpc.py"
-                ];
-              });
-            })
-          ];
+          nixpkgs.overlays = [ glancesOverlay ];
           home-manager.useGlobalPkgs = true;
           home-manager.useUserPackages = true;
           home-manager.backupFileExtension = "backup";
@@ -147,6 +150,7 @@
           sops-nix.nixosModules.sops
           home-manager.nixosModules.home-manager
           {
+            nixpkgs.overlays = [ glancesOverlay ];
             home-manager.useGlobalPkgs = true;
             home-manager.useUserPackages = true;
             home-manager.backupFileExtension = "backup";
