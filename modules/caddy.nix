@@ -69,7 +69,16 @@ in
       "media.theshire.io".extraConfig            = proxy "orthanc.home.theshire.io:8096";
       "piped.theshire.io".extraConfig            = proxy "orthanc.home.theshire.io:8181";
       "piped-api.theshire.io".extraConfig        = proxy "orthanc.home.theshire.io:8180";
-      "piped-proxy.theshire.io".extraConfig      = proxy "orthanc.home.theshire.io:8182";
+      # flush_interval -1 disables Caddy's response buffering so video chunks are
+      # forwarded to the client immediately. Without this, Firefox's MSE times out
+      # waiting for the initial data and aborts the request before playback starts.
+      # WebKit is more tolerant of buffering delays, which is why Safari/Orion work.
+      "piped-proxy.theshire.io".extraConfig      = ''
+        reverse_proxy orthanc.home.theshire.io:8182 {
+          flush_interval -1
+        }
+        ${tlsConfig}
+      '';
 
       # pirateship backends
       "stream.theshire.io".extraConfig           = proxy "pirateship.home.theshire.io:4533";
