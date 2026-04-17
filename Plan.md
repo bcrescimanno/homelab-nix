@@ -193,6 +193,112 @@ Steps:
 
 ---
 
+## OpenClaw: Personal AI Agent on Orthanc
+
+[OpenClaw](https://openclaw.ai/) is an open-source personal AI agent (Gateway daemon) that runs locally, connects to Claude/GPT/local models, has persistent memory, and is controlled via chat apps. Goal: experiment with it in an isolated VM on Orthanc.
+
+**Planned use cases:**
+- Email triage/management (Gmail + iCloud)
+- LinkedIn message management
+- "Summary of my upcoming day" mode
+- Home Assistant device control
+- Claude models as backend
+
+**Chat interface:** Discord (existing account; bot in a private server)
+
+### Phase 1 — VM Infrastructure [ ]
+
+Enable libvirt on Orthanc (`hosts/orthanc.nix`):
+```nix
+virtualisation.libvirtd.enable = true;
+users.users.brian.extraGroups = [ "libvirtd" ];
+```
+
+Deploy orthanc, then create the VM imperatively:
+- **OS**: Ubuntu 24.04 LTS (OpenClaw isn't packaged for Nix; no benefit to NixOS here)
+- **Specs**: 2 vCPUs, 4GB RAM, 30GB disk
+- **Network**: dedicated restricted bridge (see Phase 2)
+- **Access**: SSH only, key-based
+- **No display needed**: Gateway is fully headless; browser automation uses headless Chrome
+
+Install dependencies in VM:
+- Node.js 24 (recommended)
+- Google Chrome `.deb` (not the Snap — AppArmor confinement breaks CDP; use the official `.deb`)
+- Run: `openclaw onboard --install-daemon`
+
+### Phase 2 — Network Isolation [ ]
+
+Create a dedicated libvirt network (`virbr-openclaw`, `192.168.200.0/24`) with host-side nftables rules on Orthanc:
+
+```
+VM (192.168.200.x) CAN reach:
+  ✓ Internet outbound (HTTPS 443) — Claude API, Gmail, LinkedIn, Discord API
+  ✓ rivendell:8123 (10.0.1.9) — Home Assistant REST API only
+  ✓ DNS (Orthanc as resolver, or 1.1.1.1 direct)
+
+VM CANNOT reach:
+  ✗ 10.0.0.0/8 except rivendell:8123 (no pirateship, mirkwood, erebor, UDM Pro)
+  ✗ Orthanc itself (192.168.200.1) except SSH management
+  ✗ Inbound from LAN (nothing initiates connections to the VM)
+```
+
+HA access: VM calls `http://10.0.1.9:8123` directly over LAN — no need to go through Caddy/TLS for a local-only integration.
+
+### Phase 3 — Discord Bot Setup [ ]
+
+1. Create a Discord Application + Bot in the [Developer Portal](https://discord.com/developers/applications)
+2. Enable **Message Content Intent** (required) + Server Members Intent
+3. Invite bot to a **new private server** (keeps agent chatter isolated; limits blast radius)
+4. Bot permissions: View Channels, Send Messages, Read Message History, Embed Links, Attach Files
+5. Configure in OpenClaw:
+   ```json5
+   { channels: { discord: { enabled: true, token: { source: "env", id: "DISCORD_BOT_TOKEN" } } } }
+   ```
+6. After first Gateway start, DM the bot to receive a pairing code and approve via CLI
+
+### Phase 4 — Integrations [ ]
+
+**Secrets** — store in VM at `~/.config/openclaw/.env`, permissions `600`, owned by openclaw service user. Never committed anywhere.
+
+| Secret | Notes |
+|---|---|
+| `ANTHROPIC_API_KEY` | **Set a spend limit in the Anthropic Console before starting** — an always-on agent will generate ongoing token usage |
+| `DISCORD_BOT_TOKEN` | From Developer Portal |
+| HA long-lived access token | Create a dedicated HA user (`openclaw`) with limited device permissions — don't use the main account token |
+| Gmail credentials | OAuth flow or app password — needs investigation at implementation time (no dedicated OpenClaw docs for Gmail) |
+| iCloud app-specific password | Apple requires app-specific passwords for 3rd-party IMAP — generate at appleid.apple.com |
+
+**Integrations to investigate at implementation time** (no dedicated OpenClaw docs exist for these yet):
+
+- **Gmail / iCloud**: likely OAuth flow or browser-automation of webmail — check community skills first before building custom tooling
+- **LinkedIn**: almost certainly headless Chrome + browser login (LinkedIn's API is heavily restricted). LinkedIn ToS prohibits automation; low enforcement risk for personal use but worth knowing.
+- **Home Assistant**: likely HA REST API via a community skill or custom tool. Create a dedicated HA user with scoped permissions before wiring up.
+
+**HA permissions design**: start narrow. Enable only lights and a specific area (e.g., office). Expand after validating behavior. A misunderstood prompt controlling the wrong devices is annoying; a misunderstood prompt locking doors or killing HVAC is worse.
+
+### Implementation Sequence
+
+When ready:
+1. Add libvirt to `hosts/orthanc.nix`, deploy
+2. Create restricted bridge + nftables rules on Orthanc
+3. Spin up Ubuntu VM, install Node 24 + Chrome `.deb`
+4. Run OpenClaw onboarding (`openclaw onboard --install-daemon`)
+5. Configure and pair Discord bot (private server)
+6. Set API spend limit in Anthropic Console
+7. Create dedicated HA user + long-lived token
+8. Investigate and configure email integrations
+9. Wire up HA integration with narrow permissions
+10. Test each use case in isolation before enabling all at once
+
+### Open Questions
+
+- [ ] Does Gmail integration use OAuth (requires registering a Google Cloud app) or browser automation? Check community skills.
+- [ ] Does HA integration exist as a community skill, or does it need a custom tool pointing at `http://10.0.1.9:8123`?
+- [ ] LinkedIn: verify headless Chrome login flow works before investing time — LinkedIn sometimes enforces 2FA/CAPTCHA for automated logins.
+- [ ] If the experiment proves out, codify the VM definition declaratively (nixvirt or microvm.nix) and move it into the flake.
+
+---
+
 ## Personal Machines — NixOS Migration
 
 ### Hardware
