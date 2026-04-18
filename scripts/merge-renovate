@@ -43,6 +43,10 @@ SKIP_DEPLOY=false
 SKIP_VALIDATE=false
 NO_PUSH=false
 LOCK_SWAPPED=false
+EPP_BOOSTED=false
+ORTHANC_HOST="orthanc.home.theshire.io"
+EPP_NORMAL="balance_power"
+EPP_BUILD="performance"
 
 for arg in "$@"; do
   case "$arg" in
@@ -72,14 +76,31 @@ warn()    { echo -e "  ${YELLOW}⚠${NC} $1"; }
 die()     { echo -e "\n${RED}${BOLD}✗ $1${NC}\n" >&2; exit 1; }
 hint()    { echo -e "  ${YELLOW}↳ Hint:${NC} $1"; }
 
-# Restore flake.lock on any exit if we swapped it in.
-restore_lock() {
+# Cleanup handler: restore flake.lock and orthanc EPP on any exit.
+cleanup() {
   if $LOCK_SWAPPED; then
     echo -e "\n  ${YELLOW}↳${NC} Restoring original flake.lock (branch stays on main)"
     git restore -- flake.lock 2>/dev/null || true
   fi
+  if $EPP_BOOSTED; then
+    echo -e "  ${YELLOW}↳${NC} Restoring orthanc EPP to ${EPP_NORMAL}"
+    ssh -o ConnectTimeout=5 -o BatchMode=yes "brian@${ORTHANC_HOST}" \
+      "for f in /sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference; do echo ${EPP_NORMAL} | sudo tee \$f > /dev/null; done" \
+      2>/dev/null || echo "    (could not reach orthanc to restore EPP — restore manually)"
+    EPP_BOOSTED=false
+  fi
 }
-trap restore_lock EXIT
+trap cleanup EXIT
+
+# set_orthanc_epp LEVEL
+#   Switches orthanc's CPU EPP to the given level (e.g. "performance", "balance_power").
+#   Silently skips if orthanc is unreachable.
+set_orthanc_epp() {
+  local level="$1"
+  ssh -o ConnectTimeout=5 -o BatchMode=yes "brian@${ORTHANC_HOST}" \
+    "for f in /sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference; do echo ${level} | sudo tee \$f > /dev/null; done" \
+    2>/dev/null
+}
 
 # ─── Preflight checks ─────────────────────────────────────────────────────────
 
@@ -173,6 +194,17 @@ else
   step "Deploying to homelab (mirkwood → rivendell + pirateship)"
   hint "This builds on each Pi remotely (remoteBuild=true). May take several minutes."
   hint "If deploy fails, hosts automatically roll back (magic rollback is enabled)."
+
+  # Boost orthanc's CPU EPP for the build. Kernel updates require compiling via
+  # QEMU (aarch64 cross-compile) which is CPU-intensive. EPP balance_power caps
+  # all-core boost; performance lets the firmware run at full sustained frequency.
+  # The cleanup trap restores balance_power when we're done regardless of outcome.
+  if set_orthanc_epp "$EPP_BUILD"; then
+    EPP_BOOSTED=true
+    ok "orthanc EPP → ${EPP_BUILD} (will restore ${EPP_NORMAL} after deploy)"
+  else
+    warn "Could not reach orthanc to set EPP (skipping — build will proceed at normal EPP)"
+  fi
 
   if ! "${SCRIPT_DIR}/deploy"; then
     echo -e "\n${RED}${BOLD}Deploy failed.${NC}"
