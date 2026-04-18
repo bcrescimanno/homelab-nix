@@ -3,33 +3,33 @@
 #
 # Full workflow:
 #   1.  Find the open renovate/lock-file-maintenance PR on GitHub
-#   2.  Fetch + check out the branch locally
-#   3.  nix flake check --no-build
+#   2.  Fetch the branch and copy its flake.lock into the working tree
+#       (stays on main — avoids losing scripts when checking out renovate's branch)
+#   3.  nix flake check --no-build with the new lock
 #   4.  Deploy to all homelab hosts (mirkwood first, then rivendell + pirateship)
 #   5.  Wait for services to settle
 #   6.  Run scripts/validate to confirm all key services are healthy
-#   7a. On success: push the branch (if there are local fixes), merge via gh, pull main
-#   7b. On failure: leave the branch checked out, print actionable guidance, exit 1
+#   7a. On success: merge the PR via gh, pull main
+#   7b. On failure: restore flake.lock, print actionable guidance, exit 1
 #
 # Flags:
-#   --skip-deploy     Skip deploy step (use if already deployed from this branch)
+#   --skip-deploy     Skip deploy step (use if already deployed from this lock)
 #   --skip-validate   Skip validation step (use with caution)
 #   --no-push         Dry-run mode: do everything except the final merge/push
 #
 # Common failure modes and remediation:
-#   • nix flake check fails
-#       — Likely a Caddy plugin hash mismatch after a Caddy version bump.
-#         The build error will print the correct hash ("got: sha256-...").
-#         Fix it in modules/caddy.nix, commit, then re-run --skip-deploy? No,
-#         re-deploy after fixing so the fixed config is what gets tested.
+#   • nix flake check fails with a hash mismatch
+#       — Caddy version bumped in nixpkgs. The error output contains the correct
+#         hash ("got: sha256-..."). Update it in modules/caddy.nix, commit the
+#         fix, push it to the PR branch, then re-run this script:
+#             git push origin HEAD:renovate/lock-file-maintenance
 #   • Deploy fails (deploy-rs exits non-zero with magic rollback)
-#       — Hosts have rolled back automatically. Review the deploy output above.
-#         Fix the issue on this branch, then re-run with --skip-deploy? No —
-#         fix the issue, then run the full workflow again (or re-run this script).
+#       — Hosts have rolled back automatically. Check the deploy output above.
+#         Fix the issue, commit, push to the PR branch (see above), re-run.
 #   • Validation fails
-#       — Services deployed but something is wrong. Check the failed checks above.
-#         SSH into the affected host and check journal: journalctl -u <service> -e
-#         Fix, commit to this branch, push, and re-run with --skip-deploy.
+#       — Services deployed but something is wrong. Check the failed checks.
+#         SSH into the affected host: ssh brian@<host> journalctl -u <service> -e
+#         Fix, commit, push to the PR branch, re-run with --skip-deploy.
 
 set -euo pipefail
 
@@ -42,6 +42,7 @@ SETTLE_SECONDS=45
 SKIP_DEPLOY=false
 SKIP_VALIDATE=false
 NO_PUSH=false
+LOCK_SWAPPED=false
 
 for arg in "$@"; do
   case "$arg" in
@@ -49,7 +50,7 @@ for arg in "$@"; do
     --skip-validate) SKIP_VALIDATE=true ;;
     --no-push)       NO_PUSH=true ;;
     -h|--help)
-      sed -n '2,40p' "$0" | grep '^#' | sed 's/^# \?//'
+      sed -n '2,50p' "$0" | grep '^#' | sed 's/^# \?//'
       exit 0
       ;;
     *) echo "Unknown argument: $arg" >&2; exit 1 ;;
@@ -71,14 +72,21 @@ warn()    { echo -e "  ${YELLOW}⚠${NC} $1"; }
 die()     { echo -e "\n${RED}${BOLD}✗ $1${NC}\n" >&2; exit 1; }
 hint()    { echo -e "  ${YELLOW}↳ Hint:${NC} $1"; }
 
+# Restore flake.lock on any exit if we swapped it in.
+restore_lock() {
+  if $LOCK_SWAPPED; then
+    echo -e "\n  ${YELLOW}↳${NC} Restoring original flake.lock (branch stays on main)"
+    git restore -- flake.lock 2>/dev/null || true
+  fi
+}
+trap restore_lock EXIT
+
 # ─── Preflight checks ─────────────────────────────────────────────────────────
 
 step "Preflight"
 
-# Must be inside the flake repo
 cd "$FLAKE_DIR"
 
-# gh must be available and authenticated
 if ! command -v gh &>/dev/null; then
   die "gh (GitHub CLI) is not installed. Install it and run: gh auth login"
 fi
@@ -86,18 +94,19 @@ if ! gh auth status &>/dev/null; then
   die "gh is not authenticated. Run: gh auth login"
 fi
 
-# Working tree must be clean before we start
-if [[ -n "$(git status --porcelain)" ]]; then
-  die "Working tree is dirty. Stash or commit your changes before running this script."
-fi
-
-# Must be on main (or the branch already, if re-running)
+# Must be on main
 CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
-if [[ "$CURRENT_BRANCH" != "main" && "$CURRENT_BRANCH" != "$BRANCH" ]]; then
-  die "Expected to be on 'main' or '$BRANCH', but on '$CURRENT_BRANCH'. Switch to main first."
+if [[ "$CURRENT_BRANCH" != "main" ]]; then
+  die "Expected to be on 'main', but on '$CURRENT_BRANCH'. Run: git checkout main"
 fi
 
-ok "Working tree is clean"
+# Working tree must be clean (flake.lock aside — we manage that ourselves)
+DIRTY=$(git status --porcelain | grep -v '^.. flake.lock' || true)
+if [[ -n "$DIRTY" ]]; then
+  die "Working tree is dirty (non-flake.lock changes). Stash or commit them first."
+fi
+
+ok "On main, working tree is clean"
 
 # ─── Step 1: Find the PR ──────────────────────────────────────────────────────
 
@@ -116,43 +125,41 @@ PR_URL=$(echo    "$PR_JSON" | jq -r '.[0].url    // empty')
 
 if [[ -z "$PR_NUMBER" ]]; then
   warn "No open PR found for branch '$BRANCH'."
-  hint "Is there a lockfile maintenance PR open this week? Check: gh pr list --repo $REPO"
+  hint "Is there a lockfile maintenance PR open this week?"
+  hint "Check: gh pr list --repo $REPO"
   die "No PR to merge."
 fi
 
 ok "Found PR #${PR_NUMBER}: ${PR_TITLE}"
 echo "    ${PR_URL}"
 
-# ─── Step 2: Fetch and check out the branch ───────────────────────────────────
+# ─── Step 2: Swap in the renovate flake.lock ─────────────────────────────────
 
-step "Fetching branch '${BRANCH}'"
+step "Fetching renovate flake.lock (staying on main)"
 
 git fetch origin "${BRANCH}"
 
-if [[ "$CURRENT_BRANCH" != "$BRANCH" ]]; then
-  # Create local tracking branch (or reset it to remote if it already exists)
-  if git rev-parse --verify "$BRANCH" &>/dev/null; then
-    git checkout "$BRANCH"
-    git reset --hard "origin/$BRANCH"
-  else
-    git checkout -b "$BRANCH" "origin/$BRANCH"
-  fi
-  ok "Checked out branch '${BRANCH}'"
-else
-  git reset --hard "origin/$BRANCH"
-  ok "Reset '${BRANCH}' to origin/${BRANCH}"
-fi
+# Show what changed in the lock file
+LOCK_DIFF=$(git diff "origin/${BRANCH}" -- flake.lock 2>/dev/null | grep '^[-+].*"rev"' | wc -l | tr -d ' ')
+ok "Fetched origin/${BRANCH} (${LOCK_DIFF} rev changes in flake.lock)"
+
+# Copy only flake.lock from the renovate branch into the working tree.
+# We stay on main — all scripts, modules, and configs remain intact.
+git checkout "origin/${BRANCH}" -- flake.lock
+LOCK_SWAPPED=true
+
+ok "flake.lock updated from renovate branch (main branch preserved)"
+hint "On failure, the trap handler restores the original flake.lock automatically."
 
 # ─── Step 3: Flake check ──────────────────────────────────────────────────────
 
 step "Running nix flake check --no-build"
 hint "If this fails with a hash mismatch, look for 'got: sha256-...' in the error."
-hint "That's the new Caddy plugin hash — update it in modules/caddy.nix."
+hint "That's the new Caddy plugin hash — update modules/caddy.nix, commit it, then:"
+hint "  git push origin HEAD:${BRANCH}"
+hint "  (re-run this script after pushing the fix)"
 
 if ! nix flake check --no-build; then
-  echo
-  echo -e "${RED}${BOLD}nix flake check failed.${NC}"
-  echo "You are on branch '${BRANCH}'. Fix the issue, commit, and re-run."
   die "Flake check failed — see output above."
 fi
 
@@ -168,11 +175,12 @@ else
   hint "If deploy fails, hosts automatically roll back (magic rollback is enabled)."
 
   if ! "${SCRIPT_DIR}/deploy"; then
-    echo
-    echo -e "${RED}${BOLD}Deploy failed.${NC}"
+    echo -e "\n${RED}${BOLD}Deploy failed.${NC}"
     hint "Hosts have automatically rolled back to their previous configuration."
     hint "Check the deploy output above for the root cause."
-    hint "Fix the issue on branch '${BRANCH}', commit, and re-run this script."
+    hint "Fix the issue, commit it, push to the PR branch:"
+    hint "  git push origin HEAD:${BRANCH}"
+    hint "Then re-run this script."
     die "Deploy failed."
   fi
 
@@ -183,12 +191,11 @@ fi
 
 if ! $SKIP_DEPLOY && ! $SKIP_VALIDATE; then
   step "Waiting ${SETTLE_SECONDS}s for services to settle after deployment"
-  echo -n "  "
   for ((i=SETTLE_SECONDS; i>0; i--)); do
     printf "\r  Waiting %2ds…" "$i"
     sleep 1
   done
-  printf "\r  %-20s\n" "Done waiting."
+  printf "\r  %-30s\n" "Done waiting."
 fi
 
 # ─── Step 6: Validate ─────────────────────────────────────────────────────────
@@ -196,15 +203,14 @@ fi
 if $SKIP_VALIDATE; then
   warn "Skipping validation (--skip-validate)"
 else
-  step "Running service health checks (scripts/validate)"
+  step "Running service health checks"
 
   if ! "${SCRIPT_DIR}/validate"; then
-    echo
-    echo -e "${RED}${BOLD}Validation failed.${NC}"
-    hint "You are on branch '${BRANCH}'. Investigate the failed checks above."
-    hint "SSH into the affected host and check the journal:"
+    echo -e "\n${RED}${BOLD}Validation failed.${NC}"
+    hint "Services deployed but not all healthy. Check the failed checks above."
+    hint "SSH into the affected host:"
     hint "  ssh brian@<host> journalctl -u <service> -e"
-    hint "Fix the issue, commit to '${BRANCH}', and re-run with --skip-deploy."
+    hint "Fix, commit, push to the PR branch, then re-run with --skip-deploy."
     die "Validation failed — not merging."
   fi
 
@@ -214,41 +220,43 @@ fi
 # ─── Step 7: Merge ────────────────────────────────────────────────────────────
 
 if $NO_PUSH; then
-  warn "--no-push: skipping merge and push (dry run)"
+  warn "--no-push: skipping merge (dry run complete)"
   echo -e "\n${GREEN}${BOLD}Dry run complete.${NC} Deploy and validation succeeded."
-  echo "  Branch '${BRANCH}' is ready to merge."
   echo "  Re-run without --no-push to complete the merge."
+  # Leave flake.lock swapped in — no restore on this path
+  LOCK_SWAPPED=false
   exit 0
 fi
 
 step "Merging PR #${PR_NUMBER} to main"
 
-# Push the branch if local commits exist beyond what's on the remote.
-LOCAL_AHEAD=$(git rev-list "origin/${BRANCH}..${BRANCH}" --count 2>/dev/null || echo 0)
-if [[ "$LOCAL_AHEAD" -gt 0 ]]; then
-  ok "Pushing ${LOCAL_AHEAD} local fix commit(s) to origin/${BRANCH}"
-  git push origin "${BRANCH}"
+# If we committed any fixes on main that need to go into the PR, push them first.
+FIXES_AHEAD=$(git rev-list "origin/main..HEAD" --count 2>/dev/null || echo 0)
+if [[ "$FIXES_AHEAD" -gt 0 ]]; then
+  ok "Pushing ${FIXES_AHEAD} fix commit(s) from main to origin/${BRANCH}"
+  git push origin "HEAD:${BRANCH}"
 fi
 
-# Merge via GitHub (creates a merge commit, closes the PR, preserves PR number in history).
-hint "Using 'gh pr merge --merge' to create a merge commit and close the PR."
+# Merge via GitHub — creates a merge commit, closes PR, preserves PR # in history.
 gh pr merge "$PR_NUMBER" \
   --repo "$REPO" \
   --merge \
   --subject "chore(deps): lock file maintenance" \
   --delete-branch
 
-ok "PR #${PR_NUMBER} merged"
+ok "PR #${PR_NUMBER} merged on GitHub"
 
-# Pull main so the local repo reflects the merge.
-git checkout main
+# Pull main to get the merge commit (which includes the updated flake.lock).
+# The trap handler would restore flake.lock on exit, but since the merge commit
+# already has the renovate flake.lock, after pulling we'll be up to date.
+LOCK_SWAPPED=false   # don't restore — the merge commit has the correct lock
 git pull origin main
 
-ok "main is up to date"
+ok "main is up to date with the merged flake.lock"
 
 # ─── Done ─────────────────────────────────────────────────────────────────────
 
 echo
 echo -e "${GREEN}${BOLD}✓ Renovate lockfile maintenance merged successfully.${NC}"
-echo "  Branch '${BRANCH}' deleted. Local main is up to date."
+echo "  PR #${PR_NUMBER} closed. Local main reflects the updated flake.lock."
 echo
