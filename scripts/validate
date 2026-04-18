@@ -1,0 +1,238 @@
+#!/usr/bin/env bash
+# scripts/validate — homelab service health checker
+#
+# Validates that all key homelab services are running correctly.
+# Designed to be run from a machine with SSH access and LAN connectivity
+# to the homelab hosts (mirkwood, rivendell, pirateship, orthanc).
+#
+# Exit 0 = all checks passed, non-zero = one or more failures.
+#
+# Usage:
+#   scripts/validate              # all checks
+#   scripts/validate --no-ssh     # skip SSH service-status checks (faster, offline-ish)
+#   scripts/validate --host rivendell  # only checks for a specific host
+#   scripts/validate --quick      # HTTP + DNS only (no SSH)
+
+set -euo pipefail
+
+# ─── Argument parsing ─────────────────────────────────────────────────────────
+
+NO_SSH=false
+ONLY_HOST=""
+for arg in "$@"; do
+  case "$arg" in
+    --no-ssh|--quick) NO_SSH=true ;;
+    --host)           shift; ONLY_HOST="${1:-}" ;;
+    --host=*)         ONLY_HOST="${arg#--host=}" ;;
+    -h|--help)
+      echo "Usage: $(basename "$0") [--no-ssh] [--quick] [--host <name>]"
+      exit 0
+      ;;
+  esac
+done
+
+# ─── Counters and tracking ────────────────────────────────────────────────────
+
+PASS=0
+FAIL=0
+SKIP=0
+FAILURES=()
+
+# ─── Color helpers ────────────────────────────────────────────────────────────
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+BOLD='\033[1m'
+
+pass()   { echo -e "  ${GREEN}✓${NC} $1"; PASS=$((PASS + 1)); }
+fail()   { echo -e "  ${RED}✗${NC} $1"; FAIL=$((FAIL + 1)); FAILURES+=("$1"); }
+skip()   { echo -e "  ${YELLOW}−${NC} $1 (skipped)"; SKIP=$((SKIP + 1)); }
+header() { echo -e "\n${BOLD}${CYAN}── $1${NC}"; }
+info()   { echo -e "    ${YELLOW}↳${NC} $1"; }
+
+# ─── Check functions ──────────────────────────────────────────────────────────
+
+# check_http URL DESC [expected_code ...]
+#   Passes if the HTTP response code matches any of the expected codes.
+#   Default expected: 200 301 302
+check_http() {
+  local url="$1" desc="$2"
+  shift 2
+  local expected_codes=("${@:-200 301 302}")
+  local code
+  code=$(curl -s -o /dev/null -w "%{http_code}" \
+    --max-time 10 --connect-timeout 5 \
+    --insecure \
+    "$url" 2>/dev/null) || code="000"
+  for expected in "${expected_codes[@]}"; do
+    if [[ "$code" == "$expected" ]]; then
+      pass "$desc (HTTP $code)"
+      return
+    fi
+  done
+  fail "$desc → $url returned $code (expected: ${expected_codes[*]})"
+}
+
+# check_tcp HOST PORT DESC
+check_tcp() {
+  local host="$1" port="$2" desc="$3"
+  if timeout 5 bash -c ">/dev/tcp/$host/$port" 2>/dev/null; then
+    pass "$desc ($host:$port)"
+  else
+    fail "$desc ($host:$port unreachable)"
+  fi
+}
+
+# check_dns SERVER QUERY DESC
+#   Passes if the DNS server returns at least one A/AAAA record for QUERY.
+check_dns() {
+  local server="$1" query="$2" desc="$3"
+  local result
+  result=$(dig +short +time=5 +tries=2 "@$server" "$query" 2>/dev/null) || result=""
+  if echo "$result" | grep -qE '^[0-9a-f:.]+$'; then
+    pass "$desc (@$server → $result)"
+  else
+    fail "$desc (@$server — no answer for $query)"
+  fi
+}
+
+# check_service HOST SERVICE
+#   Checks systemctl is-active via SSH.
+#   Uses '; true' on the remote side so SSH only returns non-zero on connection
+#   failure (not when systemctl is-active returns non-zero for inactive services).
+check_service() {
+  local host="$1" service="$2"
+  if $NO_SSH; then
+    skip "systemd:$service on $host"
+    return
+  fi
+  local status
+  if ! status=$(ssh -o ConnectTimeout=8 -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+    "brian@$host" "systemctl is-active '$service.service' 2>/dev/null; true" 2>/dev/null); then
+    fail "$service on $host (SSH unreachable)"
+    return
+  fi
+  case "$status" in
+    active)  pass "$service on $host" ;;
+    "")      fail "$service on $host (empty response — SSH may have failed silently)" ;;
+    *)       fail "$service on $host (status: $status)" ;;
+  esac
+}
+
+# host_enabled HOST
+#   Returns true if we should run checks for this host.
+host_enabled() {
+  [[ -z "$ONLY_HOST" || "$ONLY_HOST" == "$1" ]]
+}
+
+# ─── DNS checks ───────────────────────────────────────────────────────────────
+
+if host_enabled mirkwood || host_enabled rivendell; then
+  header "DNS"
+fi
+
+if host_enabled mirkwood; then
+  check_dns "mirkwood" "google.com"        "External resolution via mirkwood"
+  check_dns "mirkwood" "ha.theshire.io"    "Split-horizon .theshire.io via mirkwood"
+fi
+
+if host_enabled rivendell; then
+  check_dns "rivendell" "google.com"       "External resolution via rivendell"
+  check_dns "rivendell" "ha.theshire.io"   "Split-horizon .theshire.io via rivendell"
+fi
+
+# ─── mirkwood ─────────────────────────────────────────────────────────────────
+
+if host_enabled mirkwood; then
+  header "mirkwood — HTTP"
+  check_http "http://mirkwood:3000"         "Homepage dashboard"             200 302
+  check_http "http://mirkwood:3001"         "Grafana"                        200 302
+  check_http "http://mirkwood:61208"        "Glances (mirkwood)"             200
+
+  header "mirkwood — services"
+  for svc in blocky unbound prometheus grafana homepage-dashboard glances; do
+    check_service mirkwood "$svc"
+  done
+fi
+
+# ─── rivendell ────────────────────────────────────────────────────────────────
+
+if host_enabled rivendell; then
+  header "rivendell — HTTP"
+  check_http "http://rivendell:8080"        "Gatus health dashboard"         200
+  check_http "http://rivendell:8123"        "Home Assistant"                 200 301 302
+  check_http "http://rivendell:8095"        "Music Assistant"                200 302
+  check_http "http://rivendell:61208"       "Glances (rivendell)"            200
+  check_tcp  "rivendell" 2586               "ntfy"
+  check_tcp  "rivendell" 3493               "NUT server"
+
+  header "rivendell — HTTPS (Caddy + TLS)"
+  check_http "https://ha.theshire.io"             "ha.theshire.io"           200 301 302
+  check_http "https://monitor.theshire.io"        "monitor.theshire.io (Gatus)" 200
+  check_http "https://grafana.theshire.io"        "grafana.theshire.io"      200 302
+  check_http "https://homepage.theshire.io"       "homepage.theshire.io"     200 302
+  check_http "https://jellyfin.theshire.io"       "jellyfin.theshire.io"     200 302
+  check_http "https://stream.theshire.io"         "stream.theshire.io (Navidrome)" 200 302
+  check_http "https://doh.theshire.io/dns-query"  "doh.theshire.io (Blocky DoH)" 200 400 404
+
+  header "rivendell — services"
+  for svc in blocky unbound caddy gatus glances upsd upsmon \
+             podman-homeassistant podman-matter-server podman-ntfy; do
+    check_service rivendell "$svc"
+  done
+fi
+
+# ─── pirateship ───────────────────────────────────────────────────────────────
+
+if host_enabled pirateship; then
+  header "pirateship — HTTP"
+  check_http "http://pirateship:4533"       "Navidrome"                      200 302
+  check_http "http://pirateship:61208"      "Glances (pirateship)"           200
+  # arr services are behind gluetun netns; check they're reachable on their gluetun-exposed ports
+  check_tcp  "pirateship" 9091              "qBittorrent WebUI (via gluetun)"
+  check_tcp  "pirateship" 7878              "Radarr (via gluetun)"
+  check_tcp  "pirateship" 8989              "Sonarr (via gluetun)"
+  check_tcp  "pirateship" 9696              "Prowlarr (via gluetun)"
+
+  header "pirateship — services"
+  for svc in podman-gluetun podman-qbittorrent podman-radarr podman-sonarr \
+             podman-prowlarr navidrome glances qbittorrent-port-sync; do
+    check_service pirateship "$svc"
+  done
+fi
+
+# ─── orthanc ──────────────────────────────────────────────────────────────────
+
+if host_enabled orthanc; then
+  header "orthanc — HTTP"
+  check_http "http://orthanc:8096"          "Jellyfin"                       200 302
+  check_http "http://orthanc:8080"          "Attic cache"                    200 404 400
+  check_http "http://orthanc:61208"         "Glances (orthanc)"              200
+
+  header "orthanc — services"
+  for svc in jellyfin atticd glances; do
+    check_service orthanc "$svc"
+  done
+fi
+
+# ─── Summary ──────────────────────────────────────────────────────────────────
+
+echo
+echo -e "${BOLD}─────────────────────────────────────────────${NC}"
+echo -e "${BOLD}Results:${NC}  ${GREEN}${PASS} passed${NC}  ${RED}${FAIL} failed${NC}  ${YELLOW}${SKIP} skipped${NC}"
+
+if [[ ${#FAILURES[@]} -gt 0 ]]; then
+  echo
+  echo -e "${RED}${BOLD}Failed checks:${NC}"
+  for f in "${FAILURES[@]}"; do
+    echo -e "  ${RED}•${NC} $f"
+  done
+  echo
+  exit 1
+fi
+
+echo -e "${GREEN}${BOLD}All checks passed.${NC}"
+echo

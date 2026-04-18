@@ -1,0 +1,254 @@
+#!/usr/bin/env bash
+# scripts/merge-renovate — safe workflow for Renovate lockfile maintenance PRs
+#
+# Full workflow:
+#   1.  Find the open renovate/lock-file-maintenance PR on GitHub
+#   2.  Fetch + check out the branch locally
+#   3.  nix flake check --no-build
+#   4.  Deploy to all homelab hosts (mirkwood first, then rivendell + pirateship)
+#   5.  Wait for services to settle
+#   6.  Run scripts/validate to confirm all key services are healthy
+#   7a. On success: push the branch (if there are local fixes), merge via gh, pull main
+#   7b. On failure: leave the branch checked out, print actionable guidance, exit 1
+#
+# Flags:
+#   --skip-deploy     Skip deploy step (use if already deployed from this branch)
+#   --skip-validate   Skip validation step (use with caution)
+#   --no-push         Dry-run mode: do everything except the final merge/push
+#
+# Common failure modes and remediation:
+#   • nix flake check fails
+#       — Likely a Caddy plugin hash mismatch after a Caddy version bump.
+#         The build error will print the correct hash ("got: sha256-...").
+#         Fix it in modules/caddy.nix, commit, then re-run --skip-deploy? No,
+#         re-deploy after fixing so the fixed config is what gets tested.
+#   • Deploy fails (deploy-rs exits non-zero with magic rollback)
+#       — Hosts have rolled back automatically. Review the deploy output above.
+#         Fix the issue on this branch, then re-run with --skip-deploy? No —
+#         fix the issue, then run the full workflow again (or re-run this script).
+#   • Validation fails
+#       — Services deployed but something is wrong. Check the failed checks above.
+#         SSH into the affected host and check journal: journalctl -u <service> -e
+#         Fix, commit to this branch, push, and re-run with --skip-deploy.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FLAKE_DIR="${SCRIPT_DIR}/.."
+REPO="bcrescimanno/homelab-nix"
+BRANCH="renovate/lock-file-maintenance"
+SETTLE_SECONDS=45
+
+SKIP_DEPLOY=false
+SKIP_VALIDATE=false
+NO_PUSH=false
+
+for arg in "$@"; do
+  case "$arg" in
+    --skip-deploy)   SKIP_DEPLOY=true ;;
+    --skip-validate) SKIP_VALIDATE=true ;;
+    --no-push)       NO_PUSH=true ;;
+    -h|--help)
+      sed -n '2,40p' "$0" | grep '^#' | sed 's/^# \?//'
+      exit 0
+      ;;
+    *) echo "Unknown argument: $arg" >&2; exit 1 ;;
+  esac
+done
+
+# ─── Color helpers ────────────────────────────────────────────────────────────
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+BOLD='\033[1m'
+
+step()    { echo -e "\n${BOLD}${CYAN}▶ $1${NC}"; }
+ok()      { echo -e "  ${GREEN}✓${NC} $1"; }
+warn()    { echo -e "  ${YELLOW}⚠${NC} $1"; }
+die()     { echo -e "\n${RED}${BOLD}✗ $1${NC}\n" >&2; exit 1; }
+hint()    { echo -e "  ${YELLOW}↳ Hint:${NC} $1"; }
+
+# ─── Preflight checks ─────────────────────────────────────────────────────────
+
+step "Preflight"
+
+# Must be inside the flake repo
+cd "$FLAKE_DIR"
+
+# gh must be available and authenticated
+if ! command -v gh &>/dev/null; then
+  die "gh (GitHub CLI) is not installed. Install it and run: gh auth login"
+fi
+if ! gh auth status &>/dev/null; then
+  die "gh is not authenticated. Run: gh auth login"
+fi
+
+# Working tree must be clean before we start
+if [[ -n "$(git status --porcelain)" ]]; then
+  die "Working tree is dirty. Stash or commit your changes before running this script."
+fi
+
+# Must be on main (or the branch already, if re-running)
+CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+if [[ "$CURRENT_BRANCH" != "main" && "$CURRENT_BRANCH" != "$BRANCH" ]]; then
+  die "Expected to be on 'main' or '$BRANCH', but on '$CURRENT_BRANCH'. Switch to main first."
+fi
+
+ok "Working tree is clean"
+
+# ─── Step 1: Find the PR ──────────────────────────────────────────────────────
+
+step "Finding Renovate lockfile maintenance PR"
+
+PR_JSON=$(gh pr list \
+  --repo "$REPO" \
+  --head "$BRANCH" \
+  --state open \
+  --json number,title,url \
+  2>/dev/null)
+
+PR_NUMBER=$(echo "$PR_JSON" | jq -r '.[0].number // empty')
+PR_TITLE=$(echo  "$PR_JSON" | jq -r '.[0].title  // empty')
+PR_URL=$(echo    "$PR_JSON" | jq -r '.[0].url    // empty')
+
+if [[ -z "$PR_NUMBER" ]]; then
+  warn "No open PR found for branch '$BRANCH'."
+  hint "Is there a lockfile maintenance PR open this week? Check: gh pr list --repo $REPO"
+  die "No PR to merge."
+fi
+
+ok "Found PR #${PR_NUMBER}: ${PR_TITLE}"
+echo "    ${PR_URL}"
+
+# ─── Step 2: Fetch and check out the branch ───────────────────────────────────
+
+step "Fetching branch '${BRANCH}'"
+
+git fetch origin "${BRANCH}"
+
+if [[ "$CURRENT_BRANCH" != "$BRANCH" ]]; then
+  # Create local tracking branch (or reset it to remote if it already exists)
+  if git rev-parse --verify "$BRANCH" &>/dev/null; then
+    git checkout "$BRANCH"
+    git reset --hard "origin/$BRANCH"
+  else
+    git checkout -b "$BRANCH" "origin/$BRANCH"
+  fi
+  ok "Checked out branch '${BRANCH}'"
+else
+  git reset --hard "origin/$BRANCH"
+  ok "Reset '${BRANCH}' to origin/${BRANCH}"
+fi
+
+# ─── Step 3: Flake check ──────────────────────────────────────────────────────
+
+step "Running nix flake check --no-build"
+hint "If this fails with a hash mismatch, look for 'got: sha256-...' in the error."
+hint "That's the new Caddy plugin hash — update it in modules/caddy.nix."
+
+if ! nix flake check --no-build; then
+  echo
+  echo -e "${RED}${BOLD}nix flake check failed.${NC}"
+  echo "You are on branch '${BRANCH}'. Fix the issue, commit, and re-run."
+  die "Flake check failed — see output above."
+fi
+
+ok "Flake check passed"
+
+# ─── Step 4: Deploy ───────────────────────────────────────────────────────────
+
+if $SKIP_DEPLOY; then
+  warn "Skipping deploy (--skip-deploy)"
+else
+  step "Deploying to homelab (mirkwood → rivendell + pirateship)"
+  hint "This builds on each Pi remotely (remoteBuild=true). May take several minutes."
+  hint "If deploy fails, hosts automatically roll back (magic rollback is enabled)."
+
+  if ! "${SCRIPT_DIR}/deploy"; then
+    echo
+    echo -e "${RED}${BOLD}Deploy failed.${NC}"
+    hint "Hosts have automatically rolled back to their previous configuration."
+    hint "Check the deploy output above for the root cause."
+    hint "Fix the issue on branch '${BRANCH}', commit, and re-run this script."
+    die "Deploy failed."
+  fi
+
+  ok "Deploy succeeded"
+fi
+
+# ─── Step 5: Wait for services to settle ─────────────────────────────────────
+
+if ! $SKIP_DEPLOY && ! $SKIP_VALIDATE; then
+  step "Waiting ${SETTLE_SECONDS}s for services to settle after deployment"
+  echo -n "  "
+  for ((i=SETTLE_SECONDS; i>0; i--)); do
+    printf "\r  Waiting %2ds…" "$i"
+    sleep 1
+  done
+  printf "\r  %-20s\n" "Done waiting."
+fi
+
+# ─── Step 6: Validate ─────────────────────────────────────────────────────────
+
+if $SKIP_VALIDATE; then
+  warn "Skipping validation (--skip-validate)"
+else
+  step "Running service health checks (scripts/validate)"
+
+  if ! "${SCRIPT_DIR}/validate"; then
+    echo
+    echo -e "${RED}${BOLD}Validation failed.${NC}"
+    hint "You are on branch '${BRANCH}'. Investigate the failed checks above."
+    hint "SSH into the affected host and check the journal:"
+    hint "  ssh brian@<host> journalctl -u <service> -e"
+    hint "Fix the issue, commit to '${BRANCH}', and re-run with --skip-deploy."
+    die "Validation failed — not merging."
+  fi
+
+  ok "All validation checks passed"
+fi
+
+# ─── Step 7: Merge ────────────────────────────────────────────────────────────
+
+if $NO_PUSH; then
+  warn "--no-push: skipping merge and push (dry run)"
+  echo -e "\n${GREEN}${BOLD}Dry run complete.${NC} Deploy and validation succeeded."
+  echo "  Branch '${BRANCH}' is ready to merge."
+  echo "  Re-run without --no-push to complete the merge."
+  exit 0
+fi
+
+step "Merging PR #${PR_NUMBER} to main"
+
+# Push the branch if local commits exist beyond what's on the remote.
+LOCAL_AHEAD=$(git rev-list "origin/${BRANCH}..${BRANCH}" --count 2>/dev/null || echo 0)
+if [[ "$LOCAL_AHEAD" -gt 0 ]]; then
+  ok "Pushing ${LOCAL_AHEAD} local fix commit(s) to origin/${BRANCH}"
+  git push origin "${BRANCH}"
+fi
+
+# Merge via GitHub (creates a merge commit, closes the PR, preserves PR number in history).
+hint "Using 'gh pr merge --merge' to create a merge commit and close the PR."
+gh pr merge "$PR_NUMBER" \
+  --repo "$REPO" \
+  --merge \
+  --subject "chore(deps): lock file maintenance" \
+  --delete-branch
+
+ok "PR #${PR_NUMBER} merged"
+
+# Pull main so the local repo reflects the merge.
+git checkout main
+git pull origin main
+
+ok "main is up to date"
+
+# ─── Done ─────────────────────────────────────────────────────────────────────
+
+echo
+echo -e "${GREEN}${BOLD}✓ Renovate lockfile maintenance merged successfully.${NC}"
+echo "  Branch '${BRANCH}' deleted. Local main is up to date."
+echo
