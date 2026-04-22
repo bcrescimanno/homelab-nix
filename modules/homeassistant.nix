@@ -88,7 +88,7 @@
     #   With those modules loaded, iptables-legacy inside the container can
     #   coexist with the host's nftables firewall.
     otbr = {
-      image = "openthread/otbr:latest@sha256:95307c2ef89beac6187b8858cb9fbb0bd07c1dce88bb466c4b7f4b6a277699ed";
+      image = "openthread/otbr:latest@sha256:8f1c3e7d5571f585d95e8556bfb348e2eb480bc929b1863797467c9e7e709bc8";
       autoStart = true;
       cmd = [
         "--radio-url" "spinel+hdlc+uart:///dev/ttyACM0?uart-baudrate=460800"
