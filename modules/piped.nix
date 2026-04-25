@@ -128,7 +128,7 @@ in
     };
 
     piped-proxy = {
-      image = "1337kavin/piped-proxy:latest@sha256:db4114b8a9cb1e53a1fe2b15a9701c790cc801f9f7683fd8fabb18f6c1200315";
+      image = "1337kavin/piped-proxy:latest@sha256:71bc103fc6f50034cc7a1377112ad0b3bcd9212ffb5347f6051a17cc754d8332";
       autoStart = true;
       extraOptions = [ "--network=piped" ];
       ports = [ "8182:8080" ];
