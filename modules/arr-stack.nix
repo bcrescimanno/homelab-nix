@@ -108,7 +108,7 @@ in
       };
       volumes = [
         "/var/lib/qbittorrent/config:/config"
-        "/var/lib/media/torrents:/downloads"
+        "/var/lib/media:/media"
       ];
     };
 
@@ -124,9 +124,7 @@ in
       };
       volumes = [
         "/var/lib/radarr/config:/config"
-        "/var/lib/media/movies:/movies"
-        "/var/lib/media/torrents:/downloads"
-        "/var/lib/media/usenet:/sabnzbd"
+        "/var/lib/media:/media"
       ];
     };
 
@@ -142,9 +140,7 @@ in
       };
       volumes = [
         "/var/lib/sonarr/config:/config"
-        "/var/lib/media/tv:/tv"
-        "/var/lib/media/torrents:/downloads"
-        "/var/lib/media/usenet:/sabnzbd"
+        "/var/lib/media:/media"
       ];
     };
 
@@ -175,9 +171,7 @@ in
       };
       volumes = [
         "/var/lib/lidarr/config:/config"
-        "/var/lib/media/music:/music"
-        "/var/lib/media/torrents:/downloads"
-        "/var/lib/media/usenet:/sabnzbd"
+        "/var/lib/media:/media"
       ];
     };
 
@@ -210,7 +204,7 @@ in
       };
       volumes = [
         "/var/lib/sabnzbd/config:/config"
-        "/var/lib/media/usenet:/sabnzbd"
+        "/var/lib/media:/media"
       ];
     };
 
