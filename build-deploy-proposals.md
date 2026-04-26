@@ -25,7 +25,7 @@ The first host to upgrade primes attic for everything that follows. Drop `Random
 
 ---
 
-## 2. Trigger `pre-build.yml` on push to main, not just PRs
+## 2. ✅ Trigger `pre-build.yml` on push to main, not just PRs
 
 **Current state.** `.github/workflows/pre-build.yml` runs only on `pull_request` events touching `flake.lock`. `check.yml` runs on push to main but only does `nix flake check --no-build`.
 

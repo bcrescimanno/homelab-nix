@@ -5,6 +5,11 @@ on:
     types: [opened, synchronize]
     paths:
       - flake.lock
+  push:
+    branches: [main]
+    paths:
+      - flake.lock
+      - "**/*.nix"
 
 # Cancel any in-progress pre-build for the same PR when a new commit arrives.
 concurrency:
