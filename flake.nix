@@ -42,6 +42,12 @@
       r2AccountId = "e10a637fb9ef49068ff75e106b7a7c19";
       brianSshKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBEjcQUPpiMkeQJFlkrERftafbT/CpjaeRzbHUv/0P2W";
 
+      # prometheus-3.11.2 TestQueryLog race: HTTP server starts too slowly under qemu aarch64
+      # emulation — "connection refused" on 127.0.0.1:34589 before server is ready.
+      prometheusOverlay = final: prev: {
+        prometheus = prev.prometheus.overrideAttrs (_: { doCheck = false; });
+      };
+
       # glances test failures in the Nix sandbox:
       # - test_phys_core_returns_int: psutil.cpu_count(logical=False) returns None on aarch64 (no CPU topology)
       # - test_api.py, test_memoryleak.py: psutil.net_if_stats() → ioctl(SIOCETHTOOL) fails in sandbox
@@ -72,7 +78,7 @@
         sops-nix.nixosModules.sops
         home-manager.nixosModules.home-manager
         {
-          nixpkgs.overlays = [ glancesOverlay ];
+          nixpkgs.overlays = [ glancesOverlay prometheusOverlay ];
           home-manager.useGlobalPkgs = true;
           home-manager.useUserPackages = true;
           home-manager.backupFileExtension = "backup";

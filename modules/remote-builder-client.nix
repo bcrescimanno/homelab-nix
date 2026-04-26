@@ -1,12 +1,13 @@
 # modules/remote-builder-client.nix — use orthanc as a remote Nix builder
 #
 # Included in all Pi (aarch64-linux) hosts via piModules in flake.nix.
-# Offloads builds to orthanc (Ryzen 9 5950X, x86_64) which handles:
-#   - x86_64-linux builds natively
-#   - aarch64-linux builds via QEMU binfmt emulation (configured on orthanc)
+# Offloads x86_64-linux builds to orthanc (Ryzen 9 5950X, builds natively).
 #
-# This eliminates multi-hour kernel compiles on the Pis — the 5950X builds
-# the same kernel in ~10 minutes and the Pi downloads the result.
+# aarch64-linux builds (e.g. the Pi kernel) run locally on the Pi — native
+# aarch64 at 2.4GHz is ~4x faster than orthanc's qemu emulation for heavy
+# compiles like the kernel. max-jobs = 4 enables local aarch64 builds.
+# Once one Pi builds the kernel and the post-build hook pushes it to attic,
+# subsequent Pi deploys get an instant cache hit.
 #
 # Required sops secret (add to each Pi's secrets/<host>.yaml):
 #   nix_remote_builder_key — SSH private key for the nix-remote-builder user
@@ -42,19 +43,17 @@
 
   nix.distributedBuilds = true;
 
-  # Never build locally on the Pi — always use orthanc or a substituter.
-  # Prevents large builds (kernels, etc.) from running on the Pi CPUs.
-  nix.settings.max-jobs = 0;
+  # Allow up to 4 local aarch64 builds — used for the Pi kernel and any other
+  # aarch64 packages that miss attic. orthanc handles x86_64 only (see below).
+  nix.settings.max-jobs = 4;
 
   nix.buildMachines = [{
     hostName = "orthanc.home.theshire.io";
-    # orthanc builds x86_64 natively and aarch64 via binfmt emulation.
-    systems = [ "x86_64-linux" "aarch64-linux" ];
+    # x86_64 only — aarch64 builds run natively on the Pi (faster than qemu).
+    systems = [ "x86_64-linux" ];
     sshUser = "nix-remote-builder";
     sshKey = config.sops.secrets.nix_remote_builder_key.path;
-    # 8 parallel jobs — leaves 8 cores free on the 5950X for other workloads.
     maxJobs = 8;
-    # High speed factor so Nix prefers orthanc over local Pi builds.
     speedFactor = 10;
     supportedFeatures = [ "nixos-test" "benchmark" "big-parallel" "kvm" ];
     mandatoryFeatures = [];
