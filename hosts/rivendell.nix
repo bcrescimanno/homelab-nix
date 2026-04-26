@@ -97,6 +97,9 @@
       attic_push_token = {};
       nut_upsmon_password = {};
       nut_ha_password = {};
+      github_runner_token = {
+        owner = "github-runner-rivendell";
+      };
     };
   };
 
@@ -136,5 +139,29 @@
     device = "erebor.theshire.io:/var/nfs/shared/media/music";
     fsType = "nfs";
     options = [ "_netdev" "nofail" "x-systemd.automount" "noauto" "ro" ];
+  };
+
+  # ---------------------------------------------------------------------------
+  # GitHub Actions self-hosted runner — aarch64 pre-build for flake updates
+  #
+  # Builds all Pi closures natively when Renovate opens a flake.lock PR.
+  # The nix-daemon's post-build hook pushes results to attic automatically,
+  # so deploys that follow get cache hits instead of recompiling.
+  #
+  # Static user required: DynamicUser=true (the module default) prevents
+  # sops-nix from resolving the token file owner at eval time.
+  # ---------------------------------------------------------------------------
+  users.users.github-runner-rivendell = { isSystemUser = true; group = "github-runner-rivendell"; };
+  users.groups.github-runner-rivendell = {};
+
+  services.github-runners.rivendell = {
+    enable = true;
+    url = "https://github.com/bcrescimanno/homelab-nix";
+    tokenFile = config.sops.secrets.github_runner_token.path;
+    name = "rivendell";
+    extraLabels = [ "nix-builder" ];
+    replace = true;
+    user = "github-runner-rivendell";
+    extraPackages = with pkgs; [ nix git openssh ];
   };
 }

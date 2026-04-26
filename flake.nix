@@ -85,7 +85,6 @@
         }
         ./modules/base.nix
         ./modules/backup.nix
-        ./modules/remote-builder-client.nix
       ] ++ extraModules;
 
       # deploy-rs activate helpers per architecture
@@ -135,6 +134,8 @@
           ./modules/gatus.nix
           ./modules/music-assistant.nix
           ./modules/nixpkgs-watch.nix
+          # github-runners.nix is not in nixos-raspberrypi's default module set
+          "${nixpkgs}/nixos/modules/services/continuous-integration/github-runners.nix"
         ];
         specialArgs = { inherit inputs nixos-raspberrypi r2AccountId; };
       };

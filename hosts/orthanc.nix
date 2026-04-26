@@ -181,6 +181,9 @@
       cloudflared_piped_credentials = {
         owner = "cloudflared";
       };
+      github_runner_token = {
+        owner = "github-runner-orthanc";
+      };
     };
   };
 
@@ -215,6 +218,29 @@
 
   home-manager.users.brian = {
     imports = [ "${inputs.dotfiles}/machines/orthanc.nix" ];
+  };
+
+  # ---------------------------------------------------------------------------
+  # GitHub Actions self-hosted runner — x86_64 pre-build for flake updates
+  #
+  # Builds orthanc's closure natively when Renovate opens a flake.lock PR.
+  # Post-build hook pushes results to attic; subsequent deploys get cache hits.
+  #
+  # Static user required: DynamicUser=true (the module default) prevents
+  # sops-nix from resolving the token file owner at eval time.
+  # ---------------------------------------------------------------------------
+  users.users.github-runner-orthanc = { isSystemUser = true; group = "github-runner-orthanc"; };
+  users.groups.github-runner-orthanc = {};
+
+  services.github-runners.orthanc = {
+    enable = true;
+    url = "https://github.com/bcrescimanno/homelab-nix";
+    tokenFile = config.sops.secrets.github_runner_token.path;
+    name = "orthanc";
+    extraLabels = [ "nix-builder" ];
+    replace = true;
+    user = "github-runner-orthanc";
+    extraPackages = with pkgs; [ nix git openssh ];
   };
 
   # ---------------------------------------------------------------------------

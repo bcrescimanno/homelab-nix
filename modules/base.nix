@@ -205,6 +205,10 @@
   # /run/current-system/configuration. Handy for debugging.
   nix.settings.experimental-features = [ "nix-command" "flakes" ];
 
+  # Build locally on all hosts — heavy aarch64 artifacts (kernel, etc.) are
+  # pre-built by the rivendell CI runner and pushed to attic before deploys.
+  nix.settings.max-jobs = 4;
+
   # Attic binary cache — served from mirkwood as cache.theshire.io.
   # The post-build hook pushes every built path to the cache so subsequent
   # hosts (and future upgrades) can fetch instead of rebuilding.

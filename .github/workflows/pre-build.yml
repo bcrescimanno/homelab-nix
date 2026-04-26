@@ -1,0 +1,37 @@
+name: Pre-build flake update
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+    paths:
+      - flake.lock
+
+# Cancel any in-progress pre-build for the same PR when a new commit arrives.
+concurrency:
+  group: pre-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-aarch64:
+    name: Build aarch64 closures (rivendell)
+    runs-on: [self-hosted, Linux, ARM64, nix-builder]
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Pi closures
+        run: |
+          nix build --no-link \
+            .#nixosConfigurations.rivendell.config.system.build.toplevel \
+            .#nixosConfigurations.mirkwood.config.system.build.toplevel \
+            .#nixosConfigurations.pirateship.config.system.build.toplevel
+
+  build-x86_64:
+    name: Build x86_64 closure (orthanc)
+    runs-on: [self-hosted, Linux, X64, nix-builder]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build orthanc closure
+        run: |
+          nix build --no-link \
+            .#nixosConfigurations.orthanc.config.system.build.toplevel
