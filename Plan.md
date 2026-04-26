@@ -180,8 +180,8 @@ should now target orthanc instead.
 
 **Depends on**: Phase 4 complete. Lower priority — mirkwood handles Attic fine today.
 
-Orthanc is already the remote builder. Co-locating Attic here means post-build hooks push to
-localhost (fast) instead of over the network (slow). Also frees mirkwood's NVMe for other use.
+Co-locating Attic on orthanc means post-build hooks push to localhost (fast) instead of over
+the network (slow). Also frees mirkwood's NVMe for other use.
 
 Steps:
 1. Migrate Attic NVMe data: rsync `/var/lib/attic` from mirkwood → orthanc (with atticd stopped on both)

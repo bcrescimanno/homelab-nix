@@ -42,7 +42,7 @@ When auto-upgrade fires at 04:00, every host independently rebuilds.
 
 ---
 
-## 3. Either finish or remove the remote-builder-client wiring
+## 3. ✅ Either finish or remove the remote-builder-client wiring
 
 **Current state.** `hosts/orthanc.nix` declares the `nix-remote-builder` SSH user with `boot.binfmt.emulatedSystems = [ "aarch64-linux" ]`. `MEMORY.md` notes that the `nix_remote_builder_key` private key is in every Pi's sops secrets. But **no `nix.buildMachines` block exists anywhere in the repo**, and `modules/base.nix` sets `max-jobs = 4` (the comment explains: "Build locally on all hosts — heavy aarch64 artifacts are pre-built by the rivendell CI runner").
 

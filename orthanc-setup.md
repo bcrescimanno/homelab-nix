@@ -46,45 +46,6 @@ Once orthanc is up and reachable at `orthanc.home.theshire.io`:
 deploy orthanc
 ```
 
-## 6. Set up the Nix remote builder (one-time, after first deploy)
-
-Generate a dedicated SSH key pair:
-
-```bash
-ssh-keygen -t ed25519 -f /tmp/nix-remote-builder -C nix-remote-builder
-```
-
-Add the **public key** to `hosts/orthanc.nix`:
-
-```nix
-users.users.nix-remote-builder.openssh.authorizedKeys.keys = [
-  "ssh-ed25519 AAAA... nix-remote-builder"
-];
-```
-
-Add the **private key** to each Pi's secrets file:
-
-```bash
-SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops secrets/pirateship.yaml
-SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops secrets/rivendell.yaml
-SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops secrets/mirkwood.yaml
-```
-
-Add this key to each file:
-```yaml
-nix_remote_builder_key: |
-  -----BEGIN OPENSSH PRIVATE KEY-----
-  ...
-  -----END OPENSSH PRIVATE KEY-----
-```
-
-Deploy orthanc first (to activate the authorized key), then redeploy the Pis:
-
-```bash
-deploy orthanc
-deploy
-```
-
-## 7. Clean up
+## 6. Clean up
 
 Once orthanc is healthy and backups are confirmed working, delete this file.
