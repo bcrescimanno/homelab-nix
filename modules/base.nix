@@ -13,7 +13,7 @@ let
   }.${config.networking.hostName} or "04:00";
 in
 {
-  imports = [ ./attic-push.nix ];
+  imports = [ ./attic-push.nix ./post-upgrade-check.nix ];
 
   # ---------------------------------------------------------------------------
   # Users
@@ -122,7 +122,7 @@ in
       '');
     };
     unitConfig = {
-      OnSuccess = "homelab-upgrade-notify-success.service";
+      OnSuccess = "homelab-upgrade-check.service";
       OnFailure = "homelab-upgrade-notify-failure.service";
     };
   };

@@ -92,4 +92,6 @@
   # Allow Caddy on rivendell to reach atticd (public proxy) and any hosts that
   # push directly over LAN.
   networking.firewall.allowedTCPPorts = [ 8080 ];
+
+  homelab.postUpgradeCheck.services = [ "atticd" ];
 }

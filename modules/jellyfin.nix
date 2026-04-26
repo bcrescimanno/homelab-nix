@@ -67,4 +67,6 @@
 
   # Accessible from rivendell (Caddy) and local network
   networking.firewall.allowedTCPPorts = [ 8096 ];
+
+  homelab.postUpgradeCheck.services = [ "jellyfin" ];
 }

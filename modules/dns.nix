@@ -184,4 +184,6 @@ upstreams = {
     allowedTCPPorts = [ 53 4000 ];
     allowedUDPPorts = [ 53 ];
   };
+
+  homelab.postUpgradeCheck.services = [ "blocky" "unbound" ];
 }

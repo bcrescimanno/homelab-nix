@@ -43,4 +43,6 @@
     "d /var/lib/ntfy/cache 0755 root root -"
     "d /var/lib/ntfy/config 0755 root root -"
   ];
+
+  homelab.postUpgradeCheck.services = [ "podman-ntfy" ];
 }

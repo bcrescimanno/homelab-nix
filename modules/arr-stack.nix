@@ -596,4 +596,10 @@ PYEOF
   ];
 
   sops.secrets.recyclarr_env = {};
+
+  homelab.postUpgradeCheck.services = [
+    "podman-gluetun" "podman-qbittorrent" "podman-radarr"
+    "podman-sonarr"  "podman-prowlarr"    "podman-lidarr"
+    "podman-sabnzbd" "qbittorrent-port-sync"
+  ];
 }

@@ -126,4 +126,6 @@
     "d /var/lib/matter-server/data 0755 root root -"
     "d /var/lib/otbr/data 0755 root root -"
   ];
+
+  homelab.postUpgradeCheck.services = [ "podman-homeassistant" "podman-matter-server" ];
 }

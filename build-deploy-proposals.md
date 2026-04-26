@@ -166,7 +166,7 @@ Keep the cleanup trap, EPP handling, and validate gate. Most of the script stays
 
 ---
 
-## 10. Add post-upgrade validation to `homelab-upgrade.service`
+## 10. ✅ Add post-upgrade validation to `homelab-upgrade.service`
 
 **Current state.** `homelab-upgrade.service` runs `nixos-rebuild switch`. On success/failure it pings ntfy. "Success" here means the rebuild script returned 0 — not that services are healthy.
 

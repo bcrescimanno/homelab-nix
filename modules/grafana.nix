@@ -78,4 +78,6 @@
   # Port must be open so rivendell can reach it; not directly exposed externally
   networking.firewall.allowedTCPPorts = [ 3001 ];
   # Prometheus internal only — no firewall port opened
+
+  homelab.postUpgradeCheck.services = [ "prometheus" "grafana" ];
 }

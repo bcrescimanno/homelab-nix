@@ -29,4 +29,6 @@
   systemd.tmpfiles.rules = [
     "d /var/lib/prometheus-textfiles 0755 root root -"
   ];
+
+  homelab.postUpgradeCheck.services = [ "glances" ];
 }

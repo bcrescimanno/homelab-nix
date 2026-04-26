@@ -108,4 +108,6 @@ in
     config.sops.secrets.caddy_cloudflare_env.path;
 
   networking.firewall.allowedTCPPorts = [ 80 443 ];
+
+  homelab.postUpgradeCheck.services = [ "caddy" ];
 }

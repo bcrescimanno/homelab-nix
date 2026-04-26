@@ -93,4 +93,6 @@ in
   };
 
   networking.firewall.allowedTCPPorts = [ 3493 ];
+
+  homelab.postUpgradeCheck.services = [ "nut-server" "nut-monitor" ];
 }

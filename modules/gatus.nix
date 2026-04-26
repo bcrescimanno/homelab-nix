@@ -130,4 +130,6 @@ in
   };
 
   networking.firewall.allowedTCPPorts = [ 8080 ];
+
+  homelab.postUpgradeCheck.services = [ "gatus" ];
 }

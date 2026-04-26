@@ -26,4 +26,6 @@
   };
 
   networking.firewall.allowedTCPPorts = [ 4533 ];
+
+  homelab.postUpgradeCheck.services = [ "navidrome" ];
 }

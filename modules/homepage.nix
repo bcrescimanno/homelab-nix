@@ -350,4 +350,6 @@
       }
     ];
   };
+
+  homelab.postUpgradeCheck.services = [ "homepage-dashboard" ];
 }
