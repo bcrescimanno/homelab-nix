@@ -146,7 +146,7 @@ Set `max-jobs = 0` on Pis (per-host, not in `base.nix`). Cache miss now flows: P
 
 ---
 
-## 9. Generalize `scripts/merge-renovate`
+## 9. ✅ Generalize `scripts/merge-renovate`
 
 **Current state.** The script hardcodes `BRANCH="renovate/lock-file-maintenance"`. It can only handle the Saturday lockfile maintenance PR. Other Renovate PRs (nix input updates, container digest updates that *don't* automerge for some reason) get the manual treatment — `git checkout`, `nix flake check`, `deploy`, `validate`, `gh pr merge` by hand.
 

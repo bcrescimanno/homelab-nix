@@ -16,6 +16,9 @@
 #   --skip-deploy     Skip deploy step (use if already deployed from this lock)
 #   --skip-validate   Skip validation step (use with caution)
 #   --no-push         Dry-run mode: do everything except the final merge/push
+#   --pr <number>     Target a specific PR by number (branch resolved automatically)
+#   --branch <name>   Target a specific branch (finds its open PR on GitHub)
+#                     Default: renovate/lock-file-maintenance
 #
 # Common failure modes and remediation:
 #   • nix flake check fails with a hash mismatch
@@ -36,7 +39,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FLAKE_DIR="${SCRIPT_DIR}/.."
 REPO="bcrescimanno/homelab-nix"
-BRANCH="renovate/lock-file-maintenance"
+DEFAULT_BRANCH="renovate/lock-file-maintenance"
 SETTLE_SECONDS=45
 
 SKIP_DEPLOY=false
@@ -47,19 +50,26 @@ EPP_BOOSTED=false
 ORTHANC_HOST="orthanc.home.theshire.io"
 EPP_NORMAL="balance_power"
 EPP_BUILD="performance"
+PR_NUMBER=""
+BRANCH=""
 
-for arg in "$@"; do
-  case "$arg" in
-    --skip-deploy)   SKIP_DEPLOY=true ;;
-    --skip-validate) SKIP_VALIDATE=true ;;
-    --no-push)       NO_PUSH=true ;;
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --skip-deploy)   SKIP_DEPLOY=true; shift ;;
+    --skip-validate) SKIP_VALIDATE=true; shift ;;
+    --no-push)       NO_PUSH=true; shift ;;
+    --pr)            PR_NUMBER="${2:?--pr requires a PR number}"; shift 2 ;;
+    --branch)        BRANCH="${2:?--branch requires a branch name}"; shift 2 ;;
     -h|--help)
       sed -n '2,50p' "$0" | grep '^#' | sed 's/^# \?//'
       exit 0
       ;;
-    *) echo "Unknown argument: $arg" >&2; exit 1 ;;
+    *) echo "Unknown argument: $1" >&2; exit 1 ;;
   esac
 done
+
+# Default branch when neither --pr nor --branch was given
+[[ -z "$PR_NUMBER" && -z "$BRANCH" ]] && BRANCH="$DEFAULT_BRANCH"
 
 # ─── Color helpers ────────────────────────────────────────────────────────────
 
@@ -131,24 +141,32 @@ ok "On main, working tree is clean"
 
 # ─── Step 1: Find the PR ──────────────────────────────────────────────────────
 
-step "Finding Renovate lockfile maintenance PR"
+step "Finding open PR"
 
-PR_JSON=$(gh pr list \
-  --repo "$REPO" \
-  --head "$BRANCH" \
-  --state open \
-  --json number,title,url \
-  2>/dev/null)
+if [[ -n "$PR_NUMBER" ]]; then
+  # --pr mode: resolve branch and metadata from the PR number
+  PR_JSON=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json number,title,url,headRefName 2>/dev/null) \
+    || die "Could not look up PR #${PR_NUMBER} — is gh authenticated?"
+  BRANCH=$(echo  "$PR_JSON" | jq -r '.headRefName')
+  PR_TITLE=$(echo "$PR_JSON" | jq -r '.title')
+  PR_URL=$(echo   "$PR_JSON" | jq -r '.url')
+else
+  # branch mode (default or --branch): find the open PR by branch name
+  PR_JSON=$(gh pr list \
+    --repo "$REPO" \
+    --head "$BRANCH" \
+    --state open \
+    --json number,title,url \
+    2>/dev/null)
+  PR_NUMBER=$(echo "$PR_JSON" | jq -r '.[0].number // empty')
+  PR_TITLE=$(echo  "$PR_JSON" | jq -r '.[0].title  // empty')
+  PR_URL=$(echo    "$PR_JSON" | jq -r '.[0].url    // empty')
 
-PR_NUMBER=$(echo "$PR_JSON" | jq -r '.[0].number // empty')
-PR_TITLE=$(echo  "$PR_JSON" | jq -r '.[0].title  // empty')
-PR_URL=$(echo    "$PR_JSON" | jq -r '.[0].url    // empty')
-
-if [[ -z "$PR_NUMBER" ]]; then
-  warn "No open PR found for branch '$BRANCH'."
-  hint "Is there a lockfile maintenance PR open this week?"
-  hint "Check: gh pr list --repo $REPO"
-  die "No PR to merge."
+  if [[ -z "$PR_NUMBER" ]]; then
+    warn "No open PR found for branch '$BRANCH'."
+    hint "Check: gh pr list --repo $REPO"
+    die "No PR to merge."
+  fi
 fi
 
 ok "Found PR #${PR_NUMBER}: ${PR_TITLE}"
@@ -273,7 +291,7 @@ fi
 gh pr merge "$PR_NUMBER" \
   --repo "$REPO" \
   --merge \
-  --subject "chore(deps): lock file maintenance" \
+  --subject "$PR_TITLE" \
   --delete-branch
 
 ok "PR #${PR_NUMBER} merged on GitHub"
@@ -289,6 +307,6 @@ ok "main is up to date with the merged flake.lock"
 # ─── Done ─────────────────────────────────────────────────────────────────────
 
 echo
-echo -e "${GREEN}${BOLD}✓ Renovate lockfile maintenance merged successfully.${NC}"
-echo "  PR #${PR_NUMBER} closed. Local main reflects the updated flake.lock."
+echo -e "${GREEN}${BOLD}✓ PR #${PR_NUMBER} merged successfully.${NC}"
+echo "  Local main reflects the merged flake.lock."
 echo
