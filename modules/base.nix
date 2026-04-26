@@ -205,9 +205,10 @@ in
   # Misc
   # ---------------------------------------------------------------------------
 
-  # RPi kernel sets CONFIG_ARCH_MMAP_RND_BITS_MAX=32; systemd ≥260 tries to
-  # write 33, which the kernel rejects. Cap it at 32 on all hosts (safe on x86 too).
-  boot.kernel.sysctl."vm.mmap_rnd_bits" = 32;
+  # systemd ≥260 tries to set vm.mmap_rnd_bits but the RPi kernel doesn't
+  # support this sysctl. The '-' prefix makes the write failure non-fatal.
+  # File sorts after NixOS's own 60-nixos.conf to ensure it takes precedence.
+  environment.etc."sysctl.d/99-rpi-compat.conf".text = "-vm.mmap_rnd_bits = 32\n";
 
   # Write the current system configuration (the /nix/store path) to
   # /run/current-system/configuration. Handy for debugging.
