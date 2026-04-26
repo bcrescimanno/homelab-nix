@@ -3,6 +3,15 @@
 
 { config, pkgs, lib, ... }:
 
+let
+  # Staggered upgrade times: orthanc warms attic first, then Pis pull cached artifacts.
+  upgradeTime = {
+    orthanc    = "04:00";
+    rivendell  = "04:20";
+    mirkwood   = "04:40";
+    pirateship = "05:00";
+  }.${config.networking.hostName} or "04:00";
+in
 {
   # ---------------------------------------------------------------------------
   # Users
@@ -95,15 +104,10 @@
   # Automatic updates
   # ---------------------------------------------------------------------------
 
-  # homelab-upgrade is a shared oneshot service present on all three hosts.
-  # On mirkwood it is triggered by homelab-upgrade-orchestrator (declared in
-  # hosts/mirkwood.nix), which builds first and primes the attic cache.
-  # On rivendell and pirateship it is triggered via SSH by that same
-  # orchestrator after mirkwood's own upgrade completes.
-  #
-  # All three hosts share the same service definition — each runs
-  # nixos-rebuild switch against its own hostname and sends its own ntfy
-  # notification on success or failure.
+  # homelab-upgrade is a shared oneshot service present on all hosts.
+  # Each host upgrades independently on a staggered schedule (see timer below):
+  # orthanc first (warms attic), then rivendell, mirkwood, pirateship.
+  # Each runs nixos-rebuild switch and sends its own ntfy notification.
   systemd.services.homelab-upgrade = {
     description = "Homelab NixOS upgrade";
     requires = [ "network-online.target" ];
@@ -127,11 +131,11 @@
     description = "Daily NixOS upgrade";
     wantedBy = [ "timers.target" ];
     timerConfig = {
-      OnCalendar = "04:00";
+      OnCalendar = upgradeTime;
       Persistent = true;
-      # Spread host upgrades randomly within a 15-minute window so they
-      # don't all hammer orthanc and attic at the exact same second.
-      RandomizedDelaySec = "15m";
+      # Small jitter to avoid GitHub rate-limiting when multiple hosts hit
+      # the flake source at nearly the same second.
+      RandomizedDelaySec = "2m";
     };
   };
 
