@@ -2,8 +2,12 @@
 # scripts/deploy — homelab deploy helper
 #
 # Usage:
-#   deploy                    Deploy all Pi hosts: mirkwood first (cache primer),
-#                             then rivendell + pirateship in parallel
+#   deploy                    Deploy all hosts in weekly-safe order:
+#                               1. orthanc  (remote builder — warms attic cache)
+#                               2. mirkwood (primary DNS + cache primer for Pis)
+#                               3. rivendell + pirateship in parallel
+#                             mirkwood completes before rivendell starts so DNS
+#                             redundancy is maintained throughout.
 #   deploy mirkwood           Deploy a single host
 #   deploy rivendell
 #   deploy pirateship
@@ -18,7 +22,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FLAKE="${SCRIPT_DIR}/.."
 
 run_deploy() {
-  nix run --option accept-flake-config true github:serokell/deploy-rs -- "$FLAKE#$1"
+  local host="$1"
+  local log
+  log=$(mktemp)
+  # deploy-rs exits 0 even on activation failure; detect via output
+  nix run --option accept-flake-config true github:serokell/deploy-rs -- "$FLAKE#$host" 2>&1 | tee "$log"
+  if grep -q '\[ERROR\]' "$log"; then
+    rm -f "$log"
+    echo "deploy: $host activation failed (deploy-rs reported ERROR)" >&2
+    return 1
+  fi
+  rm -f "$log"
 }
 
 case "${1:-all}" in
@@ -26,9 +40,13 @@ case "${1:-all}" in
     run_deploy "$1"
     ;;
   all)
-    # Mirkwood goes first: it builds its own closure, which includes the shared
-    # kernel (linux_rpi-bcm2712). The post-build hook pushes everything to attic.
-    # Rivendell and pirateship then get cache hits on all shared derivations.
+    # Orthanc first: x86_64 remote builder for all Pis. Deploying it first
+    # ensures it's available and warm for the Pi builds that follow.
+    run_deploy orthanc
+
+    # Mirkwood second: builds its closure (including the shared linux_rpi-bcm2712
+    # kernel) and pushes to attic. Rivendell and pirateship get cache hits.
+    # Must complete before rivendell starts to maintain DNS redundancy.
     run_deploy mirkwood
 
     run_deploy rivendell &
