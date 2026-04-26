@@ -27,7 +27,7 @@
   sops.secrets.minecraft_env = {};
 
   virtualisation.oci-containers.containers.minecraft = {
-    image = "itzg/minecraft-server:java21@sha256:d466fd5e92ddc23e54c4dd4673718d6d41ab0d22ac2ffd1af7050ae26b7ef19b";
+    image = "itzg/minecraft-server:java21@sha256:0aaeb46e24ae9ff05f11ea22380d1cef0fd1e53a353edd9bd5465136a40b4182";
     autoStart = true;
 
     environment = {
