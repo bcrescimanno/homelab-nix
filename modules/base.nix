@@ -205,6 +205,10 @@ in
   # Misc
   # ---------------------------------------------------------------------------
 
+  # RPi kernel sets CONFIG_ARCH_MMAP_RND_BITS_MAX=32; systemd ≥260 tries to
+  # write 33, which the kernel rejects. Cap it at 32 on all hosts (safe on x86 too).
+  boot.kernel.sysctl."vm.mmap_rnd_bits" = 32;
+
   # Write the current system configuration (the /nix/store path) to
   # /run/current-system/configuration. Handy for debugging.
   nix.settings.experimental-features = [ "nix-command" "flakes" ];
