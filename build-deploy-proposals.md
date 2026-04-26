@@ -78,7 +78,7 @@ Set `max-jobs = 0` on Pis (per-host, not in `base.nix`). Cache miss now flows: P
 
 ---
 
-## 4. Active health check for the attic cache
+## 4. ✅ Active health check for the attic cache
 
 **Current state.** `scripts/validate` checks `http://orthanc:8080` returns 200/400/404. `modules/base.nix` post-build hook prints `attic-push: push failed for $path (non-fatal)` to stderr and continues. There's no monitoring beyond that.
 

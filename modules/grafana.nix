@@ -16,15 +16,28 @@
     enable        = true;
     port          = 9090;
     retentionTime = "7d";
-    scrapeConfigs = [{
-      job_name       = "blocky";
-      static_configs = [{
-        targets = [
-          "127.0.0.1:4000"        # mirkwood Blocky (local)
-          "rivendell.local:4000"  # rivendell Blocky
-        ];
-      }];
-    }];
+    scrapeConfigs = [
+      {
+        job_name       = "blocky";
+        static_configs = [{
+          targets = [
+            "127.0.0.1:4000"        # mirkwood Blocky (local)
+            "rivendell.local:4000"  # rivendell Blocky
+          ];
+        }];
+      }
+      {
+        job_name       = "node";
+        static_configs = [{
+          targets = [
+            "127.0.0.1:9100"           # mirkwood
+            "rivendell:9100"
+            "pirateship:9100"
+            "orthanc:9100"
+          ];
+        }];
+      }
+    ];
   };
 
   services.grafana = {

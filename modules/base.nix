@@ -245,10 +245,34 @@ in
     # Push one path at a time — the attic client (0-unstable-2025-09-24) has a
     # panic_in_cleanup bug in Pusher::worker that triggers when batching multiple
     # paths. Pushing serially avoids it. Remove the loop once attic is fixed upstream.
+    METRIC_FILE="/var/lib/prometheus-textfiles/attic_push.prom"
+    PUSH_SUCCESS=0
+    PUSH_FAILURE=0
+
     for path in $OUT_PATHS; do
-      HOME="$ATTIC_HOME" ${pkgs.attic-client}/bin/attic push homelab:nixpkgs "$path" \
-        || echo "attic-push: push failed for $path (non-fatal)" >&2
+      if HOME="$ATTIC_HOME" ${pkgs.attic-client}/bin/attic push homelab:nixpkgs "$path"; then
+        PUSH_SUCCESS=$((PUSH_SUCCESS + 1))
+      else
+        echo "attic-push: push failed for $path (non-fatal)" >&2
+        PUSH_FAILURE=$((PUSH_FAILURE + 1))
+      fi
     done
+
+    # Append to running counters atomically — read → increment → write.
+    if [ -d /var/lib/prometheus-textfiles ]; then
+      PREV_SUCCESS=$(grep -m1 '^attic_push_success_total ' "$METRIC_FILE" 2>/dev/null | awk '{print $2}' || echo 0)
+      PREV_FAILURE=$(grep -m1 '^attic_push_failure_total ' "$METRIC_FILE" 2>/dev/null | awk '{print $2}' || echo 0)
+      TOTAL_SUCCESS=$((PREV_SUCCESS + PUSH_SUCCESS))
+      TOTAL_FAILURE=$((PREV_FAILURE + PUSH_FAILURE))
+      METRIC_TMP=$(mktemp -p /var/lib/prometheus-textfiles)
+      printf '# HELP attic_push_success_total Attic store paths pushed successfully\n' > "$METRIC_TMP"
+      printf '# TYPE attic_push_success_total counter\n'                               >> "$METRIC_TMP"
+      printf 'attic_push_success_total %s\n' "$TOTAL_SUCCESS"                          >> "$METRIC_TMP"
+      printf '# HELP attic_push_failure_total Attic store paths that failed to push\n' >> "$METRIC_TMP"
+      printf '# TYPE attic_push_failure_total counter\n'                               >> "$METRIC_TMP"
+      printf 'attic_push_failure_total %s\n' "$TOTAL_FAILURE"                          >> "$METRIC_TMP"
+      mv "$METRIC_TMP" "$METRIC_FILE"
+    fi
   '');
 
   # Allow the nix daemon to be used by wheel users for building.

@@ -14,4 +14,19 @@
     enable = true;
     openFirewall = true;
   };
+
+  # node_exporter exposes host metrics for Prometheus on mirkwood.
+  # Textfile collector reads .prom files from /var/lib/prometheus-textfiles —
+  # the attic post-build hook writes push success/failure counters there.
+  services.prometheus.exporters.node = {
+    enable = true;
+    port = 9100;
+    enabledCollectors = [ "textfile" ];
+    extraFlags = [ "--collector.textfile.directory=/var/lib/prometheus-textfiles" ];
+    openFirewall = true;
+  };
+
+  systemd.tmpfiles.rules = [
+    "d /var/lib/prometheus-textfiles 0755 root root -"
+  ];
 }

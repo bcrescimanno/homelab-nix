@@ -111,15 +111,18 @@ in
         (mkHttp { name = "Grafana";     url = "https://grafana.theshire.io";  group = "Observability"; })
         (mkHttp { name = "ntfy";        url = "https://ntfy.theshire.io";     group = "Observability"; })
 
-        # Nix binary cache — attic on mirkwood. Root returns 404 (no UI);
-        # condition accepts anything below 500 so a healthy-but-empty 404
-        # is treated as up.
+        # Nix binary cache — functional probe via the standard nix-cache-info
+        # endpoint. Asserts StoreDir is correct so signing key mismatches,
+        # wrong cache name, and atticd config drift all surface as alerts.
         {
           name = "Nix Cache";
-          url = "https://cache.theshire.io/";
+          url = "https://cache.theshire.io/nixpkgs/nix-cache-info";
           group = "Observability";
-          interval = "1m";
-          conditions = [ "[STATUS] < 500" ];
+          interval = "5m";
+          conditions = [
+            "[STATUS] == 200"
+            "[BODY] contains StoreDir: /nix/store"
+          ];
           alerts = [{ type = "ntfy"; }];
         }
       ];
