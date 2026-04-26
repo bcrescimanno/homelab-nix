@@ -16,6 +16,11 @@
 { config, pkgs, lib, inputs, ... }:
 
 {
+  imports = [
+    (import ../lib/homelab.nix "cloudflared")
+    (import ../lib/homelab.nix "github-runner-orthanc")
+  ];
+
   # ---------------------------------------------------------------------------
   # Identity
   # ---------------------------------------------------------------------------
@@ -165,11 +170,6 @@
   # This makes piped-api.theshire.io publicly reachable via Cloudflare.
   # Internal clients continue to hit Caddy on rivendell via split-horizon DNS.
 
-  # cloudflared uses DynamicUser=true internally, but sops-nix resolves group
-  # ownership at eval time — it needs static user/group declarations to exist.
-  users.users.cloudflared = { isSystemUser = true; group = "cloudflared"; };
-  users.groups.cloudflared = {};
-
   services.cloudflared = {
     enable = true;
     tunnels."piped-api" = {
@@ -190,12 +190,7 @@
   # Builds orthanc's closure natively when Renovate opens a flake.lock PR.
   # Post-build hook pushes results to attic; subsequent deploys get cache hits.
   #
-  # Static user required: DynamicUser=true (the module default) prevents
-  # sops-nix from resolving the token file owner at eval time.
   # ---------------------------------------------------------------------------
-  users.users.github-runner-orthanc = { isSystemUser = true; group = "github-runner-orthanc"; };
-  users.groups.github-runner-orthanc = {};
-
   services.github-runners.orthanc = {
     enable = true;
     url = "https://github.com/bcrescimanno/homelab-nix";

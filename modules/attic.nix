@@ -4,7 +4,7 @@
 # via Caddy on rivendell (TLS termination + reverse proxy).
 #
 # Storage: SQLite DB + NAR storage on orthanc's NVMe at /var/lib/atticd/.
-# GC retains entries used within the last 2 weeks.
+# GC retains entries used within the last 6 weeks.
 #
 # ---------------------------------------------------------------------------
 # Required sops secret (secrets/orthanc.yaml):
@@ -52,14 +52,7 @@
 { config, pkgs, lib, ... }:
 
 {
-  # Declare atticd user/group explicitly so sops-nix can resolve the group
-  # for the attic_env secret. The atticd NixOS module uses systemd dynamic
-  # users internally, which don't appear in config.users.users.
-  users.users.atticd = {
-    isSystemUser = true;
-    group = "atticd";
-  };
-  users.groups.atticd = {};
+  imports = [ (import ../lib/homelab.nix "atticd") ];
 
   services.atticd = {
     enable = true;
@@ -86,8 +79,8 @@
       garbage-collection = {
         # Run GC every 12 hours to keep storage bounded.
         interval = "12h";
-        # Evict cache entries not accessed within 2 weeks.
-        default-retention-period = "2 weeks";
+        # Evict cache entries not accessed within 6 weeks.
+        default-retention-period = "6 weeks";
       };
     };
   };

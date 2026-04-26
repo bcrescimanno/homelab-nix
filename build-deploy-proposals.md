@@ -93,7 +93,7 @@ Set `max-jobs = 0` on Pis (per-host, not in `base.nix`). Cache miss now flows: P
 
 ---
 
-## 5. Bump attic GC retention to 6–8 weeks
+## 5. ✅ Bump attic GC retention to 6–8 weeks
 
 **Current state.** `modules/attic.nix` sets `default-retention-period = "2 weeks"`.
 
@@ -105,7 +105,7 @@ Set `max-jobs = 0` on Pis (per-host, not in `base.nix`). Cache miss now flows: P
 
 ---
 
-## 6. Hoist the SSH key to one place
+## 6. ✅ Hoist the SSH key to one place
 
 **Current state.** The `ssh-ed25519 AAAAC3...` Brian SSH key appears in three places:
 - `flake.nix:43` (`brianSshKey` let binding, used only by `orthanc-installer`)
@@ -120,7 +120,7 @@ Set `max-jobs = 0` on Pis (per-host, not in `base.nix`). Cache miss now flows: P
 
 ---
 
-## 7. Consolidate overlays
+## 7. ✅ Consolidate overlays
 
 **Current state.** `flake.nix` has two `nixpkgs.overlays` declarations:
 - `piModules` injects `[ glancesOverlay prometheusOverlay ]`
@@ -134,7 +134,7 @@ Set `max-jobs = 0` on Pis (per-host, not in `base.nix`). Cache miss now flows: P
 
 ---
 
-## 8. Move the post-build hook script out of `base.nix`
+## 8. ✅ Move the post-build hook script out of `base.nix`
 
 **Current state.** `modules/base.nix:223-247` contains a 25-line embedded shell script (the attic post-build hook) inside `pkgs.writeShellScript`. It's the most operationally critical piece of code in `base.nix` and the hardest to read because it's nested inside a string in a Nix expression.
 
@@ -178,7 +178,7 @@ Keep the cleanup trap, EPP handling, and validate gate. Most of the script stays
 
 ---
 
-## 11. Helper for the dynamic-user / sops pattern
+## 11. ✅ Helper for the dynamic-user / sops pattern
 
 **Current state.** Three services in this repo (`atticd`, `cloudflared`, `services.github-runners.*`) need static `users.users.x = { isSystemUser = true; group = "x"; }; users.groups.x = {};` declarations *only because* sops-nix needs to resolve the owner at eval time and `DynamicUser=true` services don't surface their user in `config.users.users`. This is documented in `MEMORY.md` and as comments in each module, but the pattern is easy to forget.
 

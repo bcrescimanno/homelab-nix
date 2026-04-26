@@ -7,6 +7,8 @@
 { config, pkgs, lib, inputs, ... }:
 
 {
+  imports = [ (import ../lib/homelab.nix "github-runner-rivendell") ];
+
   # ---------------------------------------------------------------------------
   # Identity
   # ---------------------------------------------------------------------------
@@ -148,12 +150,7 @@
   # The nix-daemon's post-build hook pushes results to attic automatically,
   # so deploys that follow get cache hits instead of recompiling.
   #
-  # Static user required: DynamicUser=true (the module default) prevents
-  # sops-nix from resolving the token file owner at eval time.
   # ---------------------------------------------------------------------------
-  users.users.github-runner-rivendell = { isSystemUser = true; group = "github-runner-rivendell"; };
-  users.groups.github-runner-rivendell = {};
-
   services.github-runners.rivendell = {
     enable = true;
     url = "https://github.com/bcrescimanno/homelab-nix";

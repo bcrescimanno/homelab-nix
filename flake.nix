@@ -67,6 +67,9 @@
         });
       };
 
+      commonOverlays = [ glancesOverlay ];
+      piOverlays = commonOverlays ++ [ prometheusOverlay ];
+
       piModules = extraModules: [
         ({ ... }: {
           imports = with nixos-raspberrypi.nixosModules; [
@@ -78,7 +81,7 @@
         sops-nix.nixosModules.sops
         home-manager.nixosModules.home-manager
         {
-          nixpkgs.overlays = [ glancesOverlay prometheusOverlay ];
+          nixpkgs.overlays = piOverlays;
           home-manager.useGlobalPkgs = true;
           home-manager.useUserPackages = true;
           home-manager.backupFileExtension = "backup";
@@ -119,7 +122,7 @@
           ./modules/monitoring.nix
           ./modules/navidrome.nix
         ];
-        specialArgs = { inherit inputs nixos-raspberrypi r2AccountId; };
+        specialArgs = { inherit inputs nixos-raspberrypi r2AccountId brianSshKey; };
       };
 
       rivendell = nixos-raspberrypi.lib.nixosSystem {
@@ -137,7 +140,7 @@
           # github-runners.nix is not in nixos-raspberrypi's default module set
           "${nixpkgs}/nixos/modules/services/continuous-integration/github-runners.nix"
         ];
-        specialArgs = { inherit inputs nixos-raspberrypi r2AccountId; };
+        specialArgs = { inherit inputs nixos-raspberrypi r2AccountId brianSshKey; };
       };
 
       mirkwood = nixos-raspberrypi.lib.nixosSystem {
@@ -148,7 +151,7 @@
           ./modules/monitoring.nix
           ./modules/grafana.nix
         ];
-        specialArgs = { inherit inputs nixos-raspberrypi r2AccountId; };
+        specialArgs = { inherit inputs nixos-raspberrypi r2AccountId brianSshKey; };
       };
       orthanc = nixpkgs.lib.nixosSystem {
         system = "x86_64-linux";
@@ -157,7 +160,7 @@
           sops-nix.nixosModules.sops
           home-manager.nixosModules.home-manager
           {
-            nixpkgs.overlays = [ glancesOverlay ];
+            nixpkgs.overlays = commonOverlays;
             home-manager.useGlobalPkgs = true;
             home-manager.useUserPackages = true;
             home-manager.backupFileExtension = "backup";
@@ -171,7 +174,7 @@
           ./modules/piped.nix
           ./hosts/orthanc.nix
         ];
-        specialArgs = { inherit inputs r2AccountId; };
+        specialArgs = { inherit inputs r2AccountId brianSshKey; };
       };
 
       # Custom installer ISO for orthanc (x86_64).
