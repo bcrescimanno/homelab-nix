@@ -44,7 +44,6 @@
         in toString (pkgs.writeShellScript "homelab-upgrade-check" script);
     };
     unitConfig = {
-      OnSuccess = "homelab-upgrade-notify-success.service";
       OnFailure = "homelab-upgrade-notify-unhealthy.service";
     };
   };

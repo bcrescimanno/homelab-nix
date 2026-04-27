@@ -121,7 +121,7 @@ in
           interval = "5m";
           conditions = [
             "[STATUS] == 200"
-            "[BODY] contains StoreDir: /nix/store"
+            "[BODY] contains /nix/store"
           ];
           alerts = [{ type = "ntfy"; }];
         }

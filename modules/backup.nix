@@ -66,26 +66,15 @@ in
     sops.secrets.restic_r2_env = {};
 
     # ---------------------------------------------------------------------------
-    # Backup run notifications (Option 1 — ntfy on success/failure)
+    # Backup run failure notifications
     # ---------------------------------------------------------------------------
 
     systemd.services.restic-backups-local = {
-      unitConfig.OnSuccess = "restic-local-notify-success.service";
       unitConfig.OnFailure = "restic-local-notify-failure.service";
     };
 
     systemd.services.restic-backups-offsite = {
-      unitConfig.OnSuccess = "restic-offsite-notify-success.service";
       unitConfig.OnFailure = "restic-offsite-notify-failure.service";
-    };
-
-    systemd.services.restic-local-notify-success = notifyService {
-      name        = "restic-local-notify-success";
-      description = "Notify ntfy of successful local backup";
-      title       = "Backup OK (local)";
-      priority    = 1;  # min — informational, no push
-      tags        = "floppy_disk";
-      body        = "${host} local backup completed successfully";
     };
 
     systemd.services.restic-local-notify-failure = notifyService {
@@ -95,15 +84,6 @@ in
       priority    = 4;  # high
       tags        = "rotating_light";
       body        = "${host} local backup FAILED — check journalctl -u restic-backups-local";
-    };
-
-    systemd.services.restic-offsite-notify-success = notifyService {
-      name        = "restic-offsite-notify-success";
-      description = "Notify ntfy of successful offsite backup";
-      title       = "Backup OK (offsite)";
-      priority    = 1;  # min — informational, no push
-      tags        = "floppy_disk";
-      body        = "${host} offsite backup completed successfully";
     };
 
     systemd.services.restic-offsite-notify-failure = notifyService {
@@ -116,17 +96,21 @@ in
     };
 
     # ---------------------------------------------------------------------------
-    # Freshness dead-man's switch (Option 3 — self-hosted, no external deps)
+    # Freshness dead-man's switch
     #
     # InactiveEnterTimestamp only updates when a oneshot service exits cleanly
     # (success → inactive; failure → failed state, timestamp unchanged).
     # So this check tracks "last successful run," not merely "last attempt."
-    # Fires if either repo hasn't succeeded in >36h (catches repeated failures
-    # AND timer/configuration issues that prevent the service from running).
+    # Fires if a service hasn't succeeded in >36h — catches both repeated
+    # failures AND timer/configuration issues that prevent the service running.
+    #
+    # Covers backups (local + offsite) and upgrades. homelab-upgrade-check is
+    # the terminal step in the upgrade chain (upgrade + post-upgrade health),
+    # so its InactiveEnterTimestamp is a reliable "upgrade fully succeeded" marker.
     # ---------------------------------------------------------------------------
 
     systemd.services.restic-freshness-check = {
-      description = "Check that restic backups ran recently";
+      description = "Check that backups and upgrades ran recently";
       serviceConfig.Type = "oneshot";
       script = ''
         MAX_AGE_HOURS=36
@@ -140,10 +124,10 @@ in
           if [ -z "$ts" ] || [ "$ts" = "n/a" ]; then
             ${pkgs.curl}/bin/curl -s \
               --connect-timeout 5 --max-time 30 \
-              -H "Title: Backup Never Ran ($label)" \
+              -H "Title: Never ran: $label" \
               -H "Priority: 4" \
               -H "Tags: rotating_light" \
-              -d "${host} $label backup has never completed successfully" \
+              -d "${host} $label has never completed successfully" \
               ${ntfyUrl}
             return
           fi
@@ -156,16 +140,17 @@ in
           if [ "$age_hours" -gt "$MAX_AGE_HOURS" ]; then
             ${pkgs.curl}/bin/curl -s \
               --connect-timeout 5 --max-time 30 \
-              -H "Title: Backup Stale ($label)" \
+              -H "Title: Stale: $label" \
               -H "Priority: 4" \
               -H "Tags: rotating_light" \
-              -d "${host} $label backup stale: last success ''${age_hours}h ago" \
+              -d "${host} $label stale: last success ''${age_hours}h ago" \
               ${ntfyUrl}
           fi
         }
 
-        check restic-backups-local.service   "local"
-        check restic-backups-offsite.service "offsite"
+        check restic-backups-local.service    "local backup"
+        check restic-backups-offsite.service  "offsite backup"
+        check homelab-upgrade-check.service   "upgrade"
       '';
     };
 

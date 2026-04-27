@@ -139,25 +139,6 @@ in
     };
   };
 
-  # Notify ntfy when this host's upgrade succeeds or fails.
-  # Uses the LAN address of rivendell directly — avoids DNS dependency
-  # during the brief window when Blocky restarts on the upgrading host.
-  systemd.services.homelab-upgrade-notify-success = {
-    description = "Notify ntfy of successful homelab upgrade";
-    serviceConfig = {
-      Type = "oneshot";
-      # --retry 5 / --retry-delay 15: tolerates ntfy container restarts and
-      # brief DNS unavailability while Blocky restarts on the upgrading host.
-      ExecStart = "${pkgs.curl}/bin/curl -s "
-        + "--connect-timeout 5 --max-time 30 --retry 5 --retry-delay 15 --retry-all-errors "
-        + "-H 'Title: NixOS Updated' "
-        + "-H 'Priority: 2' "
-        + "-H 'Tags: white_check_mark' "
-        + "-d '${config.networking.hostName} upgraded successfully' "
-        + "http://10.0.1.9:2586/homelab";
-    };
-  };
-
   systemd.services.homelab-upgrade-notify-failure = {
     description = "Notify ntfy of failed homelab upgrade";
     serviceConfig = {
