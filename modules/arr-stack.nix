@@ -193,7 +193,7 @@ in
     };
 
     sabnzbd = {
-      image = "lscr.io/linuxserver/sabnzbd:latest@sha256:374051b90f64d107f8658dcd9b9065c28826afe14562647214f45057e119fc04";
+      image = "lscr.io/linuxserver/sabnzbd:latest@sha256:f8936b2cf62068e6515fb2859b1cdf6deb643f47be1a8cb20c9eea855e28ed15";
       autoStart = true;
       dependsOn = [ "gluetun" ];
       extraOptions = [ "--network=container:gluetun" ];
