@@ -425,9 +425,11 @@ PYEOF
           --data "username=$QBT_USERNAME&password=$QBT_PASSWORD" \
           http://localhost:9091/api/v2/auth/login 2>&1) || LOGIN="curl_error"
 
-        if [ "$LOGIN" != "Ok." ]; then
+        # qBittorrent < 5.x: success = "Ok.", failure = "Fails."
+        # qBittorrent >= 5.x: success = HTTP 204 empty body, failure = HTTP 401 (curl exits non-zero → "curl_error")
+        if [ "$LOGIN" = "Fails." ] || [ "$LOGIN" = "curl_error" ]; then
           ${pkgs.coreutils}/bin/rm -f "$COOKIE_FILE"
-          echo "qBittorrent login failed: $LOGIN"
+          echo "qBittorrent login failed (response: ''${LOGIN})"
           login_fail_count=$(( login_fail_count + 1 ))
           if [ "$login_fail_count" -ge "$LOGIN_FAIL_THRESHOLD" ]; then
             echo "WARN: qBittorrent WebUI unreachable for $login_fail_count consecutive attempts — alerting"
@@ -456,8 +458,11 @@ PYEOF
       }
 
       # Sync once at startup (covers the case where the service restarts
-      # after a valid port is already in the file)
-      sync_port
+      # after a valid port is already in the file). Use || true because NixOS
+      # service scripts run under set -e — a failure here would exit the script
+      # before entering the watch loop, causing a restart storm if qBittorrent
+      # isn't up yet when this service starts.
+      sync_port || true
 
       while true; do
         # Block until forwarded_port is written (or 5-minute timeout for
