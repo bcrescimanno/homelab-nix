@@ -41,6 +41,11 @@
       "matchDepNames": ["docker.io/postgres"],
       "matchUpdateTypes": ["major"],
       "enabled": false
+    },
+    {
+      "description": "Hold qBittorrent at 5.1.4 — 5.2.0 not yet approved by private trackers",
+      "matchDepNames": ["lscr.io/linuxserver/qbittorrent"],
+      "enabled": false
     }
   ]
 }
