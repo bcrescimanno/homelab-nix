@@ -121,7 +121,7 @@ in
           interval = "5m";
           conditions = [
             "[STATUS] == 200"
-            "[BODY] == pat(nix/store)"
+            "[BODY] == pat(*nix/store*)"
           ];
           alerts = [{ type = "ntfy"; }];
         }
