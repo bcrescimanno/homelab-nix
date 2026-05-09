@@ -24,9 +24,9 @@
   ],
   "packageRules": [
     {
-      "description": "Open PRs for nix flake input updates on Saturdays — no automerge, review manually to catch Caddy plugin hash changes",
+      "description": "Disable individual nix flake input updates — revs live in flake.lock not flake.nix; Renovate cannot do in-place updates. The nix manager errors on all inputs since 503b08e manually advanced flake.lock, which blocks lockFileMaintenance. Setting enabled:false here cleanly skips individual updates without disabling lockFileMaintenance (per Renovate docs).",
       "matchManagers": ["nix"],
-      "schedule": ["on saturday"]
+      "enabled": false
     },
     {
       "description": "Automerge container image digest updates after CI passes",
@@ -40,11 +40,6 @@
       "description": "Ignore postgres major version bumps — requires manual data migration",
       "matchDepNames": ["docker.io/postgres"],
       "matchUpdateTypes": ["major"],
-      "enabled": false
-    },
-    {
-      "description": "Hold qBittorrent at 5.1.4 — 5.2.0 not yet approved by private trackers",
-      "matchDepNames": ["lscr.io/linuxserver/qbittorrent"],
       "enabled": false
     }
   ]
