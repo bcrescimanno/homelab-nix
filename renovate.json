@@ -24,9 +24,9 @@
   ],
   "packageRules": [
     {
-      "description": "Disable individual nix flake input updates — revs live in flake.lock not flake.nix; Renovate cannot do in-place updates. The nix manager errors on all inputs since 503b08e manually advanced flake.lock, which blocks lockFileMaintenance. Setting enabled:false here cleanly skips individual updates without disabling lockFileMaintenance (per Renovate docs).",
+      "description": "Nix flake input updates run on Saturdays — no automerge, review manually to catch Caddy plugin hash changes",
       "matchManagers": ["nix"],
-      "enabled": false
+      "schedule": ["on saturday"]
     },
     {
       "description": "Automerge container image digest updates after CI passes",
