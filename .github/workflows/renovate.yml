@@ -16,3 +16,4 @@ jobs:
           RENOVATE_TOKEN: ${{ secrets.RENOVATE_TOKEN }}
           RENOVATE_REPOSITORIES: ${{ github.repository }}
           RENOVATE_BINARY_SOURCE: global
+          LOG_LEVEL: debug
