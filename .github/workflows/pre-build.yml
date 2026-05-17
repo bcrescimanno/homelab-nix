@@ -20,7 +20,7 @@ jobs:
   build-aarch64:
     name: Build aarch64 closures (rivendell)
     runs-on: [self-hosted, Linux, ARM64, nix-builder]
-    timeout-minutes: 180
+    timeout-minutes: 300
     steps:
       - uses: actions/checkout@v4
       - name: Build Pi closures
