@@ -15,7 +15,7 @@
 
 {
   virtualisation.oci-containers.containers.ntfy = {
-    image = "docker.io/binwiederhier/ntfy:latest@sha256:d8b3408c75d5ae78e03339af6103e7e6195e56573eea6f1ad34bb4dc4f44f340";
+    image = "docker.io/binwiederhier/ntfy:latest@sha256:b32b4221a64ec2e7c000f0782b2feef24022e1a09a24e531640f4cbba6cfa1e6";
     autoStart = true;
     cmd = [ "serve" ];
     volumes = [
