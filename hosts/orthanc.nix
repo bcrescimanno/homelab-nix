@@ -200,7 +200,7 @@
     replace = true;
     user = "github-runner-orthanc";
     extraPackages = with pkgs; [ nix git openssh ];
-    package = pkgs.github-runner.override { nodeRuntimes = [ "node24" ]; };
+    package = pkgs.github-runner.override { nodeRuntimes = [ "node24" ]; nodejs_20 = pkgs.nodejs_24; };
   };
 
   # ---------------------------------------------------------------------------
