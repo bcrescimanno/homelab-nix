@@ -160,5 +160,6 @@
     replace = true;
     user = "github-runner-rivendell";
     extraPackages = with pkgs; [ nix git openssh ];
+    package = pkgs.github-runner.override { nodeRuntimes = [ "node24" ]; };
   };
 }
