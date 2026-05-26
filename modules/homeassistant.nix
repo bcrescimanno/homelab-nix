@@ -127,5 +127,13 @@
     "d /var/lib/otbr/data 0755 root root -"
   ];
 
+  # Podman treats "openthread/otbr" as an unqualified image name and performs
+  # a registry DNS lookup even with --pull=missing. During nixos-rebuild switch,
+  # blocky may be momentarily stopped, causing the lookup to fail and the
+  # service to be reported as failed. Ordering after blocky ensures DNS is up.
+  systemd.services.podman-otbr = {
+    after = [ "blocky.service" ];
+  };
+
   homelab.postUpgradeCheck.services = [ "podman-homeassistant" "podman-matter-server" ];
 }
