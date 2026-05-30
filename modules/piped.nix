@@ -100,7 +100,7 @@ in
     };
 
     piped-backend = {
-      image = "1337kavin/piped:latest@sha256:b0462b15a951061878d13abf3e3706b60a33c1941cb28bb48f86227d0fbeb730";
+      image = "1337kavin/piped:latest@sha256:7747e19ee501c0a3afa94dd3d6e982dd4247f1babe03fb515b4a0f0b87f82b2e";
       autoStart = true;
       volumes = [
         "${backendConfig}:/app/config.properties:ro"
