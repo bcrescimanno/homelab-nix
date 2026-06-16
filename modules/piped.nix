@@ -114,7 +114,7 @@ in
     };
 
     piped-frontend = {
-      image = "1337kavin/piped-frontend:latest@sha256:cd099e0a7b47dd473631bc600ca8b8e9faf3c21c834decb85b94d286e55eae48";
+      image = "1337kavin/piped-frontend:latest@sha256:1ce67163448941627a2abc51a1d622120331d8e55ef78b85a83dc2de8811616e";
       autoStart = true;
       # The image entrypoint generates config.json from BACKEND_HOSTNAME at startup.
       environment = {
