@@ -145,7 +145,7 @@ in
     };
 
     prowlarr = {
-      image = "lscr.io/linuxserver/prowlarr:latest@sha256:a46d0ce0a8236bc4e065fe7c91a55d026c9d849620c5845250519b977d8857f3";
+      image = "lscr.io/linuxserver/prowlarr:latest@sha256:7ab5769616c1929247c8e7944453253f0b777fac2724c3bc9976ae2ff4023257";
       autoStart = true;
       dependsOn = [ "gluetun" ];
       extraOptions = [ "--network=container:gluetun" ];
