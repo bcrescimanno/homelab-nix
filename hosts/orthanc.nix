@@ -208,7 +208,8 @@
   # ---------------------------------------------------------------------------
 
   homelab.backup.paths = [
-    "/var/lib/minecraft"
+    "/var/lib/minecraft"                  # Prominence II world + server files
+    "/var/lib/minecraft-abyssal-ascent"   # Abyssal Ascent world + server files
     "/var/lib/jellyfin"   # library database, config, plugins (not cache — auto-regenerates)
     "/var/lib/atticd"     # attic DB + NAR storage (GC retains last 2 weeks of entries)
   ];

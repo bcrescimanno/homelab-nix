@@ -99,8 +99,16 @@ in
 
         # Gaming
         {
-          name = "Minecraft";
+          name = "Minecraft — Prominence II";
           url = "tcp://orthanc:25565";
+          group = "Gaming";
+          interval = "1m";
+          conditions = [ "[CONNECTED] == true" ];
+          alerts = [{ type = "ntfy"; }];
+        }
+        {
+          name = "Minecraft — Abyssal Ascent";
+          url = "tcp://orthanc:25566";
           group = "Gaming";
           interval = "1m";
           conditions = [ "[CONNECTED] == true" ];
