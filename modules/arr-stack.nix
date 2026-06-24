@@ -5,49 +5,6 @@
 
 { config, pkgs, lib, ... }:
 
-let
-  recyclarrConfig = pkgs.writeText "recyclarr.yml" ''
-    sonarr:
-      sonarr-main:
-        base_url: http://localhost:8989
-        api_key: !env_var SONARR_API_KEY
-        delete_old_custom_formats: true
-        quality_definition:
-          type: series
-        quality_profiles:
-          - trash_id: 72dae194fc92bf828f32cde7744e51a1 # WEB-1080p
-            reset_unmatched_scores:
-              enabled: true
-          - trash_id: d1498e7d189fbe6c7110ceaabb7473e6 # WEB-2160p
-            reset_unmatched_scores:
-              enabled: true
-
-    radarr:
-      radarr-main:
-        base_url: http://localhost:7878
-        api_key: !env_var RADARR_API_KEY
-        delete_old_custom_formats: true
-        quality_definition:
-          type: movie
-        quality_profiles:
-          - trash_id: fd161a61e3ab826d3a22d53f935696dd # Remux + WEB 2160p
-            reset_unmatched_scores:
-              enabled: true
-          - trash_id: 64fb5f9858489bdac2af690e27c8f42f # UHD Bluray + WEB
-            reset_unmatched_scores:
-              enabled: true
-          - trash_id: e91c9adaca0231493f4af0d571b907f9 # [SQP] SQP-1 WEB (2160p)
-            reset_unmatched_scores:
-              enabled: true
-          - trash_id: 9ca12ea80aa55ef916e3751f4b874151 # Remux + WEB 1080p
-            reset_unmatched_scores:
-              enabled: true
-          - trash_id: d1d67249d3890e49bc12e275d989a7e9 # HD Bluray + WEB
-            reset_unmatched_scores:
-              enabled: true
-  '';
-in
-
 {
   virtualisation.oci-containers.containers = {
 
@@ -172,23 +129,6 @@ in
       volumes = [
         "/var/lib/lidarr/config:/config"
         "/var/lib/media:/media"
-      ];
-    };
-
-    recyclarr = {
-      image = "ghcr.io/recyclarr/recyclarr:latest@sha256:55afe316d3e4e4e3b9120cef7c79436b1b5311f6a18d4ef4b7653e720499c90a";
-      autoStart = true;
-      dependsOn = [ "gluetun" "radarr" "sonarr" ];
-      extraOptions = [
-        "--network=container:gluetun"
-        "--env-file=${config.sops.secrets.recyclarr_env.path}"
-      ];
-      environment = {
-        TZ = "America/Los_Angeles";
-      };
-      volumes = [
-        "/var/lib/recyclarr/config:/config"
-        "${recyclarrConfig}:/config/recyclarr.yml:ro"
       ];
     };
 
@@ -592,7 +532,6 @@ PYEOF
     "d /var/lib/media/torrents/complete/lidarr 0755 brian users -"
     "f /var/lib/gluetun/auth/config.toml 0644 brian users -"
     "d /var/lib/lidarr/config 0755 brian users -"
-    "d /var/lib/recyclarr/config 0755 brian users -"
     "d /var/lib/media/music 0755 brian users -"
     "d /var/lib/sabnzbd/config 0755 brian users -"
     "d /var/lib/media/usenet 0755 brian users -"
@@ -600,7 +539,43 @@ PYEOF
     "d /var/lib/media/usenet/complete 0755 brian users -"
   ];
 
-  sops.secrets.recyclarr_env = {};
+  # recyclarr — native NixOS service (was an OCI container sharing gluetun's
+  # netns). It only talks to the radarr/sonarr APIs, which gluetun publishes on
+  # the pirateship host loopback (ports 7878/8989), so it does not need to be
+  # behind the VPN. Config is now fully declarative; API keys are injected via
+  # systemd LoadCredential from sops (genJqSecretsReplacement resolves _secret).
+  sops.secrets.recyclarr_sonarr_api_key = {};
+  sops.secrets.recyclarr_radarr_api_key = {};
+
+  services.recyclarr = {
+    enable = true;
+    schedule = "daily";
+    configuration = {
+      sonarr.sonarr-main = {
+        base_url = "http://localhost:8989";
+        api_key._secret = config.sops.secrets.recyclarr_sonarr_api_key.path;
+        delete_old_custom_formats = true;
+        quality_definition.type = "series";
+        quality_profiles = [
+          { trash_id = "72dae194fc92bf828f32cde7744e51a1"; reset_unmatched_scores.enabled = true; } # WEB-1080p
+          { trash_id = "d1498e7d189fbe6c7110ceaabb7473e6"; reset_unmatched_scores.enabled = true; } # WEB-2160p
+        ];
+      };
+      radarr.radarr-main = {
+        base_url = "http://localhost:7878";
+        api_key._secret = config.sops.secrets.recyclarr_radarr_api_key.path;
+        delete_old_custom_formats = true;
+        quality_definition.type = "movie";
+        quality_profiles = [
+          { trash_id = "fd161a61e3ab826d3a22d53f935696dd"; reset_unmatched_scores.enabled = true; } # Remux + WEB 2160p
+          { trash_id = "64fb5f9858489bdac2af690e27c8f42f"; reset_unmatched_scores.enabled = true; } # UHD Bluray + WEB
+          { trash_id = "e91c9adaca0231493f4af0d571b907f9"; reset_unmatched_scores.enabled = true; } # [SQP] SQP-1 WEB (2160p)
+          { trash_id = "9ca12ea80aa55ef916e3751f4b874151"; reset_unmatched_scores.enabled = true; } # Remux + WEB 1080p
+          { trash_id = "d1d67249d3890e49bc12e275d989a7e9"; reset_unmatched_scores.enabled = true; } # HD Bluray + WEB
+        ];
+      };
+    };
+  };
 
   homelab.postUpgradeCheck.services = [
     "podman-gluetun" "podman-qbittorrent" "podman-radarr"
