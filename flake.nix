@@ -3,7 +3,13 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    nixos-raspberrypi.url = "github:nvmd/nixos-raspberrypi/main";
+    # Track `nixos-unstable` (not `main`): we run nixpkgs-unstable, and this is
+    # nixos-raspberrypi's companion branch for that channel, so the two move
+    # together. The stable `main` branch lags — it froze at 2026-05-17 with an
+    # unguarded `boot.loader.kernelFile = …stdenv.hostPlatform.linux-kernel.target`,
+    # which broke once nixpkgs 26.11 removed that attribute. nixos-unstable carries
+    # the version-guarded fix.
+    nixos-raspberrypi.url = "github:nvmd/nixos-raspberrypi/nixos-unstable";
     nixos-raspberrypi.inputs.nixpkgs.follows = "nixpkgs";
     disko.url = "github:nix-community/disko";
     disko.inputs.nixpkgs.follows = "nixpkgs";
