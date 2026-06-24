@@ -88,7 +88,11 @@
     #   With those modules loaded, iptables-legacy inside the container can
     #   coexist with the host's nftables firewall.
     otbr = {
-      image = "openthread/otbr:latest@sha256:b8e365e1847a829c7512de41c8832ee1e7c4f1b61320efd299ae5b2b9d5238a3";
+      # Fully qualified (docker.io/) so podman does NOT treat this as an
+      # unqualified short name — that triggers a registry DNS lookup at container
+      # start which races blocky's restart during nixos-rebuild switch and fails
+      # activation (cost a rivendell rollback on 2026-06-24). See note below.
+      image = "docker.io/openthread/otbr:latest@sha256:b8e365e1847a829c7512de41c8832ee1e7c4f1b61320efd299ae5b2b9d5238a3";
       autoStart = true;
       cmd = [
         "--radio-url" "spinel+hdlc+uart:///dev/ttyACM0?uart-baudrate=460800"
@@ -127,10 +131,11 @@
     "d /var/lib/otbr/data 0755 root root -"
   ];
 
-  # Podman treats "openthread/otbr" as an unqualified image name and performs
-  # a registry DNS lookup even with --pull=missing. During nixos-rebuild switch,
-  # blocky may be momentarily stopped, causing the lookup to fail and the
-  # service to be reported as failed. Ordering after blocky ensures DNS is up.
+  # otbr's image is now fully qualified (docker.io/…, see above) so podman no
+  # longer does an unqualified short-name registry DNS lookup at container start —
+  # that lookup races blocky's restart during nixos-rebuild switch and fails
+  # activation. The `after = blocky.service` ordering is kept as belt-and-suspenders
+  # (blocky should be up before otbr regardless).
   systemd.services.podman-otbr = {
     after = [ "blocky.service" ];
   };
