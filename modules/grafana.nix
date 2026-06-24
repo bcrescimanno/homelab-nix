@@ -22,7 +22,7 @@
         static_configs = [{
           targets = [
             "127.0.0.1:4000"        # mirkwood Blocky (local)
-            "rivendell.local:4000"  # rivendell Blocky
+            "rivendell:4000"        # rivendell Blocky
           ];
         }];
       }
