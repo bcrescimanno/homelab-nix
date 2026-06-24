@@ -1,48 +1,37 @@
-# modules/ntfy.nix — ntfy push notification server
+# modules/ntfy.nix — ntfy push notification server (native NixOS service)
 #
 # Self-hosted pub/sub notification service. Clients (HA, NUT scripts,
-# Uptime Kuma, etc.) publish to topics; the ntfy iOS/Android app
-# subscribes and receives push notifications.
+# backup/upgrade hooks, Gatus, etc.) publish to topics; the ntfy iOS/Android
+# app subscribes and receives push notifications.
 #
 # Port 2586 is exposed on the LAN so other homelab hosts (pirateship,
-# mirkwood) can publish notifications without going through NPM.
-# The web UI is also proxied via NPM at https://ntfy.theshire.io.
+# mirkwood) and HA can publish notifications directly. The web UI is also
+# proxied via Caddy at https://ntfy.theshire.io.
 #
 # No authentication configured by default — add ntfy auth via the
-# server.yml config file if the instance is ever exposed publicly.
+# `settings` attrset if the instance is ever exposed publicly.
 
 { config, pkgs, lib, ... }:
 
 {
-  virtualisation.oci-containers.containers.ntfy = {
-    image = "docker.io/binwiederhier/ntfy:latest@sha256:f8a9b104313b87cc24ae4f775f39e6328205b57dff6ede3eaf098a91e5d79f59";
-    autoStart = true;
-    cmd = [ "serve" ];
-    volumes = [
-      "/var/lib/ntfy/cache:/var/cache/ntfy"
-      "/var/lib/ntfy/config:/etc/ntfy"
-    ];
-    environment = {
-      TZ = "America/Los_Angeles";
-      NTFY_BASE_URL = "https://ntfy.theshire.io";
-      NTFY_CACHE_FILE = "/var/cache/ntfy/cache.db";
-      NTFY_BEHIND_PROXY = "true";
+  services.ntfy-sh = {
+    enable = true;
+    settings = {
+      base-url = "https://ntfy.theshire.io";
+      # Default listen-http is mkDefault 127.0.0.1:2586; override to expose on
+      # the LAN so other hosts can publish without going through Caddy.
+      listen-http = ":2586";
+      behind-proxy = true;
       # Required for iOS push delivery: ntfy.sh acts as APNs relay for
       # self-hosted instances. Without this, iOS devices never receive
       # notifications when the app is in the background.
-      NTFY_UPSTREAM_BASE_URL = "https://ntfy.sh";
+      upstream-base-url = "https://ntfy.sh";
     };
-    ports = [ "2586:80" ];
   };
 
-  # Expose on LAN so pirateship/mirkwood can publish notifications.
-  # Web UI is proxied via NPM at https://ntfy.theshire.io.
+  # Expose on LAN so pirateship/mirkwood/HA can publish notifications.
+  # Web UI is proxied via Caddy at https://ntfy.theshire.io.
   networking.firewall.allowedTCPPorts = [ 2586 ];
 
-  systemd.tmpfiles.rules = [
-    "d /var/lib/ntfy/cache 0755 root root -"
-    "d /var/lib/ntfy/config 0755 root root -"
-  ];
-
-  homelab.postUpgradeCheck.services = [ "podman-ntfy" ];
+  homelab.postUpgradeCheck.services = [ "ntfy-sh" ];
 }
