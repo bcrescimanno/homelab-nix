@@ -61,6 +61,17 @@
 
   networking.interfaces.eth0.useDHCP = true;
 
+  # Static ULA for stable IPv6 service addressing, independent of the
+  # ISP-delegated (Comcast) GUA prefix, which can rotate without notice.
+  # Clients reach Blocky here over IPv6: the UDM Pro advertises this same /64
+  # to the LAN and publishes ::8 (mirkwood) / ::9 (rivendell) as the IPv6 DNS
+  # servers via RDNSS. SLAAC GUAs still apply for outbound v6 — this only adds
+  # a stable, advertisable resolver address. Blocky binds dual-stack (*:53).
+  networking.interfaces.eth0.ipv6.addresses = [{
+    address = "fd0a:7e1:5e:1::9";
+    prefixLength = 64;
+  }];
+
   # VLAN 4 subinterface for IoT network — used exclusively to send Wake-on-LAN
   # broadcasts to IoT VLAN devices from Home Assistant. The switch port is
   # already a trunk ("Allow All" tagged VLANs), so no UniFi changes are needed.

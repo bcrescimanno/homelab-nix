@@ -59,6 +59,17 @@
 
   networking.interfaces.eth0.useDHCP = true;
 
+  # Static ULA for stable IPv6 service addressing, independent of the
+  # ISP-delegated (Comcast) GUA prefix, which can rotate without notice.
+  # Clients reach Blocky here over IPv6: the UDM Pro advertises this same /64
+  # to the LAN and publishes ::8 (mirkwood) / ::9 (rivendell) as the IPv6 DNS
+  # servers via RDNSS. SLAAC GUAs still apply for outbound v6 — this only adds
+  # a stable, advertisable resolver address. Blocky binds dual-stack (*:53).
+  networking.interfaces.eth0.ipv6.addresses = [{
+    address = "fd0a:7e1:5e:1::8";
+    prefixLength = 64;
+  }];
+
   # Unbound requests a 4MB UDP send/receive buffer but the default kernel max
   # is ~425KB, causing "so-sndbuf was not granted" warnings at startup.
   # Under high query load this can cause silent UDP packet drops.

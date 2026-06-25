@@ -30,6 +30,11 @@
       hide-identity  = true;
       hide-version   = true;
 
+      # Keep the cache warm: refresh popular records (and their DNSSEC keys)
+      # shortly before they expire so client queries hit cache, not the network.
+      prefetch       = true;
+      prefetch-key   = true;
+
       # Split-horizon DNS for theshire.io.
       # redirect zone type acts as a wildcard: all *.theshire.io queries return
       # the apex A record (10.0.1.9 = Caddy on rivendell).
@@ -75,8 +80,26 @@ upstreams = {
 
       blocking = {
         denylists = {
+          # HaGeZi Pro — the main ads + trackers list. Aggressive coverage with
+          # a low false-positive rate; well maintained. "domains" format (one
+          # domain per line) is Blocky-native and blocks all subdomains too.
           ads = [
-            "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
+            "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/domains/pro.txt"
+            # HaGeZi Pro intentionally omits these Google ad apexes to avoid
+            # breaking Google services. We block them anyway for fuller ad
+            # coverage (small risk: Google "sponsored" link / Shopping clicks).
+            ''
+              doubleclick.net
+              googleadservices.com
+              googlesyndication.com
+              2mdn.net
+              googletagservices.com
+            ''
+          ];
+          # HaGeZi Threat Intelligence Feeds — malware, phishing, cryptojacking,
+          # scam, and other actively-malicious domains.
+          malware = [
+            "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/domains/tif.txt"
           ];
           # Suppress Windows WPAD (Web Proxy Auto-Discovery) queries.
           # Windows polls for a proxy config script continuously; without a clean
@@ -89,7 +112,25 @@ upstreams = {
             ''
           ];
         };
-        clientGroupsBlock.default = [ "ads" "local-noise" ];
+        # False-positive recovery. Add a domain here (one per line) to un-block
+        # it from the matching group when a blocklist is too aggressive.
+        allowlists = {
+          ads = [
+            ''
+              # Add false-positive domains here, one per line.
+            ''
+          ];
+        };
+        clientGroupsBlock.default = [ "ads" "malware" "local-noise" ];
+
+        # The HaGeZi TIF list is very large (>1M domains); the default download
+        # timeout can truncate it mid-body on a slow CDN fetch. Give downloads
+        # more time and retries so lists always load complete.
+        loading.downloads = {
+          timeout  = "60s";
+          attempts = 5;
+          cooldown = "10s";
+        };
       };
 
       # Static entries for machines with DHCP reservations — resolves immediately
@@ -108,6 +149,13 @@ upstreams = {
       # UDM Pro has PTR records for all DHCP leases.
       clientLookup = {
         upstream = "10.0.1.1";
+      };
+
+      # Keep frequently-queried entries warm: Blocky re-resolves popular names
+      # shortly before their TTL expires, so clients get cache hits instead of
+      # waiting on an upstream lookup.
+      caching = {
+        prefetching = true;
       };
 
       prometheus.enable = true;
