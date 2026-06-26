@@ -22,6 +22,11 @@
       Address     = "0.0.0.0";
       Port        = 4533;
       LogLevel    = "info";
+      # The library is on the erebor NFS mount. Navidrome's filesystem watcher
+      # (inotify) only sees writes made locally on pirateship — albums added on
+      # the NAS directly never fire events. Re-enable periodic scanning (disabled
+      # by default in 0.62) so remote additions get picked up automatically.
+      "Scanner.Schedule" = "1h";
     };
   };
 
