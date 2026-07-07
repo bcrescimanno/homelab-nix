@@ -92,7 +92,7 @@
       # unqualified short name — that triggers a registry DNS lookup at container
       # start which races blocky's restart during nixos-rebuild switch and fails
       # activation (cost a rivendell rollback on 2026-06-24). See note below.
-      image = "docker.io/openthread/otbr:latest@sha256:9c2036c8cd5714ce84d6852ac64ee04e191039f8b206c3ac0455f5b92586d742";
+      image = "docker.io/openthread/otbr:latest@sha256:ac4c2c5cd323047a61588f8459fb89d93ded1465cc1f2f14ce14bcbfb0c63284";
       autoStart = true;
       cmd = [
         "--radio-url" "spinel+hdlc+uart:///dev/ttyACM0?uart-baudrate=460800"
