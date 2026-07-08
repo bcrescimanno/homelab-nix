@@ -86,7 +86,7 @@ in
 
   virtualisation.oci-containers.containers = {
     piped-postgres = {
-      image = "docker.io/postgres:16-alpine@sha256:e53683f43dd931aeacaef349422caf1f6259389ca5eab0c11763fcb8d38f26af";
+      image = "docker.io/postgres:16-alpine@sha256:fd1e8d0274f13f5a03a2673a207b28e14823c2f2efc3ca4bb4197c8a9f841bdc";
       autoStart = true;
       environment = {
         POSTGRES_DB = "piped";
