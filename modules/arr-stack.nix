@@ -70,7 +70,7 @@
     };
 
     radarr = {
-      image = "lscr.io/linuxserver/radarr:latest@sha256:2b2c1c05eb3f648d2c80dfab9486147dd7bb0ad4d77fa972fc1c5de8f1da3738";
+      image = "lscr.io/linuxserver/radarr:latest@sha256:e35056574cdc695a9ee745aa1ecda9eab3842450bf4b7b8471b023790fa3861d";
       autoStart = true;
       dependsOn = [ "gluetun" ];
       extraOptions = [ "--network=container:gluetun" ];
