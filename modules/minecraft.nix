@@ -44,7 +44,7 @@ let
     "-XX:MaxTenuringThreshold=1"
   ];
 
-  image = "itzg/minecraft-server:java21@sha256:d6419578bd90df2c825cdbc13490c11ece7a9dcdaca2aee2c214d90537c7288f";
+  image = "itzg/minecraft-server:java21@sha256:812b7d400bb2e7292292f8b7555b28393a638f6b5abc1144b6d77dbf5cccf386";
 
   # Per-server definitions. `memory` is the JVM heap; `memoryMax` is the cgroup
   # hard cap (heap + off-heap + Forge overhead). Each is pinned to 4 cores so a
