@@ -25,7 +25,7 @@
   virtualisation.oci-containers.containers = {
 
     homeassistant = {
-      image = "ghcr.io/home-assistant/home-assistant:stable@sha256:6937c6c51d2f5d6aa66d97e4a68f845bcccd5f9b62cd91992bd6d79b20fe2b3c";
+      image = "ghcr.io/home-assistant/home-assistant:stable@sha256:5a531753cea96444200158fc2b0ac7ccd739291ec50414877b396de6e0bb29b3";
       autoStart = true;
       volumes = [
         "/var/lib/homeassistant/config:/config"
