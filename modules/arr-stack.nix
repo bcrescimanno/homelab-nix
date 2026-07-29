@@ -117,7 +117,7 @@
     };
 
     lidarr = {
-      image = "lscr.io/linuxserver/lidarr:latest@sha256:f60ee67694bc4a218efe0fb2dc0b0021d193ac5f15be2638d17ab4eeb6966946";
+      image = "lscr.io/linuxserver/lidarr:latest@sha256:60be9a1faad3dfba5a711163fc18526845e2ce7b50b463dd9effae7f766c9beb";
       autoStart = true;
       dependsOn = [ "gluetun" ];
       extraOptions = [ "--network=container:gluetun" ];
