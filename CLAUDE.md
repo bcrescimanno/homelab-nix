@@ -86,8 +86,6 @@ SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops secrets/mirkwood.yaml
 
 User dotfiles are managed via the `home-manager` NixOS module, pulling from the `github:bcrescimanno/dotfiles` flake. Each host imports its machine config (`machines/{pirateship,rivendell,mirkwood}.nix`). Home Manager runs automatically as part of deployment — no separate `hm` invocation needed.
 
-> **Note:** `flake.nix` includes a `nixpkgs.overlays` patch to inject `neovimUtils.makeVimPackageInfo` from the dotfiles nixpkgs. Workaround for `nixos-raspberrypi` pinning an older nixpkgs. Remove once `nixos-raspberrypi` updates its pin past Feb 2026.
-
 ### Container Stack (arr-stack.nix)
 
 All arr containers share gluetun's network namespace (`--network=container:gluetun`). If the VPN drops, all dependent containers lose internet access — this is the kill switch.

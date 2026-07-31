@@ -200,7 +200,8 @@
     replace = true;
     user = "github-runner-orthanc";
     extraPackages = with pkgs; [ nix git openssh ];
-    package = pkgs.github-runner.override { nodeRuntimes = [ "node24" ]; nodejs_20 = pkgs.nodejs_24; };
+    # No `package` override needed: Node 20 reached EOL and was removed from
+    # nixpkgs, so github-runner now defaults to nodeRuntimes = [ "node24" ].
   };
 
   # ---------------------------------------------------------------------------
