@@ -174,4 +174,39 @@
     # No `package` override needed: Node 20 reached EOL and was removed from
     # nixpkgs, so github-runner now defaults to nodeRuntimes = [ "node24" ].
   };
+
+  # ---------------------------------------------------------------------------
+  # Build resource limits — rivendell is NOT a dedicated builder
+  #
+  # This host serves Caddy (all *.theshire.io TLS), Home Assistant, secondary
+  # DNS, ntfy and Gatus while also acting as the aarch64 CI runner. On
+  # 2026-07-31 a pre-build run took the whole host down: base.nix sets
+  # max-jobs = 4, so four concurrent Go compiles (the Caddy cloudflare-dns
+  # plugin peaks at ~2.2GB RSS each) exhausted 8GB of RAM *and* the 4GB zram
+  # swap. zram stores compressed pages in RAM, so filling it consumed the very
+  # memory it was meant to relieve. Result: load average 58, ~9MB available,
+  # kernel still answering ICMP but no userspace process able to make progress
+  # — Caddy, DNS and even sshd wedged. Recovery required a power cycle.
+  #
+  # NB: builds run as children of nix-daemon, NOT inside the github-runner
+  # cgroup, so limiting the runner service alone would have no effect. The
+  # limits have to land on nix-daemon.
+  # ---------------------------------------------------------------------------
+
+  # Serialise builds and leave CPU for the services this host actually exists
+  # to run. Overrides base.nix's max-jobs = 4.
+  nix.settings.max-jobs = lib.mkForce 1;
+  nix.settings.cores = 2;
+
+  # Builds yield to interactive/service workloads.
+  nix.daemonCPUSchedPolicy = "idle";
+  nix.daemonIOSchedClass = "idle";
+
+  # Hard backstop: a runaway build gets OOM-killed inside this cgroup instead
+  # of taking the host with it. A failed build is recoverable; a wedged
+  # rivendell needs physical access.
+  systemd.services.nix-daemon.serviceConfig = {
+    MemoryHigh = "3G";
+    MemoryMax = "4G";
+  };
 }
