@@ -153,7 +153,7 @@ in
         MAX_AGE_HOURS=36
 
         check() {
-          local unit="$1" label="$2"
+          local unit="''${1%.service}" label="$2"
           local stamp="${stampDir}/$unit"
           local ts
 
@@ -193,9 +193,11 @@ in
           fi
         }
 
-        check restic-backups-local.service    "local backup"
-        check restic-backups-offsite.service  "offsite backup"
-        check homelab-upgrade-check.service   "upgrade"
+        # NB: no .service suffix — the argument is now a stamp basename, not a
+        # systemd unit name. check() strips a stray suffix defensively anyway.
+        check restic-backups-local    "local backup"
+        check restic-backups-offsite  "offsite backup"
+        check homelab-upgrade-check   "upgrade"
       '';
     };
 
