@@ -564,6 +564,20 @@ PYEOF
   # fires when the release shows up in an RSS sync — there is no scheduled
   # Cutoff Unmet search, so backfilling an existing library needs a one-off
   # manual "Cutoff Unmet" search from the UI.
+  #
+  # min_upgrade_format_score overrides the guide's default of 1, which otherwise
+  # re-downloads a file for any custom-format gain at all — a release-group tier
+  # shuffle is only +100 and a streaming-service boost only +75, so old TV with
+  # no 4K release churns endlessly for no visible difference. 500 is the
+  # smallest gain worth the bandwidth: it is exactly the SDR -> HDR delta, and
+  # sits above tier shuffles (100), service boosts (75), release-group flags
+  # (15-20) and repacks (5-7), while still allowing audio upgrades (DD -> DTS-HD
+  # MA is +1750) and unscored-group -> Remux Tier 01 (+1950).
+  #
+  # This only gates upgrades at an EQUAL quality-profile index. Radarr's and
+  # Sonarr's UpgradableSpecification.IsUpgradable returns on the quality
+  # comparison before reaching this check, so resolution upgrades — the whole
+  # point of the combined profiles above — are never blocked by it.
   sops.secrets.recyclarr_sonarr_api_key = {};
   sops.secrets.recyclarr_radarr_api_key = {};
 
@@ -577,7 +591,11 @@ PYEOF
         delete_old_custom_formats = true;
         quality_definition.type = "series";
         quality_profiles = [
-          { trash_id = "c4cadd6b35b95f62c3d47a408e53e2f7"; reset_unmatched_scores.enabled = true; } # WEB-2160p (Combined)
+          { # WEB-2160p (Combined)
+            trash_id = "c4cadd6b35b95f62c3d47a408e53e2f7";
+            reset_unmatched_scores.enabled = true;
+            min_upgrade_format_score = 500;
+          }
         ];
       };
       radarr.radarr-main = {
@@ -586,7 +604,11 @@ PYEOF
         delete_old_custom_formats = true;
         quality_definition.type = "movie";
         quality_profiles = [
-          { trash_id = "d1d310673359205736b4b84acd5ea8c8"; reset_unmatched_scores.enabled = true; } # Remux 2160p (Combined)
+          { # Remux 2160p (Combined)
+            trash_id = "d1d310673359205736b4b84acd5ea8c8";
+            reset_unmatched_scores.enabled = true;
+            min_upgrade_format_score = 500;
+          }
         ];
       };
     };
