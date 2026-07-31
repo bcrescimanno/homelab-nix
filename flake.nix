@@ -84,8 +84,22 @@
         });
       };
 
+      # music-assistant 2.9.9: test_digital_silence_yields_finite_spectral_centroid
+      # errors with "RuntimeError: failed to initialize QNNPACK" — torch's quantized
+      # backend can't initialise in the aarch64 Nix sandbox. 3113 tests pass; this is
+      # the only environment-dependent failure. nixpkgs already disables four tests in
+      # this same smart_fades module, so this extends an existing upstream workaround
+      # rather than inventing one. Remove once nixpkgs disables it too.
+      musicAssistantOverlay = final: prev: {
+        music-assistant = prev.music-assistant.overrideAttrs (oldAttrs: {
+          disabledTests = (oldAttrs.disabledTests or []) ++ [
+            "test_digital_silence_yields_finite_spectral_centroid"
+          ];
+        });
+      };
+
       commonOverlays = [ glancesOverlay ];
-      piOverlays = commonOverlays ++ [ prometheusOverlay ];
+      piOverlays = commonOverlays ++ [ prometheusOverlay musicAssistantOverlay ];
 
       piModules = extraModules: [
         ({ lib, ... }: {
