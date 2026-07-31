@@ -11,6 +11,17 @@
     # the version-guarded fix.
     nixos-raspberrypi.url = "github:nvmd/nixos-raspberrypi/nixos-unstable";
     nixos-raspberrypi.inputs.nixpkgs.follows = "nixpkgs";
+
+    # Same flake, deliberately NOT following our nixpkgs. Making nixos-raspberrypi
+    # follow ours changes the kernel's derivation hash, so the prebuilt kernel in
+    # nixos-raspberrypi.cachix.org never matches and every nixpkgs bump forces a
+    # multi-hour from-source kernel build on the Pi itself. Measured 2026-07-31:
+    # identical version 6.18.34-unstable_20260604, upstream's hash cached (200),
+    # ours uncached (404 in cachix, attic and cache.nixos.org alike).
+    #
+    # Taking only boot.kernelPackages from this un-followed instance makes the
+    # kernel a download again while userland stays on our current nixpkgs.
+    nixos-raspberrypi-cached.url = "github:nvmd/nixos-raspberrypi/nixos-unstable";
     disko.url = "github:nix-community/disko";
     disko.inputs.nixpkgs.follows = "nixpkgs";
     sops-nix = {
@@ -73,15 +84,36 @@
         });
       };
 
+      # music-assistant 2.9.9: test_digital_silence_yields_finite_spectral_centroid
+      # errors with "RuntimeError: failed to initialize QNNPACK" — torch's quantized
+      # backend can't initialise in the aarch64 Nix sandbox. 3113 tests pass; this is
+      # the only environment-dependent failure. nixpkgs already disables four tests in
+      # this same smart_fades module, so this extends an existing upstream workaround
+      # rather than inventing one. Remove once nixpkgs disables it too.
+      musicAssistantOverlay = final: prev: {
+        music-assistant = prev.music-assistant.overrideAttrs (oldAttrs: {
+          disabledTests = (oldAttrs.disabledTests or []) ++ [
+            "test_digital_silence_yields_finite_spectral_centroid"
+          ];
+        });
+      };
+
       commonOverlays = [ glancesOverlay ];
-      piOverlays = commonOverlays ++ [ prometheusOverlay ];
+      piOverlays = commonOverlays ++ [ prometheusOverlay musicAssistantOverlay ];
 
       piModules = extraModules: [
-        ({ ... }: {
+        ({ lib, ... }: {
           imports = with nixos-raspberrypi.nixosModules; [
             raspberry-pi-5.base
             raspberry-pi-5.bluetooth
           ];
+
+          # Take the kernel from the un-followed nixos-raspberrypi instance so it
+          # resolves to upstream's cachix-cached build instead of being compiled
+          # from source here. All three Pis are Pi 5s, so one package set covers
+          # them. See the input comment above for the measured justification.
+          boot.kernelPackages =
+            lib.mkForce inputs.nixos-raspberrypi-cached.packages.aarch64-linux.linuxPackages_rpi5;
         })
         disko.nixosModules.disko
         sops-nix.nixosModules.sops
