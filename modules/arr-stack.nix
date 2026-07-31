@@ -544,6 +544,26 @@ PYEOF
   # the pirateship host loopback (ports 7878/8989), so it does not need to be
   # behind the VPN. Config is now fully declarative; API keys are injected via
   # systemd LoadCredential from sops (genJqSecretsReplacement resolves _secret).
+  #
+  # One "(Combined)" guide profile per app, not a stack of per-resolution ones.
+  # The single-resolution TRaSH profiles (e.g. "Remux + WEB 2160p") allow ONLY
+  # their own tier, so a title with no 2160p release available never gets
+  # grabbed at all. The combined profiles span both resolutions in one ordered
+  # cascade, and because Radarr/Sonarr's DownloadDecisionComparer ranks by
+  # quality-profile index BEFORE custom format score, that ordering is what
+  # actually decides grabs — CF scores only break ties within a tier:
+  #
+  #   Radarr  Remux-2160p > Bluray-2160p > WEB 2160p > Remux-1080p
+  #             > Bluray-1080p > WEB 1080p        (nothing below 1080p allowed)
+  #   Sonarr  WEB 2160p > WEB 1080p     (WEB-only: 4K TV remuxes are rare on
+  #                                      indexers and ruinously large)
+  #
+  # Both profiles ship upgradeAllowed=true with cutoff at their top tier and
+  # cutoffFormatScore=10000, so a title grabbed at a lower tier stays eligible
+  # to be replaced when a higher-tier release appears. That replacement only
+  # fires when the release shows up in an RSS sync — there is no scheduled
+  # Cutoff Unmet search, so backfilling an existing library needs a one-off
+  # manual "Cutoff Unmet" search from the UI.
   sops.secrets.recyclarr_sonarr_api_key = {};
   sops.secrets.recyclarr_radarr_api_key = {};
 
@@ -557,8 +577,7 @@ PYEOF
         delete_old_custom_formats = true;
         quality_definition.type = "series";
         quality_profiles = [
-          { trash_id = "72dae194fc92bf828f32cde7744e51a1"; reset_unmatched_scores.enabled = true; } # WEB-1080p
-          { trash_id = "d1498e7d189fbe6c7110ceaabb7473e6"; reset_unmatched_scores.enabled = true; } # WEB-2160p
+          { trash_id = "c4cadd6b35b95f62c3d47a408e53e2f7"; reset_unmatched_scores.enabled = true; } # WEB-2160p (Combined)
         ];
       };
       radarr.radarr-main = {
@@ -567,11 +586,7 @@ PYEOF
         delete_old_custom_formats = true;
         quality_definition.type = "movie";
         quality_profiles = [
-          { trash_id = "fd161a61e3ab826d3a22d53f935696dd"; reset_unmatched_scores.enabled = true; } # Remux + WEB 2160p
-          { trash_id = "64fb5f9858489bdac2af690e27c8f42f"; reset_unmatched_scores.enabled = true; } # UHD Bluray + WEB
-          { trash_id = "e91c9adaca0231493f4af0d571b907f9"; reset_unmatched_scores.enabled = true; } # [SQP] SQP-1 WEB (2160p)
-          { trash_id = "9ca12ea80aa55ef916e3751f4b874151"; reset_unmatched_scores.enabled = true; } # Remux + WEB 1080p
-          { trash_id = "d1d67249d3890e49bc12e275d989a7e9"; reset_unmatched_scores.enabled = true; } # HD Bluray + WEB
+          { trash_id = "d1d310673359205736b4b84acd5ea8c8"; reset_unmatched_scores.enabled = true; } # Remux 2160p (Combined)
         ];
       };
     };

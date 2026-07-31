@@ -94,7 +94,7 @@ All arr containers share gluetun's network namespace (`--network=container:gluet
 - **qbittorrent**: torrent client (port 9091 via gluetun); image `lscr.io/linuxserver/qbittorrent:libtorrentv1`; `dl.theshire.io` via Caddy
 - **sabnzbd**: Usenet client (port 8080 via gluetun)
 - **radarr/sonarr/prowlarr/lidarr**: media managers (ports 7878/8989/9696/8686 via gluetun)
-- **recyclarr**: syncs TRaSH quality profiles to radarr/sonarr; API keys via sops secret `recyclarr_env`
+- **recyclarr**: native NixOS service (not a container), daily, syncs TRaSH quality profiles + custom formats to radarr/sonarr; API keys via sops secrets `recyclarr_radarr_api_key`/`recyclarr_sonarr_api_key`. Exactly **one guide "(Combined)" profile per app** — Radarr `Remux 2160p (Combined)`, Sonarr `WEB-2160p (Combined)`. See the comment block in `arr-stack.nix` for why single-resolution profiles were dropped.
 - **jellyfin**: media server (port 8096, direct — not through VPN)
 - **navidrome**: music streaming server (port 4533, native NixOS service — not a container, not through VPN); declared in `modules/navidrome.nix`
 
@@ -149,7 +149,7 @@ Secrets use `sops-nix` with age encryption. Rendered at runtime to `/run/secrets
 **pirateship** (`secrets/pirateship.yaml`):
 - `vpn_env` — WireGuard credentials for gluetun
 - `qbt_credentials` — `QBT_USERNAME`/`QBT_PASSWORD` (used by preStart to generate PBKDF2 hash and by qbittorrent-port-sync)
-- `recyclarr_env` — `SONARR_API_KEY`/`RADARR_API_KEY`
+- `recyclarr_radarr_api_key` / `recyclarr_sonarr_api_key` — API keys for the recyclarr sync
 
 **rivendell** (`secrets/rivendell.yaml`):
 - `caddy_cloudflare_env` — `CLOUDFLARE_API_TOKEN` for DNS-01 ACME
