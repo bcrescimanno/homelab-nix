@@ -100,7 +100,7 @@ in
     };
 
     piped-backend = {
-      image = "1337kavin/piped:latest@sha256:7747e19ee501c0a3afa94dd3d6e982dd4247f1babe03fb515b4a0f0b87f82b2e";
+      image = "docker.io/1337kavin/piped:latest@sha256:7747e19ee501c0a3afa94dd3d6e982dd4247f1babe03fb515b4a0f0b87f82b2e";
       autoStart = true;
       volumes = [
         "${backendConfig}:/app/config.properties:ro"
@@ -114,7 +114,7 @@ in
     };
 
     piped-frontend = {
-      image = "1337kavin/piped-frontend:latest@sha256:1ce67163448941627a2abc51a1d622120331d8e55ef78b85a83dc2de8811616e";
+      image = "docker.io/1337kavin/piped-frontend:latest@sha256:1ce67163448941627a2abc51a1d622120331d8e55ef78b85a83dc2de8811616e";
       autoStart = true;
       # The image entrypoint generates config.json from BACKEND_HOSTNAME at startup.
       environment = {
@@ -128,7 +128,7 @@ in
     };
 
     piped-proxy = {
-      image = "1337kavin/piped-proxy:latest@sha256:8aba8ba9d8bd3321ae9b15434b8d8bb9ffa03d699b2feb8f654f242a667e8cf2";
+      image = "docker.io/1337kavin/piped-proxy:latest@sha256:8aba8ba9d8bd3321ae9b15434b8d8bb9ffa03d699b2feb8f654f242a667e8cf2";
       autoStart = true;
       extraOptions = [ "--network=piped" ];
       ports = [ "8182:8080" ];
