@@ -65,27 +65,29 @@
     # path in hosts/rivendell.nix.
     configDir = "/var/lib/homeassistant/config";
 
-    # Every integration domain with a config entry in .storage, verified
-    # against the live host:
-    #   sudo jq -r '.data.entries[].domain' \
-    #     /var/lib/homeassistant/config/.storage/core.config_entries | sort -u
-    #
     # This list is NOT optional and NOT cosmetic. The module only ships Python
     # dependencies for components it knows are used, and it can only infer that
     # from `config` below — which sees none of these, because they were all
-    # added through the UI and live in .storage. A domain missing here loads
-    # with unmet imports and the integration fails at runtime, not at build.
+    # added through the UI. A domain missing here loads with unmet imports and
+    # fails at runtime, not at build.
     #
-    # Re-run the jq above after adding an integration through the UI.
-    # Several of these are already pulled in by default_config; they are listed
-    # anyway so the inventory is complete and greppable.
+    # There are TWO sources, and using only the first is a mistake I already
+    # made once (see the second block below).
+    #
+    # Source 1 — integrations that are actually configured. These have a config
+    # entry in .storage:
+    #   sudo jq -r '.data.entries[].domain' \
+    #     /var/lib/homeassistant/config/.storage/core.config_entries | sort -u
+    #
+    # Re-run that after adding an integration through the UI. Several of these
+    # are already pulled in by default_config; they are listed anyway so the
+    # inventory is complete and greppable.
     #
     # Core components with no external requirements do NOT belong here and are
     # deliberately absent: template, notify, weather and sun all declare
     # `"requirements": []`, so there is nothing for extraComponents to install
     # and they load from the package regardless. (sun appears below only because
-    # it genuinely has a config entry.) Keeping the list to "what .storage
-    # says" is what makes the jq command above a valid way to regenerate it.
+    # it genuinely has a config entry.)
     extraComponents = [
       "analytics"
       "apple_tv"
@@ -112,6 +114,37 @@
       "thread"
       "wake_on_lan"
       "webostv"
+
+      # Source 2 — integrations HA loads for DISCOVERY, which have no config
+      # entry and are therefore invisible to the jq above.
+      #
+      # Missed on the first cut of this migration and caught only by reading the
+      # journal after deploying: zeroconf/ssdp/dhcp discovery finds these
+      # devices on the LAN, HA imports the integration to offer a "Discovered"
+      # card, and the import dies:
+      #   ERROR [homeassistant.components.<x>] Error occurred loading flow for
+      #   integration <x>: No module named '<dep>'
+      #
+      # Nothing that already works breaks — none of these are set up — so this
+      # fails quietly, in a way that would only surface as "the Add Integration
+      # button does nothing" weeks later. The container had every dependency
+      # present, so this is a regression against it and not a pre-existing gap.
+      #
+      # Regenerate this block the only way that works, from a running instance:
+      #   sudo journalctl -u home-assistant -b -o cat \
+      #     | grep -oE "loading flow for integration [a-z_]+" | sort -u
+      "brother"           # printer, via mDNS
+      "cast"              # Chromecast/Google speakers
+      "ecobee"
+      "homekit_controller" # HomeKit accessories — distinct from "homekit",
+                           # which is HA *exposing* entities to Apple
+      "ipp"               # printer, IPP everywhere
+      "linkplay"          # WiiM's underlying protocol
+      "litterrobot"
+      "music_assistant"   # the MA server on this host advertises itself
+      "roborock"
+      "twinkly"
+      "wiim"
     ];
 
     # HACS. It is a custom component, not a nixpkgs one — it lives in
