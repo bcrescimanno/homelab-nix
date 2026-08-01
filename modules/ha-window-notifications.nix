@@ -261,8 +261,33 @@ let
           # +5min offset, not bare sunrise: firing at the exact instant of
           # sunrise races the `after: sunrise` condition below, and losing that
           # race silently drops the prompt on precisely the mornings that matter
-          # most (already above 68°F at first light, so no crossing follows).
+          # most (already above the threshold at first light, so no crossing
+          # follows).
           { trigger = "sun"; event = "sunrise"; offset = "00:05:00"; }
+
+          # Standing-state re-evaluation. Added 2026-08-01 after the prompt
+          # failed to fire on a 96°F day even with the threshold at 66.
+          #
+          # A crossing is not a dependable signal against this data source, and
+          # the sunrise trigger only covers the once-daily case. Two ways the
+          # crossing is lost:
+          #
+          #   1. HA restarts after sunrise while already warm. Measured that
+          #      day: the sensor's FIRST value after restart was 68.0, i.e.
+          #      already above 66, so there was no below->above transition to
+          #      detect, and the following 68.0 -> 74.0 step is above->above.
+          #      The automation had no live trigger for the rest of the day.
+          #      Auto-upgrade restarts at 04:20 (pre-sunrise, harmless), but any
+          #      daytime deploy reopens this hole.
+          #   2. met.no publishes whole degrees roughly hourly, so it can step
+          #      clean over a threshold band between two samples.
+          #
+          # Polling every 30 min sidesteps both. It is safe because it changes
+          # nothing about WHEN the prompt is allowed — the conditions below still
+          # gate on temperature, sunrise, the noon cutoff, the open-day check,
+          # and oncePerDay, so the worst case remains exactly one prompt per day.
+          { trigger = "homeassistant"; event = "start"; }
+          { trigger = "time_pattern"; minutes = "/30"; }
         ];
         conditions = [
           {
@@ -296,6 +321,12 @@ let
             "for" = sustainedFor;
           }
           { trigger = "time"; at = eveningStartsAt; }
+          # Same standing-state re-evaluation as the morning rule — see the long
+          # comment there. The 16:00 trigger is the evening's equivalent of
+          # sunrise and has the same weakness: it fires once, so an HA restart
+          # after 16:00 on an already-cool evening leaves no live trigger.
+          { trigger = "homeassistant"; event = "start"; }
+          { trigger = "time_pattern"; minutes = "/30"; }
         ];
         conditions = [
           {
