@@ -25,6 +25,25 @@
         WIREGUARD_IMPLEMENTATION = "userspace";
         BLOCK_MALICIOUS = "off";
         WIREGUARD_MTU = "1280";
+
+        # Allow egress to orthanc ONLY, so radarr/sonarr can push library
+        # updates to Jellyfin (10.0.1.10:8096) — see modules/jellyfin-notify.nix.
+        #
+        # Without this the netns has no LAN access at all: policy rule 101 sends
+        # everything without the WireGuard fwmark into tun0, and the iptables
+        # OUTPUT policy is DROP with eth0 permitted only for the podman bridge
+        # and WireGuard UDP to the VPN endpoint. Verified before the change:
+        # 10.0.1.10 and 10.0.1.1 both blackholed (rc=124), 1.1.1.1 reachable,
+        # container egress IP 146.70.98.171 vs host 73.231.204.140.
+        #
+        # This does NOT weaken the kill switch. gluetun matches the exception on
+        # DESTINATION address, so an internet-bound packet still fails to match,
+        # still routes to tun0, and still hits OUTPUT DROP on eth0. A /32 rather
+        # than 10.0.1.0/24 keeps blocky (10.0.1.8/.9) and the UDM Pro
+        # unreachable from the netns, closing the one realistic bypass vector —
+        # a container resolver pointed at LAN DNS leaking queries out the home
+        # IP instead of the tunnel.
+        FIREWALL_OUTBOUND_SUBNETS = "10.0.1.10/32";
       };
 
       extraOptions = [
@@ -580,6 +599,10 @@ PYEOF
   # point of the combined profiles above — are never blocked by it.
   sops.secrets.recyclarr_sonarr_api_key = {};
   sops.secrets.recyclarr_radarr_api_key = {};
+
+  # Consumed by modules/jellyfin-notify.nix to configure the library-update
+  # push in radarr, sonarr and bazarr.
+  sops.secrets.jellyfin_api_key = {};
 
   services.recyclarr = {
     enable = true;

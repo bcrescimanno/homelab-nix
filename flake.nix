@@ -157,6 +157,7 @@
           ./hosts/pirateship.nix
           ./modules/arr-stack.nix
           ./modules/bazarr.nix
+          ./modules/jellyfin-notify.nix
           ./modules/lidarr-formats.nix
           ./modules/monitoring.nix
           ./modules/navidrome.nix
