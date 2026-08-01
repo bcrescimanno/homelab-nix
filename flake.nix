@@ -172,6 +172,7 @@
           ./hosts/rivendell.nix
           ./modules/dns.nix
           ./modules/homeassistant.nix
+          ./modules/ha-window-notifications.nix
           ./modules/caddy.nix
           ./modules/monitoring.nix
           ./modules/nut.nix
