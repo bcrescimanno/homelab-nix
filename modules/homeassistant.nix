@@ -5,11 +5,11 @@
 # OTBR (OpenThread Border Router): Thread border router via ZBT-2 — native
 #
 # Migration status (staged deliberately; see Plan.md):
-#   Stage 1 (2026-08-01, this commit): matter-server + otbr -> native modules.
-#     Done first and alone so the Matter fabric and Thread dataset moves are
-#     verified while HA is still the known-good container talking to them over
-#     the same localhost ports (5580 / 8081). Neither port changes, so HA needs
-#     no reconfiguration.
+#   Stage 1 (2026-08-01): otbr -> native. DONE and verified — same Thread
+#     network (OpenThread-0b14), state "leader", REST API still on
+#     localhost:8081, so HA's Thread integration needed no reconfiguration.
+#     matter-server was attempted in the same pass and REVERTED to the
+#     container; see the Matter Server comment block below before retrying.
 #   Stage 2 (pending): home-assistant container -> services.home-assistant.
 #     Gate is satisfied as of 2026-08-01 — nixpkgs-unstable carries 2026.7.4,
 #     exactly the version running here. Re-verify before starting: the gate is
@@ -45,50 +45,69 @@
       ];
     };
 
-  };
-
-  # ---------------------------------------------------------------------------
-  # Matter Server (native — migrated off the container 2026-08-01)
-  #
-  # --primary-interface eth0: binds mDNS/multicast to the Ethernet interface so
-  # Matter Server can discover WiFi devices. Without it the default is 'None'
-  # and mDNS discovery fails. extraArgs is an attrset run through
-  # lib.cli.toCommandLineGNU, so `primary-interface` becomes --primary-interface.
-  #
-  # The module runs the service with DynamicUser=true, which is why the fabric
-  # state ends up under /var/lib/private/matter-server (see the migration unit
-  # and the backup path note in hosts/rivendell.nix). It BindReadOnlyPaths
-  # /run/dbus, so Bluetooth commissioning still works without --privileged.
-  # ---------------------------------------------------------------------------
-  services.matter-server = {
-    enable = true;
-    port = 5580;
-    extraArgs = {
-      primary-interface = "eth0";
-
-      # MUST stay 65521 (0xFFF1). Do not "fix" this to Home Assistant's real
-      # vendor ID (4939) — that is what the nixpkgs module hardcodes, and it is
-      # wrong for THIS installation.
+    # Matter Server — deliberately still a CONTAINER. See the "Matter Server"
+    # comment block below for why the native module could not be used.
+    matter-server = {
+      image = "ghcr.io/home-assistant-libs/python-matter-server:stable@sha256:170aa093ce91c76cde4cc390918307590f0f5558fcec93f913af3cb019e6562a";
+      autoStart = true;
+      # --primary-interface eth0: bind mDNS/multicast to the Ethernet interface
+      # so Matter Server can discover WiFi devices on the local network.
+      # Without this it defaults to 'None' and mDNS discovery fails.
       #
-      # The container never passed --vendorid, so the fabric was created with
-      # python-matter-server's default of 0xFFF1, and that is what is recorded
-      # on disk: chip.json caList = [{fabricId: 1, vendorId: 65521}].
-      #
-      # matter_server/server/stack.py reuses a stored FabricAdmin only when BOTH
-      # vendorId and fabricId match, and otherwise calls NewFabricAdmin() —
-      # which raises "Provided fabricId of 1 collides with an existing
-      # FabricAdmin instance!" because it collides on fabricId alone. With the
-      # module's 4939 the service crashed on startup with exactly that, then
-      # segfaulted on the way out (observed on the first native deploy,
-      # 2026-08-01).
-      #
-      # Changing this value orphans the existing fabric and requires
-      # re-commissioning every Matter device, so it is pinned to what the fabric
-      # on disk actually says. extraArgs is merged after the module's defaults
-      # (`{ ... } // cfg.extraArgs`), which is what makes the override possible.
-      vendorid = 65521;
+      # NOTE the absence of --vendorid: that is load-bearing. It means the
+      # fabric uses python-matter-server's 0xFFF1 default, which is what
+      # chip.json on disk records (caList = [{fabricId: 1, vendorId: 65521}]).
+      cmd = [ "--storage-path" "/data" "--primary-interface" "eth0" ];
+      volumes = [
+        "/var/lib/matter-server/data:/data"
+        # DBus access is required for Bluetooth (Matter commissioning).
+        "/run/dbus:/run/dbus:ro"
+      ];
+      extraOptions = [
+        "--network=host"
+        "--privileged"
+      ];
     };
+
   };
+
+  # ---------------------------------------------------------------------------
+  # Matter Server — why this is STILL A CONTAINER
+  #
+  # services.matter-server was tried on 2026-08-01 and reverted the same day.
+  # Do not re-enable it without first re-testing the blocker below.
+  #
+  # Two separate problems surfaced, in order:
+  #
+  # 1. FIXED, and the fix is preserved in the container `cmd` above.
+  #    The module hardcodes vendorid=4939 (Home Assistant's real vendor ID).
+  #    This fabric was built by the container, which passes no --vendorid, so
+  #    it uses python-matter-server's 0xFFF1 default. stack.py reuses a stored
+  #    FabricAdmin only when BOTH vendorId and fabricId match, else calls
+  #    NewFabricAdmin(), which collides on fabricId alone:
+  #      ValueError: Provided fabricId of 1 collides with an existing
+  #      FabricAdmin instance!
+  #    Overridable via extraArgs.vendorid = 65521.
+  #
+  # 2. NOT FIXABLE from this side, and the actual reason for the revert.
+  #    With vendorid corrected the service starts, loads the fabric, then dies
+  #    inside server.start() fetching PAA root certificates from the DCL:
+  #      ValueError: error parsing asn1 value: ParseError { kind: ExtraData,
+  #      location: ["Certificate::tbs_cert", "TbsCertificate::signature_alg"] }
+  #    paa_certificates.py calls x509.load_pem_x509_certificate() per cert with
+  #    NO per-cert exception handling, so ONE malformed certificate in the DCL
+  #    list aborts the whole fetch, which aborts start(). The process stays
+  #    "active (running)" but never binds 5580 — systemd reports it healthy
+  #    while it is not, so a naive `systemctl is-active` check will lie.
+  #    There is no CLI flag to skip the fetch (--enable-test-net-dcl only adds
+  #    the test net). The container's older cryptography tolerates the cert.
+  #
+  # Re-attempt when nixpkgs carries a python-matter-server that wraps that
+  # parse in try/except, or when the CSA fixes the offending DCL cert. The
+  # state layout is unchanged from the container era (/var/lib/matter-server/data),
+  # so re-attempting means re-adding the migration unit that this commit removed;
+  # recover it from git history rather than rewriting it.
+  # ---------------------------------------------------------------------------
 
   # ---------------------------------------------------------------------------
   # OpenThread Border Router (native — migrated off the container 2026-08-01)
@@ -138,6 +157,7 @@
 
   systemd.tmpfiles.rules = [
     "d /var/lib/homeassistant/config 0755 root root -"
+    "d /var/lib/matter-server/data 0755 root root -"
   ];
 
   # ---------------------------------------------------------------------------
@@ -154,57 +174,6 @@
   # than copying, but only ever into an empty destination, and both bail out
   # untouched if anything looks unexpected.
   # ---------------------------------------------------------------------------
-
-  # Container: host /var/lib/matter-server/data -> container /data (--storage-path /data)
-  # Native:    storage-path is /var/lib/matter-server, and because the module
-  #            uses DynamicUser=true systemd places that at
-  #            /var/lib/private/matter-server behind a symlink.
-  #
-  # So the fabric files (chip_*.ini, chip.json, credentials/, <fabric-id>.json)
-  # must move up one level AND into /var/lib/private. We create that layout
-  # explicitly rather than relying on systemd to relocate a pre-existing real
-  # directory — systemd.exec(5) documents the symlink behaviour and the
-  # recursive chown of an existing StateDirectory, but not a migration of a real
-  # directory into /var/lib/private, so we do not depend on it. Ownership is
-  # left to systemd, which recursively chowns the StateDirectory to the dynamic
-  # UID on start.
-  systemd.services.matter-server-state-migration = {
-    description = "Move Matter fabric state from the container layout to the native one";
-    before = [ "matter-server.service" ];
-    requiredBy = [ "matter-server.service" ];
-    serviceConfig = {
-      Type = "oneshot";
-      RemainAfterExit = true;
-    };
-    script = ''
-      set -euo pipefail
-      old=/var/lib/matter-server
-      new=/var/lib/private/matter-server
-
-      # Already migrated: the path is the symlink systemd manages.
-      if [ -L "$old" ]; then exit 0; fi
-      # Nothing of the old shape to move.
-      if [ ! -d "$old/data" ]; then exit 0; fi
-
-      if [ -e "$new" ] && [ -n "$(ls -A "$new" 2>/dev/null)" ]; then
-        echo "refusing to migrate: $new already exists and is non-empty" >&2
-        exit 1
-      fi
-
-      mkdir -p /var/lib/private
-      chmod 0700 /var/lib/private
-      mkdir -p "$new"
-      # dotglob so nothing hidden is left behind; the fabric json is not hidden
-      # today but credentials/ has held dotfiles in past versions.
-      shopt -s dotglob nullglob
-      mv "$old"/data/* "$new"/
-      shopt -u dotglob nullglob
-      rmdir "$old/data"
-      # Remove the now-empty real directory so systemd can put its symlink here.
-      rmdir "$old"
-      echo "migrated Matter fabric state to $new"
-    '';
-  };
 
   # Container: host /var/lib/otbr/data -> container /var/lib/thread
   # Native:    StateDirectory=thread -> /var/lib/thread (otbr-agent runs as root,
@@ -251,9 +220,10 @@
   # nixos-rebuild switch and failed activation (cost a rivendell rollback on
   # 2026-06-24). otbr-agent pulls nothing at start, so the race cannot recur.
 
+  # NB: podman-matter-server, not matter-server — it is still a container.
   homelab.postUpgradeCheck.services = [
     "podman-homeassistant"
-    "matter-server"
+    "podman-matter-server"
     "otbr-agent"
   ];
 }
