@@ -118,6 +118,59 @@ let
     # need it. Verified: the build completes and the output is complete.
     npmFlags = [ "--ignore-scripts" ];
 
+    # UPSTREAM BUG — the player never mounts on a plain web build.
+    #
+    # watch/[slug]/+page.svelte starts two independent promises and only ONE of
+    # them defines `data.video`:
+    #
+    #   data.streamed.page?.then(r => { data = r; ... })   // defines data.video
+    #   playerStream?.then(r => { ... data.video.premium ... })
+    #
+    # `getWatchPlayer` awaits `continueVideoPlayer()`, and every branch of that
+    # function is gated on `isUnrestrictedPlatform()` — false whenever there is
+    # no own backend and no Capacitor, i.e. exactly this legacy Invidious-only
+    # web build. So it returns null in a microtask while `getWatchPage` is still
+    # waiting on a real /api/v1/videos round trip. The player handler therefore
+    # runs FIRST, `data.video` is still undefined, and it throws
+    # `Cannot read properties of undefined (reading 'premium')`. That aborts the
+    # rest of the handler — which is where the player is actually mounted.
+    #
+    # The failure is silent and extremely misleading: metadata, comments,
+    # thumbnails and the whole UI render perfectly, there are no failed
+    # requests and no non-2xx responses; there is simply no <video> element and
+    # no DASH request ever made. It looks like a playback/CORS problem and is
+    # neither.
+    #
+    # The fix orders the two: capture the page promise (it cannot be read off
+    # `data` later, because `data` is reassigned to the page result) and await
+    # it before the player handler touches `data.video`. Registration order
+    # guarantees the assignment happens first.
+    #
+    # Measured before/after with headless chromium: before, zero manifest
+    # requests; after, HEAD+GET of the dash manifest followed by real
+    # /companion/videoplayback bytes.
+    #
+    # Upstream is unaware as of 2026-08-01 (no matching issue). Re-check on
+    # every version bump — --replace-fail means the build breaks loudly if
+    # these lines move, which is the intended behaviour.
+    # Both replacements are kept on a SINGLE line each — deliberately. Embedding
+    # the newline+tab of the surrounding .svelte file inside a Nix '' string
+    # makes the patch depend on this file's own indentation depth, which is a
+    # trap waiting for the next person who reindents the module.
+    postPatch = ''
+      W='src/routes/(app)/watch/[slug]/+page.svelte'
+
+      substituteInPlace "$W" \
+        --replace-fail \
+          'const playerStream = data.streamed.player;' \
+          'const playerStream = data.streamed.player; const pageStream = data.streamed.page;'
+
+      substituteInPlace "$W" \
+        --replace-fail \
+          'playerStream?.then((playerResult: any) => {' \
+          'playerStream?.then(async (playerResult: any) => { await pageStream;'
+    '';
+
     preBuild = ''
       # WORKAROUND 2 — `npm run build` runs scripts/githubContributors.mjs,
       # which fetches api.github.com for the About page's contributor list.
