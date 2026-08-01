@@ -29,22 +29,24 @@
 # How this reaches Home Assistant
 # ---------------------------------------------------------------------------
 #
-# HA runs as a container with an imperative /config volume, and the five
-# existing automations are UI-authored and live in automations.yaml. Rather than
-# fight that, this module renders a HA *package* into a read-only store path
-# mounted at /config/nix-packages. Packages merge additively with the top-level
-# `automation: !include automations.yaml`, so the UI-authored automations are
-# untouched and remain UI-editable, while these are reproducible from the flake.
+# The existing household automations are UI-authored and live in
+# automations.yaml. Rather than fight that, this module declares a HA *package*,
+# which merges additively with the top-level `automation: !include
+# automations.yaml` — so the UI-authored automations are untouched and remain
+# UI-editable, while these are reproducible from the flake.
 #
 # The trade-off the packages mechanism buys us: a package can declare `template:`
 # as well as `automation:`, which a bare automation include cannot. That matters
 # because both sensors below are templates.
 #
-# The one line of configuration.yaml this needs is added by an idempotent
-# preStart hook (same reconcile-in-place pattern as the qBittorrent preStart),
-# rather than by mounting a Nix-rendered configuration.yaml over the live one.
-# A bad render there would leave HA unable to start, and deploy-rs would NOT
-# catch it — the container starts fine, HA fails inside it.
+# HISTORY, because it explains why this file used to be much longer: under the
+# HA container this had to render the package to a store path, bind-mount it at
+# /config/nix-packages, and append the `homeassistant: packages:` key to the
+# live configuration.yaml from a podman-homeassistant preStart hook — the
+# container's /config was imperative and Nix had no other way in. Since HA went
+# native (2026-08-01) configuration.yaml is itself Nix-rendered, so the package
+# is simply another attribute in it. All of that machinery is gone; do not
+# reintroduce it.
 #
 # ---------------------------------------------------------------------------
 # Indirection through sensor.outdoor_temperature
@@ -374,48 +376,14 @@ let
     ];
   };
 
-  packagesDir = pkgs.runCommand "ha-nix-packages" { } ''
-    mkdir -p $out
-    cp ${(pkgs.formats.yaml { }).generate "windows.yaml" windowsPackage} $out/windows.yaml
-  '';
 in
 {
-  virtualisation.oci-containers.containers.homeassistant.volumes = [
-    "${packagesDir}:/config/nix-packages:ro"
-  ];
-
-  # Add the packages include to configuration.yaml if it is not already there.
+  # Declared inline as a Home Assistant *package*, which merges additively with
+  # the top-level `automation: !include automations.yaml` in
+  # modules/homeassistant.nix — so the UI-authored automations are untouched and
+  # remain UI-editable, while these are reproducible from the flake.
   #
-  # This appends a top-level `homeassistant:` block, so it refuses to run if one
-  # already exists — a duplicate top-level key is a YAML error that would stop HA
-  # from starting. Failing the deploy is recoverable; corrupting configuration.yaml
-  # on a host whose HA config is not otherwise in git is not.
-  systemd.services.podman-homeassistant.preStart = ''
-    CFG=/var/lib/homeassistant/config/configuration.yaml
-
-    if [ ! -f "$CFG" ]; then
-      echo "configuration.yaml not found at $CFG — is the HA config volume mounted?" >&2
-      exit 1
-    fi
-
-    if ${pkgs.gnugrep}/bin/grep -qE '^[[:space:]]*packages:[[:space:]]*!include_dir_named[[:space:]]+nix-packages' "$CFG"; then
-      exit 0
-    fi
-
-    if ${pkgs.gnugrep}/bin/grep -qE '^homeassistant:' "$CFG"; then
-      echo "configuration.yaml already declares a top-level 'homeassistant:' block." >&2
-      echo "Add this under it by hand, then redeploy:" >&2
-      echo "  packages: !include_dir_named nix-packages" >&2
-      exit 1
-    fi
-
-    ${pkgs.coreutils}/bin/cp -a "$CFG" "$CFG.bak-$(${pkgs.coreutils}/bin/date +%Y%m%d%H%M%S)"
-    ${pkgs.coreutils}/bin/cat >> "$CFG" <<'EOF'
-
-# Added by NixOS — modules/ha-window-notifications.nix
-# Nix-rendered packages are mounted read-only at /config/nix-packages.
-homeassistant:
-  packages: !include_dir_named nix-packages
-EOF
-  '';
+  # A package rather than a bare automation list because a package can also
+  # declare `template:`, and both sensors above are templates.
+  services.home-assistant.config.homeassistant.packages.windows = windowsPackage;
 }
