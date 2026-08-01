@@ -109,7 +109,22 @@
       # See step 5-6 in modules/attic.nix for setup instructions.
       attic_push_token = {};
       nut_upsmon_password = {};
-      nut_ha_password = {};
+
+      # Group-readable so the Prometheus NUT exporter can read it. The exporter
+      # runs with DynamicUser=true (the nixpkgs exporters default), so its UID is
+      # not stable and the file cannot simply be chowned to it — a supplementary
+      # group is the way in. See the SupplementaryGroups line in modules/nut.nix.
+      #
+      # Default sops mode is 0400 root:root, which the exporter cannot read; it
+      # would start, fail to authenticate, and export nothing while the unit
+      # still looked healthy.
+      #
+      # NUT itself is unaffected: upsd reads this as root, and root ignores the
+      # group bits.
+      nut_ha_password = {
+        mode  = "0440";
+        group = config.users.groups.nut-monitor.name;
+      };
       github_runner_token = {
         owner = "github-runner-rivendell";
       };
