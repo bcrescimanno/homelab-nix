@@ -22,18 +22,28 @@
       Address     = "0.0.0.0";
       Port        = 4533;
       LogLevel    = "info";
-      # The library is on the erebor NFS mount, so Navidrome's inotify watcher is
-      # inert — measured over 24h, scans only ever landed on the hour, even
-      # though Lidarr imported four times that day. Periodic scanning (disabled
-      # by default in 0.62) is the only thing that actually picks changes up.
+      # Navidrome's inotify watcher DOES work here, contrary to what an earlier
+      # version of this comment claimed: inotify is delivered for writes made
+      # through this mount by this host, and both Navidrome and the arr
+      # containers are on pirateship. The journal has ~92 "Watcher: Triggering
+      # scan for changed folders" events going back to March.
       #
-      # 5m, not 1h: a quick scan is itself just a directory-mtime walk and takes
-      # 0.4–2.3s (17.7s when it finds something), so this is close to free and
-      # keeps Navidrome roughly in step with modules/music-sync.nix, which drives
-      # Lidarr and Music Assistant on a 2-minute tick. Navidrome is deliberately
-      # not pushed to from there: 0.63.2 does not advertise the
-      # apiKeyAuthentication OpenSubsonic extension, so triggering startScan
-      # would mean keeping a user's password in sops to save ~3 minutes.
+      # (The earlier claim came from grepping the journal for "Starting scan",
+      # which only matches *scheduled* scans — watcher-driven scans log an
+      # entirely different string. Do not re-derive that conclusion from a
+      # "Starting scan" grep.)
+      #
+      # What the watcher genuinely cannot see is a write made on another NFS
+      # client — i.e. an album copied straight onto erebor over SMB, which is
+      # exactly the manual CD-rip path. Periodic scanning is the safety net for
+      # that case, not the primary mechanism.
+      #
+      # 5m rather than 1h because a quick scan is itself just a directory-mtime
+      # walk (0.4–2.3s, 17.7s when it finds something), so bounding the
+      # NAS-direct blind spot to five minutes is close to free. Navidrome is
+      # deliberately not pushed to from modules/music-sync.nix: 0.63.2 does not
+      # advertise the apiKeyAuthentication OpenSubsonic extension, so triggering
+      # startScan would mean keeping a user's password in sops.
       "Scanner.Schedule" = "5m";
     };
   };
