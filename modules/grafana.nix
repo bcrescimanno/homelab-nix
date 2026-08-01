@@ -11,6 +11,106 @@
 
 { config, pkgs, lib, ... }:
 
+let
+  # mirkwood scrapes itself over loopback; the rest by name.
+  allHosts = [ "127.0.0.1" "rivendell" "pirateship" "orthanc" ];
+
+  ntfyBase  = "http://10.0.1.9:2586";
+  ntfyTopic = "homelab";
+
+  # Stable datasource uid. Grafana generates a random one for a UI-created
+  # datasource (this instance had PBFA97CFB590B2093), and the checked-in
+  # dashboard JSON has to reference *something* — so pin a readable value here
+  # and have dashboards/blocky.json refer to it. Provisioned datasources are
+  # matched by name, so setting this updates the existing one in place.
+  promDatasourceUid = "homelab-prometheus";
+
+  # Only rules built on metric names verified to exist are here. node_exporter
+  # and `up` are well-known and stable. Rules for the smartctl, systemd and nut
+  # exporters are deliberately NOT written blind — their metric names differ
+  # between exporter implementations, and a rule referencing a name that does
+  # not exist is not an error in Prometheus, it is a rule that silently never
+  # fires. Those are added once the metric names are read off the live
+  # exporters.
+  alertRules = {
+    groups = [
+      {
+        name = "availability";
+        rules = [
+          {
+            alert = "InstanceDown";
+            expr = ''up == 0'';
+            "for" = "5m";
+            labels.severity = "critical";
+            annotations = {
+              summary = "{{ $labels.job }} on {{ $labels.instance }} is down";
+              description = "Prometheus has failed to scrape {{ $labels.instance }} ({{ $labels.job }}) for 5 minutes.";
+            };
+          }
+        ];
+      }
+      {
+        name = "node";
+        rules = [
+          {
+            # Root filesystem, not every mount: the NFS media mounts on
+            # pirateship and the erebor backup automount live at 90%+ by design
+            # and would otherwise alert forever.
+            alert = "DiskSpaceLow";
+            expr = ''
+              100 * node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|ramfs"}
+                  / node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|ramfs"} < 15
+            '';
+            "for" = "15m";
+            labels.severity = "warning";
+            annotations = {
+              summary = "{{ $labels.instance }} root filesystem below 15% free";
+              description = "{{ $labels.instance }} has {{ $value | printf \"%.1f\" }}% free on /.";
+            };
+          }
+          {
+            alert = "DiskSpaceCritical";
+            expr = ''
+              100 * node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|ramfs"}
+                  / node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|ramfs"} < 5
+            '';
+            "for" = "5m";
+            labels.severity = "critical";
+            annotations = {
+              summary = "{{ $labels.instance }} root filesystem below 5% free";
+              description = "{{ $labels.instance }} has {{ $value | printf \"%.1f\" }}% free on /. A full root filesystem breaks nix builds and deploys.";
+            };
+          }
+          {
+            # 30m, not 5m: rivendell legitimately runs hot during a CI aarch64
+            # build, and that is not something to be woken for. Sustained
+            # pressure for half an hour is.
+            alert = "MemoryPressure";
+            expr = ''
+              100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) > 90
+            '';
+            "for" = "30m";
+            labels.severity = "warning";
+            annotations = {
+              summary = "{{ $labels.instance }} memory above 90% for 30m";
+              description = "{{ $labels.instance }} has under 10% available memory. rivendell wedged into swap-death this way on 2026-07-31.";
+            };
+          }
+          {
+            alert = "HostRebooted";
+            expr = ''time() - node_boot_time_seconds < 600'';
+            labels.severity = "info";
+            annotations = {
+              summary = "{{ $labels.instance }} rebooted";
+              description = "{{ $labels.instance }} booted less than 10 minutes ago. Expected after a deploy; investigate if unexplained.";
+            };
+          }
+        ];
+      }
+    ];
+  };
+in
+
 {
   services.prometheus = {
     enable        = true;
@@ -37,7 +137,87 @@
           ];
         }];
       }
+      {
+        job_name       = "systemd";
+        static_configs = [{
+          targets = map (h: "${h}:9558") allHosts;
+        }];
+      }
+      {
+        job_name       = "smartctl";
+        static_configs = [{
+          targets = map (h: "${h}:9633") allHosts;
+        }];
+      }
+      {
+        # rivendell only — it is the host with the UPS on USB.
+        job_name       = "nut";
+        static_configs = [{ targets = [ "rivendell:9199" ]; }];
+      }
     ];
+
+    # ---------------------------------------------------------------------
+    # Alerting
+    #
+    # Before 2026-08-01 Prometheus scraped four hosts and had ZERO rules and no
+    # Alertmanager. Every alert in the homelab was a bespoke shell script
+    # piping to ntfy (backup OnFailure, the freshness dead-man's switch, the
+    # post-upgrade check, Gatus). Those cover the specific things someone
+    # thought to write a script for; nothing watched the metrics that were
+    # already being collected.
+    #
+    # Delivery reuses the same ntfy topic as everything else rather than
+    # introducing a second notification channel, via alertmanager-ntfy as a
+    # webhook receiver. Keeping one topic means one place to look.
+    # ---------------------------------------------------------------------
+    alertmanagers = [{
+      static_configs = [{ targets = [ "127.0.0.1:9093" ]; }];
+    }];
+
+    rules = [ (builtins.toJSON alertRules) ];
+
+    alertmanager = {
+      enable = true;
+      port = 9093;
+      configuration = {
+        route = {
+          receiver = "ntfy";
+          group_by = [ "alertname" "instance" ];
+          group_wait = "30s";
+          group_interval = "5m";
+          # Re-send a still-firing alert daily. Long enough not to nag, short
+          # enough that something broken cannot quietly scroll out of view.
+          repeat_interval = "24h";
+        };
+        receivers = [{
+          name = "ntfy";
+          webhook_configs = [{ url = "http://127.0.0.1:8000/alert"; }];
+        }];
+      };
+    };
+  };
+
+  # Bridges Alertmanager webhooks onto the existing ntfy topic. Listens on
+  # loopback only — it has no authentication of its own and nothing outside
+  # this host should be able to inject notifications.
+  services.prometheus.alertmanager-ntfy = {
+    enable = true;
+    settings = {
+      http.addr = "127.0.0.1:8000";
+      ntfy = {
+        baseurl = ntfyBase;
+        notification = {
+          topic = ntfyTopic;
+          # Firing alerts are high priority, resolved ones are quiet — a
+          # recovery notice should not buzz a phone at 03:00.
+          priority = ''status == "firing" ? "high" : "default"'';
+          tags = [
+            { tag = "rotating_light"; condition = ''status == "firing"''; }
+            { tag = "white_check_mark"; condition = ''status == "resolved"''; }
+          ];
+        };
+      };
+    };
   };
 
   services.grafana = {
@@ -61,8 +241,28 @@
       datasources.settings.datasources = [{
         name      = "Prometheus";
         type      = "prometheus";
+        uid       = promDatasourceUid;
         url       = "http://127.0.0.1:9090";
         isDefault = true;
+      }];
+
+      # Dashboards are provisioned from the repo. Until 2026-08-01 only
+      # datasources were provisioned and the single dashboard ("Blocky", uid
+      # JvOqE4gR1) was UI-authored — living entirely in Grafana's sqlite, which
+      # is the same "config lives in a database with no file equivalent"
+      # pattern that got Uptime Kuma replaced by Gatus. It was recoverable only
+      # via the /var/lib/grafana restic backup, and not reviewable in git.
+      #
+      # allowUiUpdates = false makes Grafana mark these read-only in the UI.
+      # That is the point: it prevents a UI edit that would silently diverge
+      # from the file and be lost on the next deploy. To change a dashboard,
+      # edit it in the UI, export the JSON, and commit it.
+      dashboards.settings.providers = [{
+        name = "homelab";
+        type = "file";
+        allowUiUpdates = false;
+        options.path = ./../dashboards;
+        options.foldersFromFilesStructure = false;
       }];
     };
   };

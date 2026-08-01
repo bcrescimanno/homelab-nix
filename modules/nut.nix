@@ -94,5 +94,37 @@ in
 
   networking.firewall.allowedTCPPorts = [ 3493 ];
 
+  # ---------------------------------------------------------------------------
+  # Prometheus exporter
+  #
+  # Until 2026-08-01 the UPS was visible only to Home Assistant and to upsmon's
+  # NOTIFYCMD pushes. Nothing recorded battery charge, load, or input voltage
+  # over time, so "the UPS has been running hot for a month" or "runtime is half
+  # what it was a year ago" were unanswerable. This feeds the UPS alert rules in
+  # modules/grafana.nix.
+  #
+  # Deliberately reuses the existing read-only `homeassistant` monitor account
+  # rather than adding a third NUT user: it already has exactly the access an
+  # exporter needs (read variables, no instcmds), and a new user would mean a new
+  # sops secret for no additional isolation. Both consumers are read-only and
+  # local, so a shared credential costs nothing here. If that ever stops being
+  # true, add a dedicated `prometheus` user with its own nut_prom_password.
+  services.prometheus.exporters.nut = {
+    enable = true;
+    port = 9199;
+    nutServer = "127.0.0.1";
+    nutUser = "homeassistant";
+    passwordPath = config.sops.secrets.nut_ha_password.path;
+    openFirewall = true;
+  };
+
+  # The exporter reads the password file directly (`NUT_EXPORTER_PASSWORD=$(cat
+  # …)` in its ExecStart) and runs under DynamicUser, so it needs group access
+  # to the sops-rendered secret. The matching mode/group is set on the secret in
+  # hosts/rivendell.nix.
+  users.groups.nut-monitor = {};
+  systemd.services.prometheus-nut-exporter.serviceConfig.SupplementaryGroups =
+    [ config.users.groups.nut-monitor.name ];
+
   homelab.postUpgradeCheck.services = [ "upsd" "upsmon" ];
 }
