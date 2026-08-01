@@ -148,20 +148,30 @@ in
         { private_url = "http://127.0.0.1:${toString companionPort}/companion"; }
       ];
 
-      # CLOSED 2026-08-01, immediately after the account was created.
+      # CLOSED 2026-08-01, immediately after the account was created. This is
+      # ordinary hygiene for a single-user instance — the one account that holds
+      # the subscriptions exists, so nothing else needs to be creatable.
       #
-      # This is not optional hardening. invidious.theshire.io is reachable from
-      # the PUBLIC INTERNET (verified by fetching it from off-network — 443 is
-      # forwarded to Caddy, so every *.theshire.io vhost is exposed, not just
-      # this one). An open Invidious instance is a free YouTube proxy: strangers
-      # register, and their traffic egresses from this IP. The realistic
-      # consequence is not a bandwidth bill, it is YouTube rate-limiting or
-      # blocking the IP — which kills playback for the actual user and would
-      # look exactly like the companion/po_token rot this whole trial is
-      # watching for. Leave this false.
+      # RETRACTION: the commit that first set this (and the comment it landed
+      # with) claimed invidious.theshire.io was reachable from the public
+      # internet and that 443 was forwarded to Caddy. THAT WAS WRONG. Nothing
+      # here is internet-facing. Corrected 2026-08-01 with two independent
+      # checks: a phone off wifi timed out on dl.theshire.io, and a tcpdump on
+      # rivendell's eth0 saw 36 SYNs to :443 during the test window from
+      # 10.0.1.247 and 10.0.1.9 only — zero non-RFC1918 sources.
+      #
+      # The bad claim came from a bad instrument: WebFetch runs LOCALLY, on the
+      # LAN, so it resolved the hostname through the split-horizon zone in
+      # modules/dns.nix (*.theshire.io -> 10.0.1.9) and reached Caddy directly.
+      # It returned a real page, which looked exactly like proof of exposure.
+      # **WebFetch cannot test external reachability of anything on this
+      # network.** Public DNS *does* point *.theshire.io at the WAN IP, which is
+      # what made the story plausible — but a DNS record is not an open port.
+      # To actually test from outside, use a device on cellular, or a host that
+      # is genuinely off-network.
       #
       # login_enabled stays true: the account is needed to read subscriptions,
-      # both in a browser and from a native client (Yattee) over the API.
+      # both in a browser and from a native client over the API.
       registration_enabled = false;
       login_enabled = true;
 
