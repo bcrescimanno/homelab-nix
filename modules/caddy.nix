@@ -126,7 +126,22 @@ in
           Access-Control-Allow-Credentials true
           Access-Control-Allow-Origin "${materialiousOrigin}"
           Access-Control-Allow-Methods "GET, POST, OPTIONS, HEAD, PATCH, PUT, DELETE"
-          Access-Control-Allow-Headers "User-Agent, Authorization, Content-Type"
+
+          # `Range` is REQUIRED and is not in upstream's documented header list.
+          # Invidious' DASH manifests use <SegmentBase> with indexRange and
+          # Initialization range, so every media fetch Shaka makes is a byte
+          # range request. Range is not a CORS-safelisted request header, so the
+          # browser preflights it — and without it listed here the preflight is
+          # rejected and NOTHING plays, while the rest of the UI works perfectly
+          # because plain API GETs are never preflighted. That asymmetry is what
+          # this looks like when it breaks: a completely functional site where
+          # every video fails.
+          Access-Control-Allow-Headers "User-Agent, Authorization, Content-Type, Range"
+
+          # Response headers are hidden from JS cross-origin unless exposed.
+          # Shaka reads Content-Range/Content-Length to size its buffers.
+          Access-Control-Expose-Headers "Content-Length, Content-Range, Accept-Ranges, Content-Type, Date"
+
           defer
         }
 
