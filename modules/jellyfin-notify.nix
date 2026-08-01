@@ -93,9 +93,15 @@ in
     serviceConfig = {
       Type = "oneshot";
       RemainAfterExit = true;
-      # Radarr/Sonarr validate the connection when saving a notification, so a
-      # failure here is a real signal that the push does not work. Retry rather
-      # than latch: after a gluetun restart the netns takes a while to settle.
+      # Retry rather than latch: after a gluetun restart the netns takes a
+      # while to settle before radarr/sonarr answer.
+      #
+      # Note the arr connection test is weaker than it looks — POST
+      # /notification/test returns 200 even with a deliberately wrong API key,
+      # since the arr does not inspect Jellyfin's response. Real end-to-end
+      # proof is a "will be refreshed" line in Jellyfin's log on orthanc
+      # (/var/lib/jellyfin/log/log_*.log) after an import, with no accompanying
+      # "Invalid token".
       Restart = "on-failure";
       RestartSec = "60s";
       ExecStart = lib.concatStringsSep " " [

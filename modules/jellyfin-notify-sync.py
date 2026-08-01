@@ -105,14 +105,22 @@ def sync_arr(app):
         return {f["name"]: f.get("value") for f in n.get("fields") or []}
 
     if cur is None:
-        # No forceSave: the arr tests the connection on save, so a success here
-        # is proof the notification actually reaches Jellyfin.
         http(base + "/notification", "POST", hdr, json.dumps(body).encode())
         changed.append("%-7s created notification %r" % (app["app"], body["name"]))
         return
 
     cm, wm = field_map(cur), field_map(body)
-    drift = [k for k, v in wm.items() if cm.get(k) != v]
+    # Radarr and Sonarr return secret fields as '********' on read, so a naive
+    # comparison against the real value always reports drift and rewrites the
+    # notification on every run. Treat the mask as "opaque, assume unchanged".
+    #
+    # Consequence: rotating jellyfin_api_key is NOT picked up automatically —
+    # delete the notification (or change any other field) to force a rewrite.
+    # Do not "fix" this by testing the connection instead: POST /notification/test
+    # returns 200 even with a deliberately wrong API key, because the arr does
+    # not check Jellyfin's response. It proves reachability, nothing more.
+    drift = [k for k, v in wm.items()
+             if cm.get(k) != v and cm.get(k) != "********"]
     trig = [k for k in body if k.startswith("on") and isinstance(body[k], bool)
             and cur.get(k) != body[k]]
     if drift or trig:
