@@ -125,8 +125,20 @@
   # ---------------------------------------------------------------------------
   homelab.backup.paths = [
     "/var/lib/homeassistant/config"
-    "/var/lib/matter-server/data"
-    "/var/lib/otbr/data"
+
+    # Matter fabric. NOT /var/lib/matter-server — services.matter-server runs
+    # with DynamicUser=true, so systemd keeps the real state directory at
+    # /var/lib/private/matter-server and leaves a SYMLINK at the unprefixed
+    # path. restic archives a symlink as a symlink, so backing up the
+    # unprefixed path would silently capture a 30-byte link and none of the
+    # fabric — and the loss would only surface at restore time, when every
+    # Matter device would need re-commissioning.
+    "/var/lib/private/matter-server"
+
+    # Thread dataset. otbr-agent runs as root (no DynamicUser), so
+    # StateDirectory=thread is a real directory and needs no private/ prefix.
+    "/var/lib/thread"
+
     "/var/lib/caddy"
     "/var/lib/music-assistant"
   ];

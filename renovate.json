@@ -41,6 +41,11 @@
       "matchDepNames": ["docker.io/postgres"],
       "matchUpdateTypes": ["major"],
       "enabled": false
+    },
+    {
+      "description": "Freeze the Home Assistant image while the native migration is staged. services.home-assistant can only take over when nixpkgs >= the running version; both are 2026.7.4 as of 2026-08-01, and letting the container roll forward to 2026.8.x would reopen that gate for another month. RE-ENABLE once modules/homeassistant.nix no longer declares this container.",
+      "matchDepNames": ["ghcr.io/home-assistant/home-assistant"],
+      "enabled": false
     }
   ]
 }
