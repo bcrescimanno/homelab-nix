@@ -196,6 +196,31 @@ let
         --replace-fail \
           'if (playerElement) playerElement.loop = $playerAlwaysLoopStore;' \
           'player.configure({ preferredVideoCodecs: ['"'"'avc1'"'"'] }); if (playerElement) playerElement.loop = $playerAlwaysLoopStore;'
+
+      # BUFFER TUNING — upstream prefetches two full minutes ahead, which turns
+      # the first seconds of every video into a bandwidth flood.
+      #
+      # Measured, media bytes fetched in the first 9s of playback:
+      #   bufferingGoal 120  ->  52.1 MB over 42 responses
+      #   bufferingGoal  20  ->  11.4 MB over 13 responses
+      #
+      # The opening requests are identical either way (init + sidx index, a few
+      # hundred bytes each), then shaka escalates to ~1.9 MB range requests. On
+      # a wired LAN at 17-27 MB/s that burst is invisible. On a slower or shared
+      # link it competes with the very segments needed to begin playback, which
+      # presents as "slow to start" rather than as a stall.
+      #
+      # rebufferingGoal is the knob that actually GATES playback starting —
+      # shaka waits for that many seconds of media before it plays — so it is
+      # halved too. 20s of steady-state buffer remains ample here.
+      #
+      # IF MID-PLAYBACK STALLS EVER APPEAR, raise rebufferingGoal back to 2
+      # first; it is the one that trades startup latency for hiccup tolerance.
+      # Measured 0 stalls and 0 dropped frames over 25s at 1080p with these
+      # values.
+      substituteInPlace "$P" \
+        --replace-fail 'bufferingGoal: 120,' 'bufferingGoal: 20,' \
+        --replace-fail 'rebufferingGoal: 2,' 'rebufferingGoal: 1,'
     '';
 
     preBuild = ''
