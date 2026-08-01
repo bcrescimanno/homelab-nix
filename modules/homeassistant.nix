@@ -63,7 +63,31 @@
   services.matter-server = {
     enable = true;
     port = 5580;
-    extraArgs.primary-interface = "eth0";
+    extraArgs = {
+      primary-interface = "eth0";
+
+      # MUST stay 65521 (0xFFF1). Do not "fix" this to Home Assistant's real
+      # vendor ID (4939) — that is what the nixpkgs module hardcodes, and it is
+      # wrong for THIS installation.
+      #
+      # The container never passed --vendorid, so the fabric was created with
+      # python-matter-server's default of 0xFFF1, and that is what is recorded
+      # on disk: chip.json caList = [{fabricId: 1, vendorId: 65521}].
+      #
+      # matter_server/server/stack.py reuses a stored FabricAdmin only when BOTH
+      # vendorId and fabricId match, and otherwise calls NewFabricAdmin() —
+      # which raises "Provided fabricId of 1 collides with an existing
+      # FabricAdmin instance!" because it collides on fabricId alone. With the
+      # module's 4939 the service crashed on startup with exactly that, then
+      # segfaulted on the way out (observed on the first native deploy,
+      # 2026-08-01).
+      #
+      # Changing this value orphans the existing fabric and requires
+      # re-commissioning every Matter device, so it is pinned to what the fabric
+      # on disk actually says. extraArgs is merged after the module's defaults
+      # (`{ ... } // cfg.extraArgs`), which is what makes the override possible.
+      vendorid = 65521;
+    };
   };
 
   # ---------------------------------------------------------------------------
