@@ -2,7 +2,9 @@
 #
 # Three household notifications, driven by the outdoor temperature at the house:
 #
-#   1. Morning  — outdoor temp climbs above 68°F  → "close the windows"
+#   1. Morning  — outdoor temp climbs above 66°F  → "close the windows"
+#      (66 rather than 68 is margin for the coarse met.no fallback; see
+#      closeAboveF below for the measurement that forced it)
 #   2. Evening  — outdoor temp falls below 72°F   → "open the windows"
 #   3. If today's forecast high is below 75°F, 1 and 2 are suppressed entirely
 #      and a single 08:00 notification says "Today is a windows open day!"
@@ -73,7 +75,31 @@ let
 
   # HA is configured us_customary, so every temperature below is already °F and
   # no conversion is needed anywhere in this file.
-  closeAboveF = 68;   # morning: warmer than this outside → shut the house up
+  # 66, not 68, and the gap is deliberate margin for a coarse data source.
+  #
+  # Measured 2026-08-01: met.no publishes WHOLE DEGREES on a ~56 min cadence,
+  # and that morning it stepped 61 -> 68 in a single update. `above` is a strict
+  # greater-than in HA, so a reading of exactly 68.0 satisfied neither the
+  # trigger nor the condition, and the close prompt never fired on a day whose
+  # forecast high was 96°F. Landing precisely on an integer threshold is not an
+  # edge case against a whole-degree source — it is routine, and it happened on
+  # day one.
+  #
+  # Dropping to 66 means an hourly sample that leaps over the 68 mark still
+  # lands comfortably inside the trigger band. It widens the morning rule (more
+  # days get the prompt) which is the right failure direction: a redundant
+  # "close the windows" costs nothing, a missed one costs a hot house.
+  #
+  # REVISIT when the Eve Weather replaces the met.no fallback. It reports
+  # fractional degrees far more often, so the margin stops being necessary and
+  # this should go back toward 68 — see outdoorSensor above.
+  closeAboveF = 66;   # morning: warmer than this outside → shut the house up
+
+  # NOTE: this has the mirror of the bug described above and has NOT been
+  # widened. `below` is likewise strict, so exactly 72.0 fires nothing, and a
+  # hourly step from 75 -> 72 would be missed the same way. Fixing it means
+  # RAISING this (e.g. to 74), which is a real behaviour change — windows get
+  # opened earlier and warmer — so it was left alone pending a decision.
   openBelowF = 72;    # evening: cooler than this outside → let the night in
   openAllDayBelowF = 75;  # forecast high under this → skip 1 & 2 entirely
 
