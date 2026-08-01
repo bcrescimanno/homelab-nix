@@ -160,6 +160,7 @@
           ./modules/jellyfin-notify.nix
           ./modules/lidarr-formats.nix
           ./modules/monitoring.nix
+          ./modules/music-sync.nix
           ./modules/navidrome.nix
         ];
         specialArgs = { inherit inputs nixos-raspberrypi r2AccountId brianSshKey; };

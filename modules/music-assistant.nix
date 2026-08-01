@@ -30,7 +30,15 @@
 {
   services.music-assistant = {
     enable = true;
-    providers = [ "airplay" "chromecast" "sendspin" "dlna" ];
+    # "sonos" is here because the Sonos provider is enabled in MA's own
+    # settings.json (MA turns it on as part of default_providers_setup). Without
+    # it declared, MA cannot import the module and logs
+    # "Failed to load provider module for sonos" plus a recursion traceback on
+    # every single startup. Declaring it installs the dependency and silences
+    # that; it is inert if there are no Sonos devices on the network. The
+    # alternative is disabling the provider in the MA UI, which puts the fix
+    # outside Nix.
+    providers = [ "airplay" "chromecast" "sendspin" "dlna" "sonos" ];
   };
 
   networking.firewall.allowedTCPPorts = [ 8095 8097 7000 8927 ];
