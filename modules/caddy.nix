@@ -35,6 +35,20 @@ let
     }
     ${tlsConfig}
   '';
+
+  # Serve a static site out of the Nix store. try_files sends unknown paths to
+  # index.html because these are client-side-routed SPAs — without it a reload
+  # on any route but / is a 404.
+  static = root: ''
+    root * ${root}
+    try_files {path} /index.html
+    file_server
+    ${tlsConfig}
+  '';
+
+  # Origin allowed to make cross-origin API calls to Invidious. See the CORS
+  # section in modules/materialious.nix.
+  materialiousOrigin = "https://yt.theshire.io";
 in
 
 {
@@ -88,12 +102,44 @@ in
       # streamed through this vhost (invidious proxies its companion rather than
       # exposing it), and Caddy's default response buffering makes Firefox's MSE
       # time out before playback starts.
+      #
+      # The CORS block exists for the Materialious frontend below, which runs
+      # in the browser on a different origin and calls this API directly.
+      # Invidious has no CORS setting of its own, so it has to happen here.
+      # Pinned to the one origin rather than `*` because the requests are sent
+      # with credentials, which `*` is not valid for.
+      #
+      # `defer` makes Caddy write these at response time so they REPLACE the
+      # Access-Control-Allow-Origin Invidious sets itself, rather than
+      # appending a second, conflicting one (browsers reject duplicates).
+      #
+      # handle/respond rather than a bare `respond` so the preflight short
+      # circuit is explicitly ordered ahead of the proxy instead of relying on
+      # Caddy's implicit directive order.
       "invidious.theshire.io".extraConfig        = ''
+        @cors_preflight method OPTIONS
+        handle @cors_preflight {
+          respond 204
+        }
+
+        header {
+          Access-Control-Allow-Credentials true
+          Access-Control-Allow-Origin "${materialiousOrigin}"
+          Access-Control-Allow-Methods "GET, POST, OPTIONS, HEAD, PATCH, PUT, DELETE"
+          Access-Control-Allow-Headers "User-Agent, Authorization, Content-Type"
+          defer
+        }
+
         reverse_proxy orthanc.home.theshire.io:3000 {
           flush_interval -1
         }
         ${tlsConfig}
       '';
+
+      # Materialious — static SPA built by modules/materialious.nix and served
+      # straight from the store; there is no backend process for this vhost.
+      # It talks to invidious.theshire.io above from the browser.
+      "yt.theshire.io".extraConfig               = static "${pkgs.materialious}";
 
       # pirateship backends
       "stream.theshire.io".extraConfig           = proxy "pirateship.home.theshire.io:4533";

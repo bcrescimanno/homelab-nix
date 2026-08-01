@@ -174,6 +174,7 @@
           ./modules/homeassistant.nix
           ./modules/ha-window-notifications.nix
           ./modules/caddy.nix
+          ./modules/materialious.nix
           ./modules/monitoring.nix
           ./modules/nut.nix
           ./modules/ntfy.nix
