@@ -148,10 +148,21 @@ in
         { private_url = "http://127.0.0.1:${toString companionPort}/companion"; }
       ];
 
-      # Single-user instance. Registration is left ENABLED for now because an
-      # account is what holds subscriptions, and one has to be created before it
-      # can be locked down. Flip to false once the account exists.
-      registration_enabled = true;
+      # CLOSED 2026-08-01, immediately after the account was created.
+      #
+      # This is not optional hardening. invidious.theshire.io is reachable from
+      # the PUBLIC INTERNET (verified by fetching it from off-network — 443 is
+      # forwarded to Caddy, so every *.theshire.io vhost is exposed, not just
+      # this one). An open Invidious instance is a free YouTube proxy: strangers
+      # register, and their traffic egresses from this IP. The realistic
+      # consequence is not a bandwidth bill, it is YouTube rate-limiting or
+      # blocking the IP — which kills playback for the actual user and would
+      # look exactly like the companion/po_token rot this whole trial is
+      # watching for. Leave this false.
+      #
+      # login_enabled stays true: the account is needed to read subscriptions,
+      # both in a browser and from a native client (Yattee) over the API.
+      registration_enabled = false;
       login_enabled = true;
 
       # Nothing here is public, so don't spend cycles building a "popular" page
