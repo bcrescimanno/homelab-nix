@@ -128,7 +128,7 @@ in
     };
 
     piped-proxy = {
-      image = "docker.io/1337kavin/piped-proxy:latest@sha256:8aba8ba9d8bd3321ae9b15434b8d8bb9ffa03d699b2feb8f654f242a667e8cf2";
+      image = "docker.io/1337kavin/piped-proxy:latest@sha256:318f8af621434606ce60d806a061df3ff0d32f62ad445ff67cb76d2ee8e79be9";
       autoStart = true;
       extraOptions = [ "--network=piped" ];
       ports = [ "8182:8080" ];
