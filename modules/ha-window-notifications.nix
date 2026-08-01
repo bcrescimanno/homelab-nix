@@ -99,9 +99,17 @@ let
 
   # ---- Derived ------------------------------------------------------------
 
+  # These must go through notify.send_message targeting the notify ENTITY, not
+  # `action: notify.<entity>`. mobile_app registers its legacy services under a
+  # different name than its entity (notify.mobile_app_brians_iphone_14 vs the
+  # entity notify.brians_iphone_14), and the ntfy integration registers no legacy
+  # service at all — so naming the entity as if it were a service fails at run
+  # time, per-action, with nothing but a log line. Verified against
+  # /api/services on rivendell rather than assumed.
   notify = title: message:
     map (target: {
-      action = target;
+      action = "notify.send_message";
+      target.entity_id = target;
       data = { inherit title message; };
     }) phones;
 
@@ -298,7 +306,8 @@ let
           "for" = "02:00:00";
         }];
         actions = [{
-          action = infraNotify;
+          action = "notify.send_message";
+          target.entity_id = infraNotify;
           data = {
             title = "Outdoor temperature sensor is down";
             message = "sensor.outdoor_temperature has been unavailable for 2h — the window open/close notifications are not running. Check the Eve Weather battery.";
