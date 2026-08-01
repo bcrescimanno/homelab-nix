@@ -1,24 +1,34 @@
 # modules/music-sync.nix — keep Lidarr, Navidrome and Music Assistant in step
 #
-# Four services read the same erebor NFS share at /var/lib/media/music, and every
-# filesystem watcher on it is inert. inotify does not deliver events for writes
-# made by a different NFS client, and the writers are always elsewhere: an arr
-# container on pirateship, or a CD rip copied straight onto the NAS. Same root
-# cause already documented for Jellyfin in modules/jellyfin-notify.nix and for
-# Bazarr's realtime monitor.
+# Four services read the same erebor NFS share at /var/lib/media/music. inotify
+# on an NFS mount is delivered for writes made through that mount by the SAME
+# host, and not for writes made by any other client. So the blind spots are:
 #
-# So each service fell back to its own schedule, and the real numbers were much
-# worse than the configured ones looked:
+#   same host   pirateship writes  -> Navidrome (pirateship) sees them. Its
+#                                     watcher works and always has.
+#   other host  pirateship writes  -> Jellyfin (orthanc) and Music Assistant
+#                                     (rivendell) never see them. Same cause as
+#                                     modules/jellyfin-notify.nix and Bazarr.
+#   no host     erebor SMB writes  -> nobody sees them. This is the manual
+#                                     CD-rip path, and it is the one that
+#                                     matters most here.
 #
-#   Navidrome         Scanner.Schedule "1h"        -- honoured; watcher never fired.
-#                     24h of journal showed scans only on the hour, despite Lidarr
-#                     importing at 09:11, 10:06, 10:44 and 13:40 that day.
+# Music Assistant additionally has no filesystem watcher at all, so it is
+# schedule-only regardless of where the write came from.
+#
+# The schedules those services fell back to were much worse than the configured
+# values suggested:
+#
 #   Music Assistant   provider_sync_interval_* 30  -- DEAD CONFIG. Nothing in 2.9.9
 #                     reads those keys; the real schedule is a hardcoded
 #                     TaskSchedule.hourly(every=12) in models/music_provider.py.
 #                     The library synced twice a day.
 #   Lidarr            RescanFolders daily          -- and ~6 min per run, since it
-#                     walks all 99 artist folders.
+#                     walks all 99 artist folders. Whether Lidarr's own
+#                     RootFolderWatchingService catches same-host writes is
+#                     untested; it is not relied on either way.
+#   Navidrome         Scanner.Schedule, now 5m     -- safety net for NAS-direct
+#                     writes only; its watcher covers the same-host case.
 #
 # music-sync.timer replaces that with detection cheap enough to run every two
 # minutes: stat the ~278 directories (0.09s warm, 1.28s cold) and compare mtimes.
@@ -80,6 +90,14 @@ let
   auditSpec = pkgs.writeText "music-library-audit.json" (builtins.toJSON {
     inherit musicRoot lidarr host ntfyUrl;
   });
+
+  metadataSpec = pkgs.writeText "ma-metadata-backfill.json" (builtins.toJSON {
+    url = "http://10.0.1.9:8095";
+    tokenFile = config.sops.secrets.ma_token.path;
+    # Small enough to be polite to MusicBrainz/TheAudioDB/fanart.tv, large
+    # enough that a ~120-artist backlog drains in a few days.
+    batchSize = 40;
+  });
 in
 {
   # Long-lived Music Assistant API token for the `brian` user. music/sync only
@@ -136,6 +154,34 @@ in
     timerConfig = {
       OnCalendar = "09:30";
       RandomizedDelaySec = "20m";
+      Persistent = true;
+    };
+  };
+
+  # ------------------------------------------------- MA artist metadata backfill
+  # Works around MA's own scan task, whose query excludes any artist that has a
+  # last_refresh stamp — so an artist refreshed once that came back empty is
+  # never retried. See ma-metadata-backfill.py.
+  systemd.services.ma-metadata-backfill = {
+    description = "Backfill missing Music Assistant artist metadata";
+    after = [ "network-online.target" ];
+    wants = [ "network-online.target" ];
+    unitConfig.OnFailure = "music-sync-notify-failure.service";
+    serviceConfig = {
+      Type = "oneshot";
+      TimeoutStartSec = "30m";
+      ExecStart = lib.concatStringsSep " " [
+        "${pkgs.python3}/bin/python3" "${./ma-metadata-backfill.py}" "${metadataSpec}"
+      ];
+    };
+  };
+
+  systemd.timers.ma-metadata-backfill = {
+    description = "Daily Music Assistant artist metadata backfill";
+    wantedBy = [ "timers.target" ];
+    timerConfig = {
+      OnCalendar = "10:15";
+      RandomizedDelaySec = "30m";
       Persistent = true;
     };
   };
