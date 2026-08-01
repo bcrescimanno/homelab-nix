@@ -19,6 +19,11 @@
 #     each tracked unit's ExecStopPost only when it exited successfully — so the
 #     stamp means "last successful run," not "last attempt."
 #     Fires a high-priority ntfy alert if a repo hasn't succeeded in >36h.
+#
+# Integrity:
+#   - Each nightly run ends with `restic check --read-data-subset=10%`, so a
+#     corrupt repo fails the unit and trips the OnFailure alert above rather
+#     than staying silent until a restore is attempted. See checkOpts below.
 
 { config, pkgs, lib, r2AccountId, ... }:
 
@@ -47,6 +52,39 @@ let
   '';
 
   trackedUnits = [ "restic-backups-local" "restic-backups-offsite" "homelab-upgrade-check" ];
+
+  # Repository integrity verification.
+  #
+  # Until 2026-08-01 checkOpts was unset on both repos. `runCheck` defaults to
+  # `length checkOpts > 0`, so it was false — meaning `restic check` had NEVER
+  # run against either repository. The freshness dead-man's switch above proves
+  # the backup jobs RAN; it says nothing about whether what they wrote is
+  # readable. A silently-corrupt repo would have looked perfectly healthy right
+  # up until a restore was attempted.
+  #
+  # A bare `restic check` only walks structure and metadata. --read-data-subset
+  # additionally re-hashes actual pack file contents, which is the part that
+  # catches bitrot on the NFS share and truncated/garbled uploads to R2.
+  # 10% per nightly run rotates through the whole repo every ~10 days.
+  #
+  # Cost is negligible at current sizes (measured 2026-08-01: mirkwood 92M,
+  # rivendell 361M, pirateship 2.4G, orthanc 3.5G) — the largest offsite repo
+  # pulls ~350MB/night, and R2 charges no egress. Revisit the percentage if a
+  # host's repo grows past ~20G.
+  #
+  # --with-cache reuses RESTIC_CACHE_DIR (set by the module) instead of building
+  # a throwaway cache, which matters most for the offsite repo: without it every
+  # check re-downloads the full metadata tree from R2.
+  #
+  # The module appends check to the SAME unit as backup and prune
+  # (ExecStart = backup ++ prune ++ check), so a failed check fails
+  # restic-backups-<name>.service and fires the existing OnFailure ntfy alert.
+  # That alert is titled "Backup FAILED" even when it was the check that failed
+  # — the journal distinguishes them, and either way the repo needs attention.
+  checkOpts = [
+    "--read-data-subset=10%"
+    "--with-cache"
+  ];
 
   notifyService = { name, description, title, priority, tags, body }: {
     inherit description;
@@ -231,6 +269,7 @@ in
           "--keep-weekly 4"
           "--keep-monthly 12"
         ];
+        inherit checkOpts;
       };
 
       offsite = {
@@ -248,6 +287,7 @@ in
           "--keep-weekly 4"
           "--keep-monthly 12"
         ];
+        inherit checkOpts;
       };
     };
   };
