@@ -83,6 +83,17 @@ in
         }
         ${tlsConfig}
       '';
+      # Invidious — trial replacement for Piped, running alongside it.
+      # flush_interval -1 for the same reason as piped-proxy above: video is
+      # streamed through this vhost (invidious proxies its companion rather than
+      # exposing it), and Caddy's default response buffering makes Firefox's MSE
+      # time out before playback starts.
+      "invidious.theshire.io".extraConfig        = ''
+        reverse_proxy orthanc.home.theshire.io:3000 {
+          flush_interval -1
+        }
+        ${tlsConfig}
+      '';
 
       # pirateship backends
       "stream.theshire.io".extraConfig           = proxy "pirateship.home.theshire.io:4533";
