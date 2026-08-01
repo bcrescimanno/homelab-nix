@@ -60,6 +60,13 @@ erebor is online (10G SFP+ at 10.0.1.22, 1G ethernet at 10.0.1.21 for management
 
 - [x] **Wake-on-LAN across IoT VLAN** — rivendell has `eth0.4` (VLAN 4, 10.0.12.2/22) tagged subinterface on its existing port (UniFi "Allow All" was already set). HA sends WoL broadcasts to `10.0.15.255` (IoT /22 broadcast); no UDM Pro changes required.
 - [ ] **Thread border router (ZBT-2)** — Home Assistant Connect ZBT-2 USB dongle ordered. When it arrives: add OTBR (OpenThread Border Router) container to `modules/homeassistant.nix` alongside HA and Matter Server (`--privileged` + host networking), then wire HA's Thread integration to it. The ZBT-2 will be auto-accessible inside privileged containers.
+- [ ] **Eve Weather outdoor sensor (~$80)** — buy, commission over Thread, then set `outdoorSensor` in `modules/ha-window-notifications.nix` to the resulting entity ID (confirm it in Developer Tools → States) and redeploy rivendell. **Mount it in permanent shade** — an outdoor sensor in direct sun reads 10–20°F high, which would fire "close the windows" on every clear morning.
+
+  The window open/close notifications are deployed and running *today*, but off the met.no forecast as a placeholder, which is not the hyperlocal reading they were designed around. Until this is done the thresholds are being compared against a grid forecast, not the yard.
+
+  Weather Underground was evaluated and ruled out: WU only issues API keys to accounts already uploading from their own PWS, so there is no supported way to read a nearby station — hardware is required either way, and once you are buying hardware a sensor in your own yard beats a station a mile off. Eve Weather wins on fit: Matter-over-Thread, IPX4, no cloud and no account, and it pairs with the OTBR + Matter stack rivendell already runs (no new coordinator, no new integration). Runner-up was Ecowitt GW2000 + WH32 (~$85, local push, expandable to rain/wind/solar) — rejected only because it adds a second radio ecosystem.
+
+  Once real hardware is the source, the fallback stops being a silent failover: a dead sensor makes `sensor.outdoor_temperature` unavailable rather than quietly reverting to forecast data, and the `Windows: outdoor temperature sensor unavailable` automation alerts to ntfy after 2h.
 
 ### Future Services
 
