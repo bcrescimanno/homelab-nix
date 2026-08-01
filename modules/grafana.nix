@@ -25,13 +25,12 @@ let
   # matched by name, so setting this updates the existing one in place.
   promDatasourceUid = "homelab-prometheus";
 
-  # Only rules built on metric names verified to exist are here. node_exporter
-  # and `up` are well-known and stable. Rules for the smartctl, systemd and nut
-  # exporters are deliberately NOT written blind — their metric names differ
-  # between exporter implementations, and a rule referencing a name that does
-  # not exist is not an error in Prometheus, it is a rule that silently never
-  # fires. Those are added once the metric names are read off the live
-  # exporters.
+  # Every metric name below was read off the live exporters before the rule was
+  # written, not guessed. A rule naming a metric that does not exist is not an
+  # error in Prometheus — it is a rule that silently never fires, which is the
+  # worst possible outcome for alerting. The nut exporter in particular does not
+  # use a `nut_` prefix at all (it is `network_ups_tools_*`) and serves them on
+  # a non-default path, so guessing would have produced exactly that.
   alertRules = {
     groups = [
       {
@@ -107,6 +106,110 @@ let
           }
         ];
       }
+      {
+        name = "disk-health";
+        rules = [
+          {
+            # smartctl_device_smart_status: 1 = passing, 0 = failing.
+            alert = "SmartFailure";
+            expr = ''smartctl_device_smart_status == 0'';
+            "for" = "5m";
+            labels.severity = "critical";
+            annotations = {
+              summary = "SMART failure on {{ $labels.instance }} {{ $labels.device }}";
+              description = "{{ $labels.device }} on {{ $labels.instance }} reports SMART overall-health FAILED. Replace the drive.";
+            };
+          }
+          {
+            # NVMe wear indicator. 100 means the rated endurance is used up; it
+            # is not a hard failure but it is the point to plan a replacement.
+            alert = "NvmeWearHigh";
+            expr = ''smartctl_device_percentage_used > 80'';
+            "for" = "1h";
+            labels.severity = "warning";
+            annotations = {
+              summary = "{{ $labels.instance }} {{ $labels.device }} at {{ $value }}% rated endurance";
+              description = "NVMe wear indicator above 80%. Plan a replacement before it reaches 100%.";
+            };
+          }
+          {
+            # Spare blocks below the drive's own declared threshold is the
+            # NVMe equivalent of reallocated-sector exhaustion.
+            alert = "NvmeSpareLow";
+            expr = ''
+              smartctl_device_available_spare < smartctl_device_available_spare_threshold
+            '';
+            "for" = "15m";
+            labels.severity = "critical";
+            annotations = {
+              summary = "{{ $labels.instance }} {{ $labels.device }} spare blocks below threshold";
+              description = "Available spare has fallen under the drive's own threshold. Failure is imminent.";
+            };
+          }
+        ];
+      }
+      {
+        name = "systemd";
+        rules = [
+          {
+            # Catches any failed unit, including the timers and oneshots the
+            # bespoke ntfy scripts do not cover. The freshness dead-man's switch
+            # only watches three specific units; this watches all of them.
+            alert = "UnitFailed";
+            expr = ''systemd_unit_state{state="failed"} == 1'';
+            "for" = "10m";
+            labels.severity = "warning";
+            annotations = {
+              summary = "{{ $labels.name }} failed on {{ $labels.instance }}";
+              description = "systemd unit {{ $labels.name }} has been in the failed state for 10 minutes.";
+            };
+          }
+        ];
+      }
+      {
+        name = "ups";
+        rules = [
+          {
+            # OB = "on battery". Metrics are network_ups_tools_*, NOT nut_* —
+            # verified against the live exporter.
+            alert = "UpsOnBattery";
+            expr = ''network_ups_tools_ups_status{flag="OB"} == 1'';
+            "for" = "1m";
+            labels.severity = "critical";
+            annotations = {
+              summary = "UPS is on battery";
+              description = "Mains power lost. Battery at {{ with query \"network_ups_tools_battery_charge\" }}{{ . | first | value }}{{ end }}%.";
+            };
+          }
+          {
+            # LB is the UPS's own low-battery signal; the charge threshold is a
+            # belt-and-braces second opinion in case the flag is not raised.
+            alert = "UpsBatteryLow";
+            expr = ''
+              network_ups_tools_ups_status{flag="LB"} == 1
+              or network_ups_tools_battery_charge < 50
+            '';
+            "for" = "1m";
+            labels.severity = "critical";
+            annotations = {
+              summary = "UPS battery low";
+              description = "UPS battery is low. Hosts will begin shutting down shortly.";
+            };
+          }
+          {
+            # A UPS that has been replacing-battery for a day is not urgent at
+            # 03:00 but must not be forgotten either.
+            alert = "UpsReplaceBattery";
+            expr = ''network_ups_tools_ups_status{flag="RB"} == 1'';
+            "for" = "1h";
+            labels.severity = "warning";
+            annotations = {
+              summary = "UPS requests battery replacement";
+              description = "The UPS has raised its replace-battery flag.";
+            };
+          }
+        ];
+      }
     ];
   };
 in
@@ -151,7 +254,15 @@ in
       }
       {
         # rivendell only — it is the host with the UPS on USB.
+        #
+        # metrics_path MUST be /ups_metrics. This exporter serves Go runtime
+        # self-metrics on the default /metrics and the actual UPS readings on
+        # /ups_metrics. Scraping the default path yields a target that reports
+        # perfectly "up" while carrying not one UPS metric — which is exactly
+        # what happened when this job was first added (2026-08-01): the target
+        # was green and `network_ups_tools_*` did not exist.
         job_name       = "nut";
+        metrics_path   = "/ups_metrics";
         static_configs = [{ targets = [ "rivendell:9199" ]; }];
       }
     ];
