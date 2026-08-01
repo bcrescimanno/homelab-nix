@@ -302,7 +302,15 @@ in
         };
         receivers = [{
           name = "ntfy";
-          webhook_configs = [{ url = "http://127.0.0.1:8000/alert"; }];
+          # Path MUST be /hook. alertmanager-ntfy serves the webhook there and
+          # 404s everything else (verified by probing /, /webhook, /alerts,
+          # /api/v1/alerts — all 404). Alertmanager does NOT retry a 404 into
+          # anything visible: the alert simply never arrives, while Prometheus
+          # shows it firing and Alertmanager shows it active, so both ends look
+          # healthy. Found on 2026-08-01 only by firing a synthetic alert and
+          # reading alertmanager-ntfy's own log, which showed
+          # `{"status": 404, "path": "/alert"}`.
+          webhook_configs = [{ url = "http://127.0.0.1:8000/hook"; }];
         }];
       };
     };
