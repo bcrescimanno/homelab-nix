@@ -169,6 +169,33 @@ let
         --replace-fail \
           'playerStream?.then((playerResult: any) => {' \
           'playerStream?.then(async (playerResult: any) => { await pageStream;'
+
+      # PREFER H.264 OVER AV1 — a startup-latency fix, not a quality change.
+      #
+      # Invidious offers each resolution twice, as AV1 and as H.264 (no VP9).
+      # Shaka picks by bandwidth efficiency, so for 1080p it takes itag 399
+      # (av01.0.08M.08, 3.48 Mbit/s) over itag 137 (avc1.640028, 4.47 Mbit/s).
+      # That is the right call over the internet and the wrong one here: Firefox
+      # software-decodes AV1 via dav1d on virtually all hardware, while H.264
+      # gets hardware decode. Measured server-side throughput through the
+      # proxy is 17-27 MB/s, so saving 1 Mbit/s buys nothing and costs
+      # time-to-first-frame. Note Invidious' own stock player falls back to
+      # H.264 (itag 18), which is part of why it feels instant by comparison.
+      #
+      # Same resolution either way — 1080p stays 1080p, only the codec changes.
+      #
+      # A SECOND configure() call rather than editing the big object literal
+      # above: shaka merges config, and `player.configure({` appears 5 times in
+      # the tree so it is not a safe unique anchor. This anchors on a line that
+      # is unique within Player.svelte.
+      #
+      # Verified by measuring which itags the player actually fetches:
+      # before ['140','399'] (AAC + AV1), after ['137','140'] (H.264 + AAC).
+      P='src/lib/components/player/Player.svelte'
+      substituteInPlace "$P" \
+        --replace-fail \
+          'if (playerElement) playerElement.loop = $playerAlwaysLoopStore;' \
+          'player.configure({ preferredVideoCodecs: ['"'"'avc1'"'"'] }); if (playerElement) playerElement.loop = $playerAlwaysLoopStore;'
     '';
 
     preBuild = ''
