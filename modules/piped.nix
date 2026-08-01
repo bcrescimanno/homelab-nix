@@ -1,5 +1,42 @@
 # modules/piped.nix — Piped: privacy-respecting YouTube frontend
 #
+# -----------------------------------------------------------------------------
+# STATUS 2026-08-01: PLAYBACK IS BROKEN. Diagnosed, not yet fixed.
+#
+# The symptom reported as "the feed seems broken" is not the feed. Measured on
+# orthanc:
+#   - The feed pipeline is HEALTHY. 49 channels, 49 rows in `pubsub`, videos
+#     landing through today. The recurring "PubSub: queue size - 0 channels"
+#     log line means the queue is momentarily empty, NOT that nothing is
+#     subscribed — it is a red herring.
+#   - PLAYBACK is dead. /streams/<id> returns videoStreams=1, audioStreams=0,
+#     hls=false, dash=false on every video sampled; one returned outright
+#     "Could not get any stream". Piped needs separate adaptive audio, so zero
+#     audio streams means nothing can play. This is the standard signature of
+#     YouTube's PoToken/SABR enforcement defeating NewPipeExtractor.
+#
+# Why this will not fix itself: the running backend image was built
+# 2026-03-26, and TeamPiped/Piped-Backend's last commit upstream is 2026-05-29
+# with nothing addressing extraction. Renovate is digest-pinned to :latest and
+# has nothing newer to pull. The project is effectively dormant against a
+# problem that requires active maintenance.
+#
+# Path forward is a DECISION, not a patch — do not just bump the image:
+#   a) Replace with Invidious. nixpkgs has services.invidious (fully native,
+#      which also kills the piped-postgres container below), and iv-org is
+#      actively maintained — commits through 2026-08-01 including a
+#      "Hotfix - Fix YouTube change" on 2026-07-23. Invidious fights the same
+#      YouTube battle but is actually still fighting it.
+#   b) Retire the self-hosted YouTube frontend entirely.
+#   c) Stay on Piped and accept it as a subscription-feed reader whose links
+#      open elsewhere, since the feed half genuinely still works.
+#
+# NOTE the postgres 16-alpine container below is a principle violation on its
+# own (a database with a first-class NixOS module). Option (a) removes it for
+# free and retires the pinned-major upgrade task; do not migrate it separately
+# before this decision is made.
+# -----------------------------------------------------------------------------
+#
 # Four containers: postgres (DB), backend (API), frontend (nginx UI), proxy.
 # Video streams are served in redirect mode — the browser fetches video directly
 # from YouTube's CDN rather than proxying through the local instance. This avoids

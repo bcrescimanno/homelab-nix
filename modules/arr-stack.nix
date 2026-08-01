@@ -2,6 +2,53 @@
 #
 # All arr containers share gluetun's network namespace. If the VPN
 # drops, all containers lose connectivity — this is the kill switch.
+#
+# -----------------------------------------------------------------------------
+# Why this is still containers (reviewed 2026-08-01)
+#
+# DECISION: stay on gluetun + containers. This is a deliberate exception to the
+# "prefer declarative services" principle in CLAUDE.md, not an oversight, and it
+# stands until the declarative path works with no extra hassle. Re-read this
+# before anyone "fixes" it.
+#
+# What CHANGED — nixpkgs has caught up on the easy half. Every app in this
+# stack now has a native module with real declarative config:
+#   services.qbittorrent  — full deep-INI `serverConfig`. This alone would
+#     retire most of the preStart dance below: the PBKDF2 password hash,
+#     WebUI\LocalHostAuth, and the WebUI\BanList clearing all become plain Nix.
+#     Only Session\Interface genuinely needs runtime resolution, since it is
+#     tun0's address and changes per restart.
+#   services.sabnzbd      — `settings` covers the whole ini INCLUDING `servers`,
+#     with `secretFiles` for the Usenet password so it can finally come from
+#     sops. This retires the "SAB's ini is imperative" constraint and makes the
+#     open direct_unpack question a one-line change.
+#   services.{radarr,sonarr,prowlarr,lidarr} — `settings` plus
+#     `environmentFiles` taking ARR__SECTION__KEY=... for API keys.
+#
+# What did NOT change — the blocker was never the apps, it is the kill switch.
+# There is no native equivalent of gluetun's netns. The candidate is the
+# VPN-Confinement flake (Maroka-chan/VPN-Confinement), which does the netns and
+# DNS-leak part properly: it sets NetworkNamespacePath on each unit and blocks
+# /run/nscd and /run/resolvconf.
+#
+# The cost that makes it "extra hassle": VPN-Confinement has NO ProtonVPN
+# NAT-PMP port forwarding. gluetun's port-forward negotiation and its ~60s
+# renewal loop would have to be reimplemented here as a bespoke service —
+# libnatpmp is in nixpkgs, so it is possible, but it means owning the fiddliest
+# and most breakage-prone part of this stack by hand, and qbittorrent-port-sync
+# would have to be rebuilt on top of it. That is a real regression in
+# reliability traded for a principle, on the one service where a silent failure
+# means seeding stops and the VPN may not be protecting anything.
+#
+# Do not migrate this piecemeal. Plan.md Phase 3 moves the whole stack to
+# orthanc; the container->native change and the host move should happen in ONE
+# migration, not two, because each one separately re-tests the same qBittorrent
+# and gluetun behaviour that is expensive to verify.
+#
+# Revisit when EITHER: VPN-Confinement (or a successor) grows NAT-PMP port
+# forwarding, OR gluetun gains a supported way to hand its forwarded port to a
+# host-side service so the netns can hold only the torrent client.
+# -----------------------------------------------------------------------------
 
 { config, pkgs, lib, ... }:
 
