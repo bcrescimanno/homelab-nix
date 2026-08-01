@@ -162,6 +162,7 @@
           ./modules/monitoring.nix
           ./modules/music-sync.nix
           ./modules/navidrome.nix
+          ./modules/qbittorrent-seed-policy.nix
         ];
         specialArgs = { inherit inputs nixos-raspberrypi r2AccountId brianSshKey; };
       };
