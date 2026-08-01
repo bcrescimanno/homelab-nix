@@ -238,13 +238,35 @@ in
 
     provision = {
       enable = true;
-      datasources.settings.datasources = [{
-        name      = "Prometheus";
-        type      = "prometheus";
-        uid       = promDatasourceUid;
-        url       = "http://127.0.0.1:9090";
-        isDefault = true;
-      }];
+      # Grafana CANNOT change the uid of an existing datasource in place. Its
+      # provisioning update path looks the datasource up by uid, so introducing
+      # `uid` on a datasource that Grafana already created with a generated one
+      # fails with:
+      #
+      #   Failed to provision data sources: "Datasource provisioning error:
+      #   data source not found"
+      #
+      # and that failure is fatal — the provisioning module fails to start and
+      # takes the whole process with it. Observed on mirkwood 2026-08-01: 248
+      # restarts in a crash loop, never binding 3001, while systemd cheerfully
+      # reported "active (running)" for the few hundred ms each attempt lasted.
+      #
+      # deleteDatasources runs before datasources are written, so the old
+      # generated-uid record is removed and recreated with ours. It is keyed on
+      # name and is idempotent: after the first run there is nothing to delete.
+      # Safe because this datasource is fully declared here — nothing is lost by
+      # recreating it.
+      datasources.settings = {
+        deleteDatasources = [{ name = "Prometheus"; orgId = 1; }];
+        datasources = [{
+          name      = "Prometheus";
+          type      = "prometheus";
+          uid       = promDatasourceUid;
+          url       = "http://127.0.0.1:9090";
+          isDefault = true;
+          orgId     = 1;
+        }];
+      };
 
       # Dashboards are provisioned from the repo. Until 2026-08-01 only
       # datasources were provisioned and the single dashboard ("Blocky", uid

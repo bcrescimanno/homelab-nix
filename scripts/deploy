@@ -54,9 +54,24 @@ case "${1:-all}" in
     run_deploy pirateship &
     pid_p=$!
 
+    # Capture each rc into a variable BEFORE testing anything. The previous form
+    #     wait "$pid_p" || { [[ $status -eq 0 ]] && status=$?; }
+    # read $? *after* running [[ ]], so it captured the exit status of the test
+    # (0) rather than of wait. A pirateship-only failure therefore set status=0
+    # and the script exited success with a host left un-deployed — exactly what
+    # happened on 2026-08-01, where deploy-rs reported
+    # "Failed to build profile system on node pirateship: Copy exited with
+    # status 1" and the overall run still returned 0.
     status=0
-    wait "$pid_r" || status=$?
-    wait "$pid_p" || { [[ $status -eq 0 ]] && status=$?; }
+    rc_r=0; rc_p=0
+    wait "$pid_r" || rc_r=$?
+    wait "$pid_p" || rc_p=$?
+    [[ $rc_r -ne 0 ]] && status=$rc_r
+    [[ $status -eq 0 && $rc_p -ne 0 ]] && status=$rc_p
+
+    [[ $rc_r -ne 0 ]] && echo "deploy: rivendell FAILED (rc=$rc_r)" >&2
+    [[ $rc_p -ne 0 ]] && echo "deploy: pirateship FAILED (rc=$rc_p)" >&2
+
     exit $status
     ;;
   *)
