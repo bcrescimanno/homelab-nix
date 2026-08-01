@@ -72,6 +72,7 @@ SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops secrets/mirkwood.yaml
 - `modules/homeassistant.nix` — Home Assistant + Matter Server containers on rivendell (host networking for mDNS); both containers use `--privileged` so USB dongles (Zigbee, Thread) are auto-accessible
 - `modules/homepage.nix` — Homepage dashboard as native NixOS service via `services.homepage-dashboard` (mirkwood, port 3000)
 - `modules/monitoring.nix` — Glances system monitor as native NixOS service (all three hosts, port 61208)
+- `modules/music-sync.nix` — keeps Lidarr, Navidrome and Music Assistant in step with `/var/lib/media/music`. **Every filesystem watcher on that share is inert** (NFS + a remote writer, same root cause as Jellyfin/Bazarr), so `music-sync.timer` polls the ~278 *directory* mtimes every 2 min (0.2–1s), debounces one interval so a half-copied album is never scanned, then issues a targeted `RefreshArtist` per changed artist plus `music/sync` to Music Assistant. `music-library-audit.timer` runs daily: it repoints Lidarr artists whose folder drifted from disk and ntfy's about folders needing a manual Library Import. Runs on the pirateship **host**, not in gluetun's netns — see the module comment.
 - `modules/ntfy.nix` — ntfy push notification server container on rivendell (port 2586 LAN, proxied via Caddy)
 - `modules/nut.nix` — Network UPS Tools monitoring Tripp Lite SMC15002URM via USB (rivendell); exposes port 3493 for Home Assistant
 
@@ -151,6 +152,8 @@ Secrets use `sops-nix` with age encryption. Rendered at runtime to `/run/secrets
 - `vpn_env` — WireGuard credentials for gluetun
 - `qbt_credentials` — `QBT_USERNAME`/`QBT_PASSWORD` (used by preStart to generate PBKDF2 hash and by qbittorrent-port-sync)
 - `recyclarr_radarr_api_key` / `recyclarr_sonarr_api_key` — API keys for the recyclarr sync
+- `jellyfin_api_key` — used by `jellyfin-notify-sync` to configure the library-update push in radarr/sonarr/bazarr
+- `ma_token` — long-lived Music Assistant API token, used by `music-sync` to trigger `music/sync` on rivendell
 
 **rivendell** (`secrets/rivendell.yaml`):
 - `caddy_cloudflare_env` — `CLOUDFLARE_API_TOKEN` for DNS-01 ACME

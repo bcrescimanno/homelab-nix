@@ -24,13 +24,34 @@
 # MA sends M-SEARCH to 239.255.255.250 (multicast), but multicast UDP doesn't
 # create conntrack entries, so the unicast SSDP replies from players appear as
 # NEW packets and get dropped. Trusting eth0 (the LAN interface) unblocks them.
+# That blanket trust also covers the mDNS (UDP 5353) discovery the wiim and sonos
+# providers rely on, so neither needs a port added.
 
 { config, pkgs, lib, ... }:
 
 {
   services.music-assistant = {
     enable = true;
-    providers = [ "airplay" "chromecast" "sendspin" "dlna" ];
+    # Adding a name here does not "enable" a provider -- it installs that
+    # provider's Python dependencies. nixpkgs patches out MA's pip-install path
+    # (dont-install-deps.patch) and replaces it with a hard error, so a provider
+    # MA has enabled in its own settings.json but which is missing from this list
+    # fails to import on every startup. That patch also drops MA's `==` version
+    # check, which is why nixpkgs shipping wiim 0.1.5 against MA's pinned
+    # wiim==0.1.4 is harmless.
+    #
+    # "sonos": MA enables this itself via default_providers_setup, and there are
+    # two Sonos devices on the LAN (a Beam and one more, both visible as
+    # uuid:RINCON_* DLNA renderers). Without it declared MA logged
+    # "Failed to load provider module for sonos" plus a recursion traceback on
+    # every single startup.
+    #
+    # "wiim": native LinkPlay support, discovered over mDNS (_linkplay._tcp).
+    # Covers the WiiM Pro ("Stereo", 10.0.1.179) and WiiM Amp Pro ("Office
+    # Music", 10.0.1.20), both of which previously only arrived as generic DLNA
+    # renderers. "dlna" deliberately stays -- the TVs (Playroom TV, Television,
+    # Samsung Frame 50) have no native provider and would disappear without it.
+    providers = [ "airplay" "chromecast" "sendspin" "dlna" "sonos" "wiim" ];
   };
 
   networking.firewall.allowedTCPPorts = [ 8095 8097 7000 8927 ];
