@@ -169,7 +169,13 @@ in
     unitConfig.OnFailure = "music-sync-notify-failure.service";
     serviceConfig = {
       Type = "oneshot";
-      TimeoutStartSec = "30m";
+      # Measured at ~25s per artist -- the cost is MA querying MusicBrainz,
+      # TheAudioDB, fanart.tv and Wikipedia under their rate limits, not the
+      # script. A 40-artist batch is therefore ~17 min; 60m leaves room for a
+      # slow provider rather than killing a run mid-batch and firing OnFailure.
+      # Artists already done are committed as it goes, so a kill only costs the
+      # remainder of that batch.
+      TimeoutStartSec = "60m";
       ExecStart = lib.concatStringsSep " " [
         "${pkgs.python3}/bin/python3" "${./ma-metadata-backfill.py}" "${metadataSpec}"
       ];
