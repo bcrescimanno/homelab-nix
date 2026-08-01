@@ -62,6 +62,7 @@ SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops secrets/mirkwood.yaml
 - `hosts/{pirateship,rivendell,mirkwood}.nix` — machine-specific config: hostname, disk layout (disko), networking, SOPS secret declarations, home-manager user config, backup paths
 - `modules/base.nix` — shared config for all devices: user accounts, SSH, firewall, Podman, auto-upgrade, ntfy upgrade notifications, common packages
 - `modules/arr-stack.nix` — pirateship media stack containers (gluetun VPN kill switch, qbittorrent, radarr, sonarr, prowlarr, lidarr, recyclarr, sabnzbd, jellyfin); `qbittorrent-port-sync` systemd service syncs the gluetun forwarded port to qBittorrent
+- `modules/lidarr-formats.nix` — declarative Lidarr custom formats + profile scores, synced to the API by the `lidarr-format-sync` oneshot (`modules/lidarr-format-sync.py`). Lidarr has **no TRaSH guide and no Recyclarr support**, so this is the stand-in; scoring is tuned to Redacted's release-title format. See the comment block in the module before changing scores.
 - `modules/navidrome.nix` — Navidrome music streaming server on pirateship (native NixOS service, port 4533); Subsonic-compatible API for WiiM/Symfonium clients; music library at `/var/lib/media/music`
 - `modules/backup.nix` — restic backups to erebor NFS (local) and Cloudflare R2 (offsite); paths declared per-host via `homelab.backup.paths`
 - `modules/caddy.nix` — Caddy reverse proxy on rivendell; wildcard TLS via Cloudflare DNS-01; proxies all `*.theshire.io` vhosts
