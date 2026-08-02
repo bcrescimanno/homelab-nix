@@ -112,6 +112,12 @@
 { pkgs, lib, ... }:
 
 let
+  # ONE definition, used both to bake the value in and to assert it landed.
+  # These were two independent literals and they drifted the moment the origin
+  # changed: the build then failed on its own stale assertion. The check is only
+  # worth having if it cannot disagree with the thing it checks.
+  instanceUrl = "https://yt.theshire.io";
+
   materialious = pkgs.buildNpmPackage rec {
     pname = "materialious";
     version = "1.17.6";
@@ -242,7 +248,7 @@ let
       # paths under this same hostname (see modules/caddy.nix), so every request
       # the browser makes is first-party. Pointing this at the Invidious vhost
       # is what created the cross-origin problems described in the header.
-      VITE_DEFAULT_INVIDIOUS_INSTANCE=https://yt.theshire.io
+      VITE_DEFAULT_INVIDIOUS_INSTANCE=${instanceUrl}
 
       # Deliberately EMPTY — see the companion section in the header comment.
       # Setting this would require exposing companion publicly.
@@ -280,8 +286,8 @@ let
     installCheckPhase = ''
       runHook preInstallCheck
 
-      grep -rq 'invidious\.theshire\.io' $out/_app \
-        || { echo "FAIL: Invidious instance URL was not baked into the bundle"; exit 1; }
+      grep -rqF '${instanceUrl}' $out/_app \
+        || { echo "FAIL: instance URL ${instanceUrl} was not baked into the bundle"; exit 1; }
 
       if grep -rq 'VITE_DEFAULT_[A-Z_]*_PLACEHOLDER' $out; then
         echo "FAIL: unsubstituted upstream placeholder left in the bundle"; exit 1
