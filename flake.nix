@@ -163,6 +163,7 @@
           ./modules/music-sync.nix
           ./modules/navidrome.nix
           ./modules/qbittorrent-seed-policy.nix
+          ./modules/vpn-killswitch.nix
         ];
         specialArgs = { inherit inputs nixos-raspberrypi r2AccountId brianSshKey; };
       };
