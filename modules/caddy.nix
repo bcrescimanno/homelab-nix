@@ -50,13 +50,24 @@ let
   #   /companion    where /api/manifest 302s to; carries the media bytes
   #   /vi /ggpht    thumbnail and channel-avatar proxies
   #   /sb           storyboard images
+  #   /videoplayback  what adaptiveFormats[].url points at
+  #   /latest_version the non-DASH/progressive media endpoint
+  #   /download     "download this video"
   #   /authorize_token /login   the Invidious OAuth-ish flow (src/lib/auth.ts:81)
+  #
+  # /videoplayback and /latest_version are NOT optional now that Invidious'
+  # `domain` is this vhost: every URL in adaptiveFormats is absolute and points
+  # here. Miss one of these and it falls through to the SPA fallback below,
+  # which answers with index.html and HTTP 200 — a broken stream that looks
+  # like a successful request.
   #
   # None of these collide with a Materialious client route — note it uses
   # /internal/login, not /login. Invidious owns far more top-level paths than
   # these (/watch, /channel, /search, /feed...), and those deliberately stay
   # with Materialious; it does not need Invidious' HTML pages at all.
-  invidiousPaths = "/api/* /companion/* /vi/* /ggpht/* /sb/* /authorize_token /login";
+  invidiousPaths =
+    "/api/* /companion/* /vi/* /ggpht/* /sb/* /videoplayback /latest_version "
+    + "/download /authorize_token /login";
 in
 
 {
