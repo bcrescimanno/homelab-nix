@@ -145,6 +145,22 @@
       "roborock"
       "twinkly"
       "wiim"
+
+      # Source 3 — integrations to be set up through the UI, listed BEFORE the
+      # config entry exists. Same failure as source 2, reached from the other
+      # direction: "Add Integration" returns
+      #   Config flow could not be loaded: {"message":"Invalid handler specified"}
+      # because the flow module cannot import its requirement. So a domain has
+      # to be added here and deployed *first*, then configured in the UI —
+      # source 1's jq will pick it up on the next regeneration.
+      #
+      # The media stack on pirateship. There is no prowlarr integration in HA
+      # core (nor bazarr), so those two are not omissions.
+      "lidarr"            # aiopyarr
+      "qbittorrent"       # qbittorrent-api
+      "radarr"            # aiopyarr
+      "sabnzbd"           # pysabnzbd
+      "sonarr"            # aiopyarr
     ];
 
     # HACS. It is a custom component, not a nixpkgs one — it lives in
