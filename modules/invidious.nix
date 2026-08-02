@@ -120,7 +120,22 @@ in
     # a single-host setup would. The firewall rule below is what limits access.
     address = "0.0.0.0";
 
-    domain = "invidious.theshire.io";
+    # yt.theshire.io — the MATERIALIOUS vhost, deliberately, even though the
+    # stock UI lives at invidious.theshire.io.
+    #
+    # This setting is what Invidious uses to build every absolute URL it hands
+    # out: `dashUrl`, `videoThumbnails[].url`, `adaptiveFormats[].url`. Those
+    # are absolute regardless of which hostname served the response, so with it
+    # pointed at invidious.theshire.io the API told Materialious to fetch all
+    # media from the OTHER origin — which silently defeated the same-origin
+    # split in modules/caddy.nix (46 of ~62 cross-origin requests were the media
+    # itself). Serving the API from a second hostname is not enough; the URLs
+    # inside the payload have to agree.
+    #
+    # Consequence: the stock UI at invidious.theshire.io now receives
+    # yt.theshire.io URLs and is itself the cross-origin consumer, which is why
+    # the CORS block moved to the yt vhost. See modules/caddy.nix.
+    domain = "yt.theshire.io";
 
     # nginx.enable stays FALSE — that option would pull in a whole nginx +
     # ACME stack on orthanc to duplicate what Caddy already does on rivendell.
