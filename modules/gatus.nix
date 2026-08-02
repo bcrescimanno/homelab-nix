@@ -40,6 +40,40 @@ let
     conditions = [ "[DNS_RCODE] == NOERROR" ];
     alerts = [{ type = "ntfy"; }];
   };
+
+  # Ad-blocking canary — the only end-to-end test of whether blocking WORKS.
+  #
+  # Every other signal is a proxy. `blocky_denylist_cache_entries` counts what
+  # was loaded, and on 2026-08-01 it counted 216113 entries while
+  # pagead2.googlesyndication.com resolved perfectly happily: the list had
+  # loaded, it just used bare entries, which Blocky 0.34 matches as exact names
+  # only. Entry-count alerting is structurally incapable of catching that class
+  # of bug. Asking the resolver the question a client would ask is.
+  #
+  # This catches, in one check: empty lists, wrong matching semantics, blocking
+  # switched off, a bad upstream, and the service being down.
+  #
+  # For A queries Gatus puts the resolved address in [BODY] (client.QueryDNS,
+  # `case dns.TypeA`), and Blocky answers a blocked name with 0.0.0.0 NOERROR
+  # — verified against both resolvers rather than assumed.
+  #
+  # The canary is a subdomain on purpose: an apex would pass even under the
+  # bare-entry bug that prompted this. Ad-serving hosts are subdomains, so the
+  # test should be one too.
+  mkAdBlockCanary = { name, host, group }: {
+    inherit name group;
+    url = "${host}:53";
+    dns = {
+      "query-name" = "pagead2.googlesyndication.com";
+      "query-type" = "A";
+    };
+    interval = "5m";
+    conditions = [
+      "[DNS_RCODE] == NOERROR"
+      "[BODY] == 0.0.0.0"
+    ];
+    alerts = [{ type = "ntfy"; }];
+  };
 in
 
 {
@@ -70,17 +104,27 @@ in
         (mkDns { name = "mirkwood DNS"; host = "mirkwood"; group = "Infrastructure"; })
         (mkDns { name = "rivendell DNS"; host = "rivendell"; group = "Infrastructure"; })
 
+        (mkAdBlockCanary { name = "mirkwood ad blocking";  host = "mirkwood";  group = "Infrastructure"; })
+        (mkAdBlockCanary { name = "rivendell ad blocking"; host = "rivendell"; group = "Infrastructure"; })
+
         # Home
         (mkHttp { name = "Homepage";       url = "https://homepage.theshire.io"; group = "Home"; })
         (mkHttp { name = "Home Assistant"; url = "https://ha.theshire.io";   group = "Home"; })
 
         # Media
         (mkHttp { name = "Jellyfin";    url = "https://jellyfin.theshire.io"; group = "Media"; })
-        # TCP check on gluetun's control port — all arr container ports (including qBT's
-        # 9091) live in gluetun's network namespace, so this is the right signal for
-        # "VPN container is up and the media stack has network". Complements the Caddy-
-        # proxied qBittorrent check below with a direct LAN path that doesn't depend on
-        # Caddy or external DNS.
+        # TCP check on gluetun's control port. This is a LIVENESS check for the
+        # container and nothing more — it is NOT a tunnel check, despite the name.
+        # gluetun's control server listens on `:::8000` inside the netns and does
+        # not touch tun0, so this stays green with the VPN completely down.
+        # Measured 2026-08-02; the control server's status routes would answer the
+        # real question but every one of them returns `Unauthorized` (gluetun now
+        # requires an auth config, and /var/lib/gluetun/auth/config.toml is empty).
+        #
+        # Whether the tunnel is actually up, and whether anything is escaping it,
+        # is answered by vpn-leak-check on pirateship — see modules/vpn-killswitch.nix
+        # and the `vpn` alert group in modules/grafana.nix. Keep this check for what
+        # it is good at: a direct LAN path that does not depend on Caddy or DNS.
         {
           name = "gluetun VPN";
           url = "tcp://pirateship:8000";

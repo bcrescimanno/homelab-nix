@@ -208,6 +208,127 @@ let
               description = "{{ $labels.instance }} has only {{ $value }} entries in the 'malware' denylist (expected ~2.16M). Malware/phishing blocking is effectively off — check `journalctl -u blocky` for list download failures.";
             };
           }
+          {
+            # Early warning, and the one that would actually have caught the
+            # 2026-07-31 outage AT THE TIME. The entry-count alerts above are
+            # lagging indicators: they only fire once a list has already
+            # collapsed, which on that occasion meant after a restart, ~1.5 days
+            # in. This counter increments on the very first failed download —
+            # 02:31 on the day it broke.
+            #
+            # It also covers the case the entry counts structurally cannot see:
+            # when a REFRESH fails for an already-loaded list, Blocky keeps
+            # serving the previous copy. Entries stay at ~216k and look perfect
+            # while the lists quietly rot.
+            alert = "BlocklistDownloadFailing";
+            expr = ''increase(blocky_failed_downloads_total[1h]) > 0'';
+            "for" = "15m";
+            labels.severity = "warning";
+            annotations = {
+              summary = "Blocky blocklist downloads are failing on {{ $labels.instance }}";
+              description = "{{ $labels.instance }} recorded {{ $value }} failed blocklist download(s) in the last hour. The in-memory lists may still be serving, so blocking is probably still working right now — but it is going stale. Check `journalctl -u blocky | grep -i 'download\\|status code'`.";
+            };
+          }
+          {
+            # The staleness backstop. Blocky refreshes every 4h by default; if
+            # every refresh fails it keeps the old list forever and no other
+            # metric here changes. 9h is two missed cycles plus slack, so a
+            # single transient failure stays quiet.
+            alert = "BlocklistStale";
+            expr = ''time() - blocky_last_list_group_refresh_timestamp_seconds > 32400'';
+            "for" = "30m";
+            labels.severity = "warning";
+            annotations = {
+              summary = "Blocky blocklists have not refreshed on {{ $labels.instance }}";
+              description = "{{ $labels.instance }} last refreshed its blocklists {{ $value | humanizeDuration }} ago (refresh period is 4h). The lists still loaded are being served but are no longer being updated.";
+            };
+          }
+        ];
+      }
+      {
+        # ---------------------------------------------------------------------
+        # VPN — see modules/vpn-killswitch.nix for why these metrics exist and
+        # why none of the pre-existing checks could see a tunnel failure.
+        #
+        # These read textfile-collector metrics written by vpn-leak-check on
+        # pirateship, so they arrive through the `node` job, not a job of their
+        # own. That means an absent metric shows up as "no series" rather than a
+        # down target — hence VpnLeakCheckStale, which is the only rule here
+        # that can distinguish "no leaks" from "nothing is looking".
+        # ---------------------------------------------------------------------
+        name = "vpn";
+        rules = [
+          {
+            # The stack has already stopped itself by the time this fires. This
+            # is notification, not detection — but it repeats daily via
+            # Alertmanager's repeat_interval, so a latched stack cannot be
+            # forgotten about the way a single ntfy push can be missed.
+            alert = "VpnKillSwitchTripped";
+            expr = ''vpn_killswitch_tripped == 1'';
+            "for" = "0m";
+            labels.severity = "critical";
+            annotations = {
+              summary = "arr stack latched OFF after a confirmed VPN leak";
+              description = "pirateship stopped the entire arr stack because traffic was escaping the VPN. It will not restart until the latch is cleared: `cat /var/lib/vpn-killswitch/tripped` for the reason, then `sudo rm /var/lib/vpn-killswitch/tripped && sudo systemctl start podman-gluetun`.";
+            };
+          }
+          {
+            # Fires independently of the latch, so a leak is still reported even
+            # if the automatic stop failed (podman wedged, systemctl refused).
+            # Never rely solely on the actuator to tell you the actuator ran.
+            alert = "VpnEgressLeak";
+            expr = ''vpn_egress_matches_host == 1'';
+            "for" = "0m";
+            labels.severity = "critical";
+            annotations = {
+              summary = "arr stack traffic is leaving via the home IP";
+              description = "The gluetun netns reported the same public IP as pirateship itself — traffic is bypassing the tunnel. If the stack is still running, stop it now: `sudo systemctl stop podman-gluetun`.";
+            };
+          }
+          {
+            # Config drift, not runtime failure. 10m because a gluetun restart
+            # briefly has no rules loaded while it rebuilds them.
+            alert = "VpnFirewallDegraded";
+            expr = ''vpn_firewall_intact == 0'';
+            "for" = "10m";
+            labels.severity = "critical";
+            annotations = {
+              summary = "gluetun kill-switch firewall is not in its expected shape";
+              description = "Either the OUTPUT policy is no longer DROP, or an egress rule permits a destination outside the declared allowlist. Nothing may be leaking yet — the enforcement that would stop it is what has weakened. See `journalctl -u vpn-leak-check` and modules/vpn-killswitch.nix.";
+            };
+          }
+          {
+            # Warning, not critical: a dead tunnel is the kill switch working.
+            # Nothing is at risk, the media stack is simply useless. 20m rides
+            # out ProtonVPN server rotations and the gluetun-watchdog's own
+            # 15m/30m restart cycle without duplicating its notification.
+            alert = "VpnTunnelDown";
+            expr = ''vpn_tunnel_up == 0 and vpn_killswitch_tripped == 0'';
+            "for" = "20m";
+            labels.severity = "warning";
+            annotations = {
+              summary = "arr stack VPN tunnel has been down for 20m";
+              description = "The gluetun netns cannot reach the internet. This is fail-closed — nothing is leaking — but downloads are stalled. Check `journalctl -u podman-gluetun` and `journalctl -u gluetun-watchdog`.";
+            };
+          }
+          {
+            # The dead-man's switch on the detector itself. Without this, a
+            # vpn-leak-check that stopped running is indistinguishable from a
+            # network with no leaks — the exact failure shape that let the
+            # blocklist outage run for a day and a half.
+            #
+            # `absent()` covers the metric never having existed at all (unit
+            # never ran, textfile dir missing); the time comparison covers it
+            # having stopped. Both are needed: neither catches the other.
+            alert = "VpnLeakCheckStale";
+            expr = ''absent(vpn_leak_check_timestamp_seconds) or (time() - vpn_leak_check_timestamp_seconds > 1800)'';
+            "for" = "10m";
+            labels.severity = "warning";
+            annotations = {
+              summary = "VPN leak detector has stopped reporting";
+              description = "vpn-leak-check on pirateship has not published a result in over 30m (it runs every 5m). The VPN kill switch is unmonitored — the other vpn alerts are silent because nothing is looking, not because nothing is wrong. Check `systemctl status vpn-leak-check.timer`.";
+            };
+          }
         ];
       }
       {
