@@ -65,9 +65,13 @@ let
   # /internal/login, not /login. Invidious owns far more top-level paths than
   # these (/watch, /channel, /search, /feed...), and those deliberately stay
   # with Materialious; it does not need Invidious' HTML pages at all.
+  # /css /js /videojs are Invidious' OWN static assets. They matter because the
+  # login and authorize_token pages are Invidious HTML served under this vhost;
+  # without them those pages render unstyled (functional but bare). Materialious
+  # keeps its own assets under /_app, so there is no clash.
   invidiousPaths =
     "/api/* /companion/* /vi/* /ggpht/* /sb/* /videoplayback /latest_version "
-    + "/download /authorize_token /login";
+    + "/download /authorize_token /login /css/* /js/* /videojs/* /toggle_theme";
 in
 
 {
