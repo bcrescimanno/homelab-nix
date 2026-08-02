@@ -85,29 +85,43 @@ upstreams = {
         # grows, so that is permanent, not transient. It broke silently on
         # 2026-07-31 — Blocky keeps serving with an EMPTY list rather than
         # failing, so ads came back with no alert and no unhealthy unit.
-        # hagezi also restructured: the old `domains/` directory is gone and its
-        # plain one-domain-per-line lists now live at `wildcard/*-onlydomains.txt`.
+        # hagezi also restructured: the old `domains/` directory is gone. Its
+        # replacements come in two syntaxes holding the SAME entry set —
+        # `wildcard/<list>-onlydomains.txt` (bare `example.com`) and
+        # `wildcard/<list>.txt` (`*.example.com`). Use the `*.` one.
+        #
+        # WHY: a bare denylist entry in Blocky 0.34 matches that name ONLY.
+        # It does NOT cover subdomains, despite what is widely assumed.
+        # Measured on the running host via Blocky's own query log:
+        #   googlesyndication.com.          -> BLOCKED (ads: googlesyndication.com)
+        #   pagead2.googlesyndication.com.  -> RESOLVED (142.251.219.2)
+        # `*.example.com` blocks the apex AND every subdomain, which is what the
+        # hagezi entry set is collapsed to assume. Bare entries silently give a
+        # fraction of the intended coverage — the ad-serving hosts are almost
+        # always subdomains (pagead2., googleads.g., s0.), not the apex.
         denylists = {
           # HaGeZi Pro — the main ads + trackers list. Aggressive coverage with
-          # a low false-positive rate; well maintained. "-onlydomains" is the
-          # plain domain format, which is Blocky-native and blocks subdomains too.
+          # a low false-positive rate; well maintained.
           ads = [
-            "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/pro-onlydomains.txt"
+            "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/pro.txt"
             # HaGeZi Pro intentionally omits these Google ad apexes to avoid
             # breaking Google services. We block them anyway for fuller ad
             # coverage (small risk: Google "sponsored" link / Shopping clicks).
+            # Wildcarded for the reason above: googleads.g.doubleclick.net is
+            # the host that actually serves the ads, and a bare `doubleclick.net`
+            # entry left it resolving.
             ''
-              doubleclick.net
-              googleadservices.com
-              googlesyndication.com
-              2mdn.net
-              googletagservices.com
+              *.doubleclick.net
+              *.googleadservices.com
+              *.googlesyndication.com
+              *.2mdn.net
+              *.googletagservices.com
             ''
           ];
           # HaGeZi Threat Intelligence Feeds — malware, phishing, cryptojacking,
           # scam, and other actively-malicious domains.
           malware = [
-            "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/tif-onlydomains.txt"
+            "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/tif.txt"
           ];
           # Suppress Windows WPAD (Web Proxy Auto-Discovery) queries.
           # Windows polls for a proxy config script continuously; without a clean
