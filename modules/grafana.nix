@@ -167,6 +167,50 @@ let
         ];
       }
       {
+        name = "dns";
+        rules = [
+          {
+            # Blocky's defining silent failure: when a blocklist download fails,
+            # it logs an ERROR, stays `active`, and keeps answering with an EMPTY
+            # denylist. No unit goes degraded and `blocky_blocking_enabled` still
+            # reads 1, so nothing here would have caught it. On 2026-07-31
+            # jsDelivr began 403ing the whole hagezi repo and ad blocking was off
+            # for ~1.5 days; the only symptom was ads reappearing in iOS games.
+            #
+            # `blocky_denylist_cache_entries` is the one metric that tells the
+            # truth. Healthy is ~216k ads / ~2.16M malware; broken was 5 and 0
+            # (the 5 being the inline Google apexes, which parse without network).
+            # Thresholds sit far below normal but far above the broken values, so
+            # they tolerate hagezi resizing its lists without going quiet about a
+            # real failure.
+            #
+            # Excludes group="local-noise", which is legitimately 2 entries.
+            #
+            # 30m, not 5m: a deploy restarts Blocky and re-downloading plus
+            # parsing 2.1M domains is not instant. A genuine failure still fires
+            # long before the next 4h refresh could mask it.
+            alert = "BlocklistEmpty";
+            expr = ''blocky_denylist_cache_entries{group="ads"} < 100000'';
+            "for" = "30m";
+            labels.severity = "warning";
+            annotations = {
+              summary = "Blocky ad blocklist collapsed on {{ $labels.instance }}";
+              description = "{{ $labels.instance }} has only {{ $value }} entries in the 'ads' denylist (expected ~216k). Ad blocking is effectively off — check `journalctl -u blocky` for list download failures.";
+            };
+          }
+          {
+            alert = "ThreatBlocklistEmpty";
+            expr = ''blocky_denylist_cache_entries{group="malware"} < 1000000'';
+            "for" = "30m";
+            labels.severity = "warning";
+            annotations = {
+              summary = "Blocky threat-intel blocklist collapsed on {{ $labels.instance }}";
+              description = "{{ $labels.instance }} has only {{ $value }} entries in the 'malware' denylist (expected ~2.16M). Malware/phishing blocking is effectively off — check `journalctl -u blocky` for list download failures.";
+            };
+          }
+        ];
+      }
+      {
         name = "ups";
         rules = [
           {
