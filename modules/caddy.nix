@@ -36,10 +36,11 @@ let
     ${tlsConfig}
   '';
 
-  # Origin allowed to make cross-origin API calls to Invidious. Retained only
-  # for the stock Invidious UI's vhost — yt.theshire.io no longer makes any
-  # cross-origin request. See the CORS note on that vhost below.
-  materialiousOrigin = "https://yt.theshire.io";
+  # The origin permitted to make cross-origin calls, which is now the STOCK
+  # Invidious UI rather than Materialious — the direction reversed when
+  # Invidious' `domain` became yt.theshire.io. See the CORS note on the yt
+  # vhost below.
+  invidiousOrigin = "https://invidious.theshire.io";
 
   # The Invidious paths Materialious actually touches, proxied under
   # yt.theshire.io so the browser never leaves that origin. Derived from
@@ -110,48 +111,13 @@ in
       # exposing it), and Caddy's default response buffering makes Firefox's MSE
       # time out before playback starts.
       #
-      # The CORS block exists for the Materialious frontend below, which runs
-      # in the browser on a different origin and calls this API directly.
-      # Invidious has no CORS setting of its own, so it has to happen here.
-      # Pinned to the one origin rather than `*` because the requests are sent
-      # with credentials, which `*` is not valid for.
-      #
-      # `defer` makes Caddy write these at response time so they REPLACE the
-      # Access-Control-Allow-Origin Invidious sets itself, rather than
-      # appending a second, conflicting one (browsers reject duplicates).
-      #
-      # handle/respond rather than a bare `respond` so the preflight short
-      # circuit is explicitly ordered ahead of the proxy instead of relying on
-      # Caddy's implicit directive order.
+      # NO CORS BLOCK HERE ANY MORE — it moved to the yt vhost below, because
+      # the direction of the cross-origin request reversed. Invidious' `domain`
+      # is now yt.theshire.io (see modules/invidious.nix), so this vhost serves
+      # the stock UI HTML while every absolute URL inside it points at yt —
+      # making the STOCK UI the cross-origin consumer and Materialious purely
+      # first-party.
       "invidious.theshire.io".extraConfig        = ''
-        @cors_preflight method OPTIONS
-        handle @cors_preflight {
-          respond 204
-        }
-
-        header {
-          Access-Control-Allow-Credentials true
-          Access-Control-Allow-Origin "${materialiousOrigin}"
-          Access-Control-Allow-Methods "GET, POST, OPTIONS, HEAD, PATCH, PUT, DELETE"
-
-          # `Range` is REQUIRED and is not in upstream's documented header list.
-          # Invidious' DASH manifests use <SegmentBase> with indexRange and
-          # Initialization range, so every media fetch Shaka makes is a byte
-          # range request. Range is not a CORS-safelisted request header, so the
-          # browser preflights it — and without it listed here the preflight is
-          # rejected and NOTHING plays, while the rest of the UI works perfectly
-          # because plain API GETs are never preflighted. That asymmetry is what
-          # this looks like when it breaks: a completely functional site where
-          # every video fails.
-          Access-Control-Allow-Headers "User-Agent, Authorization, Content-Type, Range"
-
-          # Response headers are hidden from JS cross-origin unless exposed.
-          # Shaka reads Content-Range/Content-Length to size its buffers.
-          Access-Control-Expose-Headers "Content-Length, Content-Range, Accept-Ranges, Content-Type, Date"
-
-          defer
-        }
-
         reverse_proxy orthanc.home.theshire.io:3000 {
           flush_interval -1
         }
@@ -173,8 +139,38 @@ in
       # client-side-routed SPA; without it a reload on any route but / 404s.
       # The handle blocks are mutually exclusive and evaluated in order, so the
       # proxy wins for Invidious paths and the SPA catches everything else.
+      # The CORS block below is NOT for Materialious — that is same-origin now
+      # and needs none of it. It is for the STOCK Invidious UI at
+      # invidious.theshire.io, which since the `domain` change receives
+      # yt.theshire.io URLs for its own media and is therefore the cross-origin
+      # consumer. Without it the stock UI, our control for the Invidious trial,
+      # would break.
+      #
+      # `Range` is mandatory: Invidious' DASH uses <SegmentBase> with
+      # indexRange, so every media fetch is a byte-range request, and Range is
+      # not CORS-safelisted. Omitting it is a TOTAL playback failure while the
+      # rest of the UI works perfectly, because plain GETs are never
+      # preflighted. Expose-Headers is needed because cross-origin response
+      # headers are invisible to JS, and Shaka/videojs read Content-Range and
+      # Content-Length to size buffers.
+      #
+      # `defer` makes Caddy write these at response time so they REPLACE the
+      # Access-Control-Allow-Origin Invidious sets itself rather than appending
+      # a second, conflicting one (browsers reject duplicates).
+      #
+      # The preflight handle is ordered ahead of the proxy explicitly rather
+      # than relying on Caddy's implicit directive order.
       "yt.theshire.io".extraConfig               = ''
         @invidious path ${invidiousPaths}
+        @invidious_preflight {
+          path ${invidiousPaths}
+          method OPTIONS
+        }
+
+        handle @invidious_preflight {
+          respond 204
+        }
+
         handle @invidious {
           reverse_proxy orthanc.home.theshire.io:3000 {
             flush_interval -1
@@ -185,6 +181,15 @@ in
           root * ${pkgs.materialious}
           try_files {path} /index.html
           file_server
+        }
+
+        header @invidious {
+          Access-Control-Allow-Credentials true
+          Access-Control-Allow-Origin "${invidiousOrigin}"
+          Access-Control-Allow-Methods "GET, POST, OPTIONS, HEAD, PATCH, PUT, DELETE"
+          Access-Control-Allow-Headers "User-Agent, Authorization, Content-Type, Range"
+          Access-Control-Expose-Headers "Content-Length, Content-Range, Accept-Ranges, Content-Type, Date"
+          defer
         }
         ${tlsConfig}
       '';
