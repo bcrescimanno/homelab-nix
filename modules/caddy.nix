@@ -36,19 +36,26 @@ let
     ${tlsConfig}
   '';
 
-  # Serve a static site out of the Nix store. try_files sends unknown paths to
-  # index.html because these are client-side-routed SPAs — without it a reload
-  # on any route but / is a 404.
-  static = root: ''
-    root * ${root}
-    try_files {path} /index.html
-    file_server
-    ${tlsConfig}
-  '';
-
-  # Origin allowed to make cross-origin API calls to Invidious. See the CORS
-  # section in modules/materialious.nix.
+  # Origin allowed to make cross-origin API calls to Invidious. Retained only
+  # for the stock Invidious UI's vhost — yt.theshire.io no longer makes any
+  # cross-origin request. See the CORS note on that vhost below.
   materialiousOrigin = "https://yt.theshire.io";
+
+  # The Invidious paths Materialious actually touches, proxied under
+  # yt.theshire.io so the browser never leaves that origin. Derived from
+  # Invidious' own route table (src/invidious/routing.cr) intersected with what
+  # Materialious calls — NOT guessed:
+  #   /api          v1 endpoints + /api/manifest/dash (the DASH manifest)
+  #   /companion    where /api/manifest 302s to; carries the media bytes
+  #   /vi /ggpht    thumbnail and channel-avatar proxies
+  #   /sb           storyboard images
+  #   /authorize_token /login   the Invidious OAuth-ish flow (src/lib/auth.ts:81)
+  #
+  # None of these collide with a Materialious client route — note it uses
+  # /internal/login, not /login. Invidious owns far more top-level paths than
+  # these (/watch, /channel, /search, /feed...), and those deliberately stay
+  # with Materialious; it does not need Invidious' HTML pages at all.
+  invidiousPaths = "/api/* /companion/* /vi/* /ggpht/* /sb/* /authorize_token /login";
 in
 
 {
@@ -151,10 +158,36 @@ in
         ${tlsConfig}
       '';
 
-      # Materialious — static SPA built by modules/materialious.nix and served
-      # straight from the store; there is no backend process for this vhost.
-      # It talks to invidious.theshire.io above from the browser.
-      "yt.theshire.io".extraConfig               = static "${pkgs.materialious}";
+      # Materialious — static SPA built by modules/materialious.nix, served
+      # straight from the store, PLUS a reverse proxy for the handful of
+      # Invidious paths it calls.
+      #
+      # Everything on ONE origin, deliberately. Serving the app and the API from
+      # two hostnames made every media fetch a cross-origin request, which cost
+      # a CORS preflight per byte-range and made the traffic look like a public
+      # page reaching into RFC1918 space — something privacy extensions treat as
+      # hostile. Same origin means no preflight, no CORS headers, and nothing
+      # third-party to inspect. See the header of modules/materialious.nix.
+      #
+      # try_files sends unknown paths to index.html because this is a
+      # client-side-routed SPA; without it a reload on any route but / 404s.
+      # The handle blocks are mutually exclusive and evaluated in order, so the
+      # proxy wins for Invidious paths and the SPA catches everything else.
+      "yt.theshire.io".extraConfig               = ''
+        @invidious path ${invidiousPaths}
+        handle @invidious {
+          reverse_proxy orthanc.home.theshire.io:3000 {
+            flush_interval -1
+          }
+        }
+
+        handle {
+          root * ${pkgs.materialious}
+          try_files {path} /index.html
+          file_server
+        }
+        ${tlsConfig}
+      '';
 
       # pirateship backends
       "stream.theshire.io".extraConfig           = proxy "pirateship.home.theshire.io:4533";

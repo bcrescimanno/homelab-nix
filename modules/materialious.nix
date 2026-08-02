@@ -69,14 +69,34 @@
 # UI, and this makes it load-bearing for both.
 #
 # -----------------------------------------------------------------------------
-# CORS
+# SAME ORIGIN — no CORS, by construction
 #
-# The browser loads the app from yt.theshire.io and calls the API on
-# invidious.theshire.io — two origins, so Invidious' vhost has to return CORS
-# headers. Invidious has no setting for this, so it is done in the reverse
-# proxy; see the CORS block on invidious.theshire.io in modules/caddy.nix. The
-# allowed origin is pinned to this vhost, not `*`, because the responses are
-# sent with credentials.
+# Caddy serves this app AND proxies the Invidious paths it calls under the one
+# hostname (modules/caddy.nix), so the browser never makes a cross-origin
+# request. VITE_DEFAULT_INVIDIOUS_INSTANCE therefore points at yt.theshire.io,
+# not at the Invidious vhost.
+#
+# This replaced a two-origin setup that needed CORS headers on Invidious'
+# vhost, and it fixed more than tidiness:
+#
+#   - No preflight. DASH here is <SegmentBase>, so every media fetch is a byte
+#     range request, and `Range` is not CORS-safelisted — each one cost an
+#     extra OPTIONS round trip. Getting that header list wrong was also a
+#     silent, total playback failure while the rest of the UI worked perfectly.
+#   - Nothing third-party to inspect. A page on a public-suffix domain fetching
+#     from another host that resolves into RFC1918 space is, to a privacy
+#     extension, indistinguishable from a site probing your LAN. First-party
+#     requests get none of that treatment.
+#
+# The stock Invidious UI at invidious.theshire.io is untouched and still works
+# as the control for the Invidious trial. Its vhost keeps a CORS block that
+# nothing needs any more; it is left in place for one release as a rollback
+# path and should be deleted once this is settled.
+#
+# CONSEQUENCE ON FIRST DEPLOY: the Invidious session cookie is per-origin, so a
+# signed-in user must authorise once more under this hostname. The token itself
+# is held client-side by Materialious (src/lib/auth.ts), not read from a cookie,
+# so nothing else about the flow changes.
 #
 # -----------------------------------------------------------------------------
 # UPGRADING (manual — Renovate's custom manager only matches container images)
@@ -218,7 +238,11 @@ let
       # blob into the bundle with no error anywhere. The installCheck below
       # exists specifically to catch that regression.
       cat > .env <<'EOF'
-      VITE_DEFAULT_INVIDIOUS_INSTANCE=https://invidious.theshire.io
+      # ITS OWN ORIGIN, not invidious.theshire.io. Caddy proxies the Invidious
+      # paths under this same hostname (see modules/caddy.nix), so every request
+      # the browser makes is first-party. Pointing this at the Invidious vhost
+      # is what created the cross-origin problems described in the header.
+      VITE_DEFAULT_INVIDIOUS_INSTANCE=https://yt.theshire.io
 
       # Deliberately EMPTY — see the companion section in the header comment.
       # Setting this would require exposing companion publicly.
