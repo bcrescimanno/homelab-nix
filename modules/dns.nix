@@ -79,12 +79,20 @@ upstreams = {
       };
 
       blocking = {
+        # SOURCE URLS — do not "modernise" these back to cdn.jsdelivr.net.
+        # jsDelivr refuses the whole hagezi repo with HTTP 403 ("Package size
+        # exceeded the configured limit of 150 MB"); the repo is ~157 MB and only
+        # grows, so that is permanent, not transient. It broke silently on
+        # 2026-07-31 — Blocky keeps serving with an EMPTY list rather than
+        # failing, so ads came back with no alert and no unhealthy unit.
+        # hagezi also restructured: the old `domains/` directory is gone and its
+        # plain one-domain-per-line lists now live at `wildcard/*-onlydomains.txt`.
         denylists = {
           # HaGeZi Pro — the main ads + trackers list. Aggressive coverage with
-          # a low false-positive rate; well maintained. "domains" format (one
-          # domain per line) is Blocky-native and blocks all subdomains too.
+          # a low false-positive rate; well maintained. "-onlydomains" is the
+          # plain domain format, which is Blocky-native and blocks subdomains too.
           ads = [
-            "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/domains/pro.txt"
+            "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/pro-onlydomains.txt"
             # HaGeZi Pro intentionally omits these Google ad apexes to avoid
             # breaking Google services. We block them anyway for fuller ad
             # coverage (small risk: Google "sponsored" link / Shopping clicks).
@@ -99,7 +107,7 @@ upstreams = {
           # HaGeZi Threat Intelligence Feeds — malware, phishing, cryptojacking,
           # scam, and other actively-malicious domains.
           malware = [
-            "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/domains/tif.txt"
+            "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/tif-onlydomains.txt"
           ];
           # Suppress Windows WPAD (Web Proxy Auto-Discovery) queries.
           # Windows polls for a proxy config script continuously; without a clean
