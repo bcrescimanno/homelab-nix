@@ -48,7 +48,15 @@
 # "disabled until troubleshooting happens" means a human has to clear it.
 #
 #   Clear with:  sudo rm /var/lib/vpn-killswitch/tripped
-#                sudo systemctl start podman-gluetun
+#                sudo systemctl start podman-gluetun podman-qbittorrent \
+#                  podman-sabnzbd podman-radarr podman-sonarr \
+#                  podman-prowlarr podman-lidarr
+#
+# Starting podman-gluetun alone is NOT enough and this was verified the hard
+# way: Requires= propagates downward (stopping gluetun stops the consumers,
+# and restarting it restarts them) but it does not pull stopped consumers back
+# up when gluetun starts on its own. Measured 2026-08-02 — after a test trip,
+# `systemctl start podman-gluetun` brought back gluetun and nothing else.
 #
 # Metrics go to node_exporter's textfile collector (modules/monitoring.nix) and
 # are alerted on in the `vpn` rule group in modules/grafana.nix. The staleness
@@ -223,7 +231,7 @@ The arr stack has been STOPPED and latched off. It will not restart on reboot,
 deploy or auto-upgrade until the latch is cleared:
 
   sudo rm ${latchFile}
-  sudo systemctl start podman-gluetun" \
+  sudo systemctl start ${lib.concatStringsSep " " (lib.reverseList stackUnits)}" \
           "${ntfyUrl}" || true
       elif [ "$VERDICT_BAD" -eq 1 ]; then
         echo "Possible VPN leak (strike $STRIKES/2): $REASON" >&2
