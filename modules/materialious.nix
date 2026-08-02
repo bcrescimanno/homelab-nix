@@ -210,6 +210,22 @@ let
       #
       # Same resolution either way — 1080p stays 1080p, only the codec changes.
       #
+      # DON'T START AT 360p. shaka's ABR opens with a conservative bandwidth
+      # estimate and ramps up, so the first variant it decodes is 360p — a
+      # Firefox profile caught `DecodeFrame ... 640x360 hw,h264,VAAPI_SURFACE`
+      # followed by ~25s of nothing. Hardware decoders are at their flakiest
+      # initialising at small resolutions, and on the RTX 5090 workstation each
+      # attempt hit media.rdd-process.startup_timeout_ms (5000ms) and retried —
+      # MediaPDecoder threads respawning at measured 5020ms intervals. It is
+      # also why a SECOND load of the same video was always fast: shaka had
+      # cached the bandwidth estimate by then and started straight at 1080p,
+      # skipping the low-resolution init entirely.
+      #
+      # 50 Mbit/s is not a fudge — measured throughput through the proxy is
+      # 17-27 MB/s (~136-216 Mbit/s), and the top variant is 4.47 Mbit/s. This
+      # tells shaka the truth about the link so the first load behaves like the
+      # second. See [[firefox-vaapi-nvidia-stall]] for the full diagnosis.
+      #
       # A SECOND configure() call rather than editing the big object literal
       # above: shaka merges config, and `player.configure({` appears 5 times in
       # the tree so it is not a safe unique anchor. This anchors on a line that
@@ -221,7 +237,7 @@ let
       substituteInPlace "$P" \
         --replace-fail \
           'if (playerElement) playerElement.loop = $playerAlwaysLoopStore;' \
-          'player.configure({ preferredVideoCodecs: ['"'"'avc1'"'"'] }); if (playerElement) playerElement.loop = $playerAlwaysLoopStore;'
+          'player.configure({ preferredVideoCodecs: ['"'"'avc1'"'"'], abr: { defaultBandwidthEstimate: 50000000 } }); if (playerElement) playerElement.loop = $playerAlwaysLoopStore;'
     '';
 
     preBuild = ''
@@ -295,6 +311,15 @@ let
 
       grep -rq '{"proxyVideos":true,"darkMode":true,"themeColor":"#2596be","region":"US"}' $out/_app \
         || { echo "FAIL: default settings JSON is missing or was truncated (dotenv '#' comment?)"; exit 1; }
+
+      # The shaka config is injected by postPatch into a minified bundle;
+      # --replace-fail proves the ANCHOR matched, not that the payload survived
+      # the build. Assert both settings are actually present in the output.
+      grep -rqF 'defaultBandwidthEstimate' $out/_app \
+        || { echo "FAIL: ABR bandwidth estimate did not reach the bundle"; exit 1; }
+
+      grep -rqF 'preferredVideoCodecs' $out/_app \
+        || { echo "FAIL: codec preference did not reach the bundle"; exit 1; }
 
       test -f $out/index.html || { echo "FAIL: no index.html"; exit 1; }
 
