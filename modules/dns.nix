@@ -116,22 +116,31 @@ upstreams = {
               *.googlesyndication.com
               *.2mdn.net
               *.googletagservices.com
+
+              # Windows WPAD (Web Proxy Auto-Discovery) suppression. Windows
+              # polls for a proxy config script continuously; without a clean
+              # NXDOMAIN it bypasses cache and hammers DNS. No proxy exists on
+              # this network so these should never resolve.
+              #
+              # These lived in their own `local-noise` group until 2026-08-04.
+              # They are folded in here because a group with ONLY inline sources
+              # needs no network, so it succeeds on every refresh cycle — and
+              # `blocky_last_list_group_refresh_timestamp_seconds` is a single
+              # global gauge that ANY succeeding group advances (see
+              # lists/list_cache.go: the event is published per group, on the
+              # success path only). An inline-only group therefore pinned that
+              # gauge to "now" every 4h forever, which silently made the
+              # BlocklistStale alert in modules/grafana.nix incapable of ever
+              # firing. Every denylist group must depend on the network for that
+              # backstop to mean anything. Do not re-add an inline-only group.
+              wpad.theshire.io
+              wpad.home.theshire.io
             ''
           ];
           # HaGeZi Threat Intelligence Feeds — malware, phishing, cryptojacking,
           # scam, and other actively-malicious domains.
           malware = [
             "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/tif.txt"
-          ];
-          # Suppress Windows WPAD (Web Proxy Auto-Discovery) queries.
-          # Windows polls for a proxy config script continuously; without a clean
-          # NXDOMAIN it bypasses cache and hammers DNS. No proxy exists on this
-          # network so these should never resolve.
-          local-noise = [
-            ''
-              wpad.theshire.io
-              wpad.home.theshire.io
-            ''
           ];
         };
         # False-positive recovery. Add a domain here (one per line) to un-block
@@ -143,7 +152,7 @@ upstreams = {
             ''
           ];
         };
-        clientGroupsBlock.default = [ "ads" "malware" "local-noise" ];
+        clientGroupsBlock.default = [ "ads" "malware" ];
 
         # The HaGeZi TIF list is very large (>1M domains); the default download
         # timeout can truncate it mid-body on a slow CDN fetch. Give downloads

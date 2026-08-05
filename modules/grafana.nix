@@ -184,7 +184,8 @@ let
             # they tolerate hagezi resizing its lists without going quiet about a
             # real failure.
             #
-            # Excludes group="local-noise", which is legitimately 2 entries.
+            # Scoped to group="ads" rather than summed over all groups so a
+            # collapse of one list cannot be masked by another's entries.
             #
             # 30m, not 5m: a deploy restarts Blocky and re-downloading plus
             # parsing 2.1M domains is not instant. A genuine failure still fires
@@ -220,20 +221,73 @@ let
             # when a REFRESH fails for an already-loaded list, Blocky keeps
             # serving the previous copy. Entries stay at ~216k and look perfect
             # while the lists quietly rot.
+            #
+            # THRESHOLD AND WINDOW ARE BOTH LOAD-BEARING. This rule was
+            # `increase(...[1h]) > 0` until 2026-08-04, which was wrong twice
+            # over — it cried wolf, and then it lied about the recovery:
+            #
+            # 1. `> 0` counts ATTEMPTS, not failures. blocky_failed_downloads_total
+            #    is incremented from retry-go's OnRetry callback
+            #    (lists/downloader.go: onDownloadError inside logRetry), which
+            #    fires on EVERY failed attempt. loading.downloads.attempts = 5 in
+            #    modules/dns.nix, so a list that times out once and succeeds on
+            #    the retry increments this by 1 while nothing at all is wrong.
+            #    That is what happened on 2026-08-02: two lists blipped one
+            #    attempt each, both recovered on attempt 2, the lists were
+            #    complete and current — and this alert fired anyway.
+            #    A list that genuinely fails burns all 5 attempts and increments
+            #    by exactly 5 (retry-go v4.7.0 calls onRetry before the
+            #    `n == attempts-1` break, so the last attempt counts too).
+            #    `>= 5` is therefore the exact boundary between "recovered by
+            #    Blocky's own retries" and "a group's refresh actually failed".
+            #
+            # 2. The 1h window is SHORTER THAN THE 4h REFRESH PERIOD, so the
+            #    alert always resolved ~1h after a failure — before Blocky had
+            #    even attempted another download. The "resolved" notification
+            #    carried no information: it meant "the window rolled", never
+            #    "the lists are current again". Worse, a sustained outage made it
+            #    flap fire/resolve four times a day, training the alert to be
+            #    ignored. The window MUST exceed the refresh period: at 6h, the
+            #    counter can only fall back to zero if a later refresh cycle has
+            #    since completed without burning retries. That makes the resolve
+            #    mean what a resolve should mean.
             alert = "BlocklistDownloadFailing";
-            expr = ''increase(blocky_failed_downloads_total[1h]) > 0'';
+            expr = ''increase(blocky_failed_downloads_total[6h]) >= 5'';
             "for" = "15m";
             labels.severity = "warning";
             annotations = {
               summary = "Blocky blocklist downloads are failing on {{ $labels.instance }}";
-              description = "{{ $labels.instance }} recorded {{ $value }} failed blocklist download(s) in the last hour. The in-memory lists may still be serving, so blocking is probably still working right now — but it is going stale. Check `journalctl -u blocky | grep -i 'download\\|status code'`.";
+              description = "{{ $labels.instance }} burned {{ $value }} download attempts in the last 6h — at least one list exhausted all 5 retries, so a group refresh genuinely failed. The previously-loaded lists are still being served, so blocking still works right now, but it is no longer being updated. This clears only once a later refresh cycle completes cleanly. Check `journalctl -u blocky | grep -iE 'download|status code|Populating of group cache failed'`.";
             };
           }
           {
-            # The staleness backstop. Blocky refreshes every 4h by default; if
-            # every refresh fails it keeps the old list forever and no other
-            # metric here changes. 9h is two missed cycles plus slack, so a
-            # single transient failure stays quiet.
+            # The staleness backstop, and the only rule here whose resolution is
+            # positive proof rather than the absence of a symptom: the gauge it
+            # reads advances ONLY when a group's cache actually rebuilt
+            # (lists/list_cache.go publishes BlockingCacheGroupChanged on the
+            # success path only — a failed group logs "using existing cache" and
+            # returns early without publishing). Blocky refreshes every 4h; if
+            # every refresh fails it serves the old lists forever and no other
+            # metric here moves. 9h is two missed cycles plus slack, so a single
+            # transient failure stays quiet.
+            #
+            # This rule was DEAD from when it was written until 2026-08-04. The
+            # gauge is global and unlabelled, so any ONE succeeding group
+            # advances it for all of them — and the `local-noise` denylist group
+            # was inline-only, needing no network, so it succeeded on every
+            # cycle and pinned the gauge to "now" no matter what happened to the
+            # hagezi downloads. The backstop documented above could not fire.
+            # The fix was in modules/dns.nix, not here: local-noise was folded
+            # into `ads` so that every remaining group depends on the network.
+            # Adding an inline-only denylist group silently kills this rule
+            # again — see the comment on those entries in dns.nix.
+            #
+            # Residual limit, accepted: a PARTIAL failure (ads fails, malware
+            # succeeds) still advances the shared gauge and is invisible here.
+            # Blocky exposes no per-group refresh timestamp, so that case is
+            # covered by BlocklistDownloadFailing above and by the Gatus
+            # ad-blocking canary in modules/gatus.nix, which asks the resolver
+            # the question a client would actually ask.
             alert = "BlocklistStale";
             expr = ''time() - blocky_last_list_group_refresh_timestamp_seconds > 32400'';
             "for" = "30m";
