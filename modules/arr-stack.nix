@@ -56,7 +56,7 @@
   virtualisation.oci-containers.containers = {
 
     gluetun = {
-      image = "ghcr.io/qdm12/gluetun:latest@sha256:d372c28ca10df2086744650420b639ae880d73b4542a66603f8395b02775722d";
+      image = "ghcr.io/qdm12/gluetun:latest@sha256:21bf27daf23c3e25051edda0a095bd842c2c799ba99c09460bb37c8be06fb6f0";
       autoStart = true;
       volumes = [
         "/var/lib/gluetun:/gluetun"
