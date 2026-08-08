@@ -152,7 +152,7 @@
     };
 
     sonarr = {
-      image = "lscr.io/linuxserver/sonarr:latest@sha256:24acea2956a0ccb11f103877d9f4f8576600fb34bff34820ed749c2256dab89f";
+      image = "lscr.io/linuxserver/sonarr:latest@sha256:373159ba768e23a3a1c497d9f2b936addf8fd5b1fdce7dd6a14080ac928bfda0";
       autoStart = true;
       dependsOn = [ "gluetun" ];
       extraOptions = [ "--network=container:gluetun" ];
