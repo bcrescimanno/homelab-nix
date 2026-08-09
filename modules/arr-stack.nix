@@ -119,7 +119,7 @@
     # qBittorrent traffic through the VPN. The v1 tag is kept as a conservative
     # choice; v2 may also work but has not been tested in this configuration.
     qbittorrent = {
-      image = "lscr.io/linuxserver/qbittorrent:libtorrentv1@sha256:1a4ebea9aaf5907a2eabc461a086a2989769c269d6b508ac07b7db9051c33c74";
+      image = "lscr.io/linuxserver/qbittorrent:libtorrentv1@sha256:2626892a6fd232fe8667358fa51110867aeb528bca6fdede1aba7bdcf9e23dcb";
       autoStart = true;
       dependsOn = [ "gluetun" ];
       extraOptions = [ "--network=container:gluetun" ];
