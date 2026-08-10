@@ -151,7 +151,7 @@ in
     };
 
     piped-frontend = {
-      image = "docker.io/1337kavin/piped-frontend:latest@sha256:1ce67163448941627a2abc51a1d622120331d8e55ef78b85a83dc2de8811616e";
+      image = "docker.io/1337kavin/piped-frontend:latest@sha256:6cc98daa65f27968fd9329c6c5dfec30f1b28568efe860ed1ca054529bf32da6";
       autoStart = true;
       # The image entrypoint generates config.json from BACKEND_HOSTNAME at startup.
       environment = {
