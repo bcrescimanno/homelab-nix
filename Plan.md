@@ -40,6 +40,29 @@ Shell function in dotfiles `home/common.nix`. deploy-rs config in `flake.nix` un
 
 - [ ] **Backup restore dry run**: test restoring from restic snapshots — both local (erebor) and offsite (R2). Validate paths, passwords, and snapshot contents are correct.
 
+### Power / Battery Resilience
+
+- [ ] **Low power mode — shed load while running on battery**. Prompted by the 2026-08-09 outage (~19:57, all hosts hard-cut). Design only, not yet implemented.
+
+  **What today actually does.** Nothing coordinated. `modules/nut.nix` runs NUT on rivendell *only*, as `upsmon` `type = "primary"`, and no other host runs a secondary. So rivendell sees `ONBATT`/`LOWBATT` and can shut itself down, while **mirkwood, pirateship and orthanc have no idea the power is out** — they run flat out until the battery dies and then take an unclean power cut. There is no graceful shutdown ordering and no load shedding anywhere in the repo.
+
+  **Measured baseline (2026-08-09, post-outage).** Tripp Lite SMC15002URM, `ups.load` 20% at idle; `battery.runtime` 1316s at 41% charge, so roughly **50 min at full charge and current load**. That is a lot of headroom *if* it is spent on the right things — and today it is spent equally on Jellyfin transcodes and on DNS.
+
+  **Goal.** On `ONBATT`, cut draw to the services that matter so the remaining runtime covers a much longer outage, then shut down cleanly and in the right order as the battery drains. Ride through short outages entirely.
+
+  Sketch of the tiers (to be argued out properly when this is picked up):
+  - **Tier 0 — never shed**: rivendell (DNS secondary, NUT itself, HA, ntfy, Caddy) and mirkwood (primary DNS). Losing DNS makes the whole house look broken.
+  - **Tier 1 — shed immediately on `ONBATT`**: the media stack. Pause/stop qBittorrent + SABnzbd transfers, stop Jellyfin transcodes, suspend the arr containers, stop recyclarr/music-sync timers. Pure discretionary load.
+  - **Tier 2 — shed early**: orthanc's non-essential workloads (Piped/Invidious, Minecraft servers, attic, CI runner). Orthanc is a 5950X/32GB box and is by far the biggest single draw on the UPS.
+  - **Tier 3 — graceful shutdown as the battery drains**: full `poweroff` for pirateship and orthanc well before `battery.charge.low` (currently 10%), leaving the DNS pair last.
+
+  Open questions to settle first:
+  - **Is orthanc even on the UPS?** It did not come back after this outage — needs its BIOS set to *Restore on AC Power Loss* regardless, or it will always need a physical press.
+  - Whether to drive this from **NUT secondaries** on every host (`upsmon` `type = "secondary"` pointed at `rivendell:3493`, with `NOTIFYFLAG`/`NOTIFYCMD` per tier) or from **Home Assistant** automations off the existing NUT integration. NUT secondaries are the more declarative fit and survive HA being down — which is exactly when this has to work. Prefer NUT; HA is the fallback for anything cosmetic.
+  - Hysteresis: what re-enables everything on `ONLINE`, and how to avoid flapping on a brownout. Needs a minimum-time-on-line before restoring.
+  - Recovery ordering on power return, which is the *other* half of this and is already known-broken: the 2026-08-09 restart raced DNS against NFS (`var-lib-media-music.mount` on rivendell and `navidrome` on pirateship both failed because `erebor.theshire.io` could not resolve yet). Fix the ordering as part of this work.
+  - Test plan must include **actually pulling the plug**, not just simulating with `upsmon -c fsd`. Per the standing verification note, a simulation that skips the constraint that matters proves nothing.
+
 ### NAS (erebor) — Remaining Work
 
 erebor is online (10G SFP+ at 10.0.1.22, 1G ethernet at 10.0.1.21 for management).
