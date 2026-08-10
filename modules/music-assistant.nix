@@ -29,6 +29,12 @@
 
 { config, pkgs, lib, ... }:
 
+let
+  # rivendell's LAN address. MA must advertise this and never eth0.4's
+  # 10.0.12.2 (IoT VLAN) -- see the ExecStartPre block below.
+  publishIp = "10.0.1.9";
+  webPort   = 8095;
+in
 {
   services.music-assistant = {
     enable = true;
@@ -54,7 +60,30 @@
     providers = [ "airplay" "chromecast" "sendspin" "dlna" "sonos" "wiim" ];
   };
 
-  networking.firewall.allowedTCPPorts = [ 8095 8097 7000 8927 ];
+  # Pin the published stream address before MA reads its config.
+  #
+  # publish_ip (:8097) and base_url (:8095) default to ip_addresses[0] -- the
+  # first enumerated interface address, evaluated live. rivendell is multi-homed
+  # (eth0 = 10.0.1.9 LAN, eth0.4 = 10.0.12.2 IoT VLAN), and on the 2026-08-09
+  # cold boot MA came up before eth0 finished DHCP, so the static VLAN address
+  # sorted first. Every WiiM then hung silently in LinkPlay `status: "load"`
+  # fetching a URL it cannot route to, while AirPlay -- which MA pushes to
+  # rather than advertising a URL for -- kept working and masked the outage.
+  #
+  # Saving this through MA's own API does NOT pin it: Config.to_raw persists a
+  # value only when it differs from the current default, so writing the correct
+  # IP while the default already happens to be correct stores nothing. Config
+  # .parse applies stored values unconditionally, so the file is the pin.
+  #
+  # Confirm after a reboot with:
+  #   journalctl -u music-assistant | grep "Starting streamserver on"
+  systemd.services.music-assistant.serviceConfig.ExecStartPre = [
+    ("${pkgs.python3}/bin/python3 ${./ma-publish-ip.py} "
+      + "/var/lib/music-assistant/settings.json "
+      + "${publishIp} http://${publishIp}:${toString webPort}")
+  ];
+
+  networking.firewall.allowedTCPPorts = [ webPort 8097 7000 8927 ];
   networking.firewall.allowedUDPPorts = [ 1900 ];
 
   # DLNA/UPnP discovery: MA sends M-SEARCH to the multicast group
