@@ -155,7 +155,16 @@
     "/var/lib/thread"
 
     "/var/lib/caddy"
-    "/var/lib/music-assistant"
+
+    # Music Assistant: library DB, provider config, and the streams/webserver
+    # publish_ip pin (see the comment in modules/music-assistant.nix). The
+    # /var/lib/private prefix is REQUIRED — services.music-assistant sets
+    # DynamicUser=true, exactly the case the matter-server note above warns
+    # about. This was "/var/lib/music-assistant" from 2026-03-28 to 2026-08-10
+    # and every snapshot in that window holds a single 0-byte symlink and no MA
+    # data at all. Verify after changing with:
+    #   restic ls <snap> | grep -c '^/var/lib/private/music-assistant'
+    "/var/lib/private/music-assistant"
   ];
 
   # ---------------------------------------------------------------------------
