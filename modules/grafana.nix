@@ -178,17 +178,25 @@ let
             # for ~1.5 days; the only symptom was ads reappearing in iOS games.
             #
             # `blocky_denylist_cache_entries` is the one metric that tells the
-            # truth. Healthy is ~216k ads / ~2.16M malware; broken was 5 and 0
-            # (the 5 being the inline Google apexes, which parse without network).
-            # Thresholds sit far below normal but far above the broken values, so
-            # they tolerate hagezi resizing its lists without going quiet about a
-            # real failure.
+            # truth. Broken reads 7 and 0 (the 7 being the inline Google apexes
+            # and WPAD names, which parse without network) — which is exactly
+            # what both hosts showed on 2026-08-09 when the hagezi account was
+            # deleted outright. Thresholds sit far below normal but far above
+            # the broken values, so they tolerate a maintainer resizing a list
+            # without going quiet about a real failure.
+            #
+            # RETUNE THESE WHEN A SOURCE CHANGES. They are absolute counts tied
+            # to whatever modules/dns.nix currently points at; the numbers below
+            # are for oisd big (~253k) and Phishing Army extended (~156k). The
+            # old malware threshold was `< 1000000`, sized for hagezi TIF's
+            # ~2.16M entries — left unchanged it would have fired forever
+            # against the smaller replacement feed.
             #
             # Scoped to group="ads" rather than summed over all groups so a
             # collapse of one list cannot be masked by another's entries.
             #
             # 30m, not 5m: a deploy restarts Blocky and re-downloading plus
-            # parsing 2.1M domains is not instant. A genuine failure still fires
+            # parsing ~400k domains is not instant. A genuine failure still fires
             # long before the next 4h refresh could mask it.
             alert = "BlocklistEmpty";
             expr = ''blocky_denylist_cache_entries{group="ads"} < 100000'';
@@ -196,17 +204,17 @@ let
             labels.severity = "warning";
             annotations = {
               summary = "Blocky ad blocklist collapsed on {{ $labels.instance }}";
-              description = "{{ $labels.instance }} has only {{ $value }} entries in the 'ads' denylist (expected ~216k). Ad blocking is effectively off — check `journalctl -u blocky` for list download failures.";
+              description = "{{ $labels.instance }} has only {{ $value }} entries in the 'ads' denylist (expected ~253k). Ad blocking is effectively off — check `journalctl -u blocky` for list download failures.";
             };
           }
           {
             alert = "ThreatBlocklistEmpty";
-            expr = ''blocky_denylist_cache_entries{group="malware"} < 1000000'';
+            expr = ''blocky_denylist_cache_entries{group="malware"} < 75000'';
             "for" = "30m";
             labels.severity = "warning";
             annotations = {
               summary = "Blocky threat-intel blocklist collapsed on {{ $labels.instance }}";
-              description = "{{ $labels.instance }} has only {{ $value }} entries in the 'malware' denylist (expected ~2.16M). Malware/phishing blocking is effectively off — check `journalctl -u blocky` for list download failures.";
+              description = "{{ $labels.instance }} has only {{ $value }} entries in the 'malware' denylist (expected ~156k). The supplemental phishing feed is down — primary malware coverage still comes from oisd big in the 'ads' group, so check that alert too, then `journalctl -u blocky`.";
             };
           }
           {

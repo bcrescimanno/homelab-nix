@@ -79,16 +79,24 @@ upstreams = {
       };
 
       blocking = {
-        # SOURCE URLS — do not "modernise" these back to cdn.jsdelivr.net.
-        # jsDelivr refuses the whole hagezi repo with HTTP 403 ("Package size
-        # exceeded the configured limit of 150 MB"); the repo is ~157 MB and only
-        # grows, so that is permanent, not transient. It broke silently on
-        # 2026-07-31 — Blocky keeps serving with an EMPTY list rather than
-        # failing, so ads came back with no alert and no unhealthy unit.
-        # hagezi also restructured: the old `domains/` directory is gone. Its
-        # replacements come in two syntaxes holding the SAME entry set —
-        # `wildcard/<list>-onlydomains.txt` (bare `example.com`) and
-        # `wildcard/<list>.txt` (`*.example.com`). Use the `*.` one.
+        # SOURCE URLS — the HaGeZi lists that used to be here are GONE.
+        # On 2026-08-09 the entire `hagezi` GitHub ACCOUNT disappeared: both
+        # https://api.github.com/users/hagezi and every repo under it return
+        # 404, verified from two hosts while control repos (NixOS/nixpkgs)
+        # returned 200 on the same calls. This is not the old 403/restructure
+        # problem and it is not transient — there is no upstream left to retry.
+        # Symptom at the time: `blocky_denylist_cache_entries{group="ads"}` = 7
+        # (the inline entries below and nothing else) and `{group="malware"}` = 0.
+        # Do NOT "fix" this by pointing back at cdn.jsdelivr.net — jsDelivr was
+        # still serving a complete cached copy for a few hours after the origin
+        # died, which makes it look like a working source right up until the CDN
+        # revalidates against a dead origin and starts 404ing too.
+        #
+        # Replaced with oisd (independently hosted, not on GitHub, hourly
+        # rebuilds). Pick the `domainswild` variant, NOT `domainswild2`:
+        # oisd publishes the same entry set in both syntaxes, `domainswild` as
+        # `*.example.com` and `domainswild2` as bare `example.com`. This is the
+        # same trap hagezi had, for the same reason:
         #
         # WHY: a bare denylist entry in Blocky 0.34 matches that name ONLY.
         # It does NOT cover subdomains, despite what is widely assumed.
@@ -96,15 +104,19 @@ upstreams = {
         #   googlesyndication.com.          -> BLOCKED (ads: googlesyndication.com)
         #   pagead2.googlesyndication.com.  -> RESOLVED (142.251.219.2)
         # `*.example.com` blocks the apex AND every subdomain, which is what the
-        # hagezi entry set is collapsed to assume. Bare entries silently give a
-        # fraction of the intended coverage — the ad-serving hosts are almost
-        # always subdomains (pagead2., googleads.g., s0.), not the apex.
+        # oisd entry set is collapsed to assume — its own header says so:
+        # `"*.example.com" should block "example.com" and "subdomain.example.com"`.
+        # Bare entries silently give a fraction of the intended coverage — the
+        # ad-serving hosts are almost always subdomains (pagead2., googleads.g.,
+        # s0.), not the apex.
         denylists = {
-          # HaGeZi Pro — the main ads + trackers list. Aggressive coverage with
-          # a low false-positive rate; well maintained.
+          # oisd big — ads, trackers, telemetry, AND malware/phishing/ransomware/
+          # cryptojacking (~253k wildcard entries, rebuilt hourly). Tuned for
+          # "block, don't break", so the false-positive rate is low.
           ads = [
-            "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/pro.txt"
-            # HaGeZi Pro intentionally omits these Google ad apexes to avoid
+            "https://big.oisd.nl/domainswild"
+            # oisd, like HaGeZi Pro before it, intentionally omits these Google
+            # ad apexes to avoid
             # breaking Google services. We block them anyway for fuller ad
             # coverage (small risk: Google "sponsored" link / Shopping clicks).
             # Wildcarded for the reason above: googleads.g.doubleclick.net is
@@ -137,10 +149,25 @@ upstreams = {
               wpad.home.theshire.io
             ''
           ];
-          # HaGeZi Threat Intelligence Feeds — malware, phishing, cryptojacking,
-          # scam, and other actively-malicious domains.
+          # Phishing Army (extended) — phishing and fraud domains, ~156k entries.
+          #
+          # This group is now DEFENCE IN DEPTH, not the primary threat coverage:
+          # oisd big above already includes malware/phishing/ransomware/
+          # cryptojacking, and it does so in `*.` wildcard syntax. The group is
+          # kept for two reasons: it is a genuinely independent feed (different
+          # maintainer, different infrastructure, so one dead upstream no longer
+          # takes out threat blocking entirely), and ThreatBlocklistEmpty in
+          # modules/grafana.nix alerts per group — collapsing to a single group
+          # would silently retire that alert.
+          #
+          # CAVEAT: Phishing Army publishes BARE domains, so per the matching
+          # note above these entries match the exact name only, not subdomains.
+          # That is an accepted tradeoff here — phishing feeds list the exact
+          # observed FQDN rather than an apex to wildcard — but it is why this
+          # is the supplement and oisd is the primary. If a `*.`-syntax threat
+          # feed turns up, prefer it.
           malware = [
-            "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/tif.txt"
+            "https://phishing.army/download/phishing_army_blocklist_extended.txt"
           ];
         };
         # False-positive recovery. Add a domain here (one per line) to un-block
@@ -154,8 +181,8 @@ upstreams = {
         };
         clientGroupsBlock.default = [ "ads" "malware" ];
 
-        # The HaGeZi TIF list is very large (>1M domains); the default download
-        # timeout can truncate it mid-body on a slow CDN fetch. Give downloads
+        # The lists are large (~253k + ~156k entries); the default download
+        # timeout can truncate one mid-body on a slow fetch. Give downloads
         # more time and retries so lists always load complete.
         loading.downloads = {
           timeout  = "60s";
