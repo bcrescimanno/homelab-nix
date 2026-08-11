@@ -28,7 +28,8 @@ Shell function in dotfiles `home/common.nix`. deploy-rs config in `flake.nix` un
 
 ### Fragility
 
-- **Hardcoded IPs**: UDM Pro (`10.0.1.1`) in `dns.nix`, erebor (`10.0.1.22`) in `dns.nix`, mirkwood (`10.0.1.8`) in `homepage.nix` allowedHosts. Set DHCP reservations in UniFi for all Pi IPs + erebor 10G MAC to prevent drift.
+- **Hardcoded IPs**: UDM Pro (`10.0.1.1`) in `dns.nix`, erebor (`10.0.1.22`) in `dns.nix`, mirkwood (`10.0.1.8`) in `homepage.nix` allowedHosts, rivendell (`10.0.1.9`) as `publishIp` in `music-assistant.nix`. Set DHCP reservations in UniFi for all Pi IPs + erebor 10G MAC to prevent drift.
+  - The `music-assistant.nix` one is deliberate and must stay explicit (#570): the whole point is to stop MA auto-detecting its own address, because on a multi-homed host it can pick eth0.4's IoT VLAN IP and silently break every pull-based player. If rivendell's LAN IP ever changes, this must change with it.
 - **Caddy plugin hash** (`caddy.nix`): pinned to caddy 2.10.2 from rivendell's nixpkgs. Must be updated if nixpkgs upgrades Caddy on rivendell.
 - **Homepage `allowedHosts` IP** (`homepage.nix:16`): `10.0.1.8` (mirkwood) is hardcoded. If the IP changes, homepage becomes unreachable from that address. Mitigated by DHCP reservation.
 
@@ -39,6 +40,24 @@ Shell function in dotfiles `home/common.nix`. deploy-rs config in `flake.nix` un
 ### High Priority
 
 - [ ] **Backup restore dry run**: test restoring from restic snapshots — both local (erebor) and offsite (R2). Validate paths, passwords, and snapshot contents are correct.
+
+  Raised in priority by #569: `music-assistant` and `atticd` had been backing up a single 0-byte symlink for ~4 months and *every* existing signal said the backups were healthy. A restore dry run is the only check that would have caught it. When this is done, assert on **entry counts and a real restore**, not on the job's exit code.
+
+- [ ] **Assert backup snapshots have content, not just that the job ran** (follow-up to #569). Today nothing can detect an empty backup:
+
+  | guard | question it answers |
+  |---|---|
+  | job exit code + ntfy alert | did it run? |
+  | `restic-freshness-check` dead-man's switch | did it run *recently*? |
+  | `restic check --read-data-subset=10%` | is the repo *readable*? |
+
+  None asks **"does the snapshot contain anything?"** A repo holding one symlink and nothing else passes all three — which is exactly how #569 survived four months of green checks.
+
+  Sketch: after each `restic backup`, run `restic ls <snap>` and assert a per-path minimum entry count (declared alongside `homelab.backup.paths`, e.g. `{ path = "/var/lib/private/music-assistant"; minEntries = 100; }`), failing the unit — and so tripping the existing `OnFailure` ntfy alert — when a path comes back at or near zero. Cheap, and it generalises past the DynamicUser case to any path that silently stops producing data.
+
+  Detect the specific DynamicUser trap early with `[ -L /var/lib/<name> ]` or `systemctl show <unit> -p DynamicUser` before adding any new backup path; see the note on `/var/lib/private` in `hosts/rivendell.nix`.
+
+- [ ] **Prune `atticd-migrate` leftovers** (orthanc): `/var/lib/private/atticd/atticd-migrate` is 280M of residue from the April 2026 migration and, since #569 fixed the atticd backup path, it is now copied to both restic repos nightly for no reason. Confirm atticd no longer reads it, then delete. Small, but it is ~11% of that host's backup volume.
 
 ### Power / Battery Resilience
 
