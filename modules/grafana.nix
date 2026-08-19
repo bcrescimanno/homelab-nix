@@ -259,13 +259,76 @@ let
             #    counter can only fall back to zero if a later refresh cycle has
             #    since completed without burning retries. That makes the resolve
             #    mean what a resolve should mean.
+            #
+            # 3. 2026-08-19: `increase(...[6h]) >= 5` was itself unsound, and it
+            #    false-fired for ~30h out of the 10 days after #566 swapped the
+            #    blocklist sources. Fix (1) above is right about a single list,
+            #    but blocky_failed_downloads_total is ONE UNLABELLED COUNTER
+            #    summed over every list and every refresh cycle, so "5" is not
+            #    the boundary once the window spans more than one cycle. A 6h
+            #    window covers 1-2 of the 4h cycles, and each cycle has 2
+            #    network-backed denylists (ads → oisd, malware → Phishing Army;
+            #    the inline entries need no network) that can each blip
+            #    independently. Recovered blips simply accumulate to 5. Measured
+            #    at the time: max attempt reached over 3 days was 3/5 on both
+            #    hosts, zero "Populating of group cache failed", lists refreshing
+            #    on schedule and full — and the alert was firing anyway. The
+            #    condition was never once true in the 20 days BEFORE the source
+            #    swap, so this is the same class of bug as the entry-count
+            #    thresholds: absolute numbers tuned against one set of upstreams,
+            #    left alone when the upstreams changed.
+            #
+            #    Firing and resolving need windows of DIFFERENT lengths, which
+            #    is why the expression is now two layers:
+            #
+            #      inner  (max_over_time - min_over_time) over [15m]
+            #             = attempts burned inside ONE refresh cycle. 5 retries
+            #               at 60s timeout + 10s cooldown span ~5 min and cycles
+            #               are 4h apart, so a 15m window can only ever contain
+            #               one cycle. max-min rather than increase() because
+            #               increase() extrapolates to the window edges: a real
+            #               burst of 5 read as 5.357, and that inflation applied
+            #               to a benign 8 would clear the threshold on its own.
+            #               max-min is the exact raw delta. A counter reset mid
+            #               window (blocky restart) under-reports, i.e. fails
+            #               safe.
+            #
+            #      >= 9   = at least one list exhausted its 5. THIS NUMBER IS
+            #               DERIVED, NOT TUNED: with N network-backed denylists
+            #               and `attempts` retries each, the most that can burn
+            #               in one cycle without any single list failing is
+            #               N * (attempts - 1) = 2 * 4 = 8. RECOMPUTE IT when a
+            #               denylist is added or removed, or when
+            #               loading.downloads.attempts changes in modules/dns.nix
+            #               — nothing here fails loudly if you don't. For
+            #               reference, the worst benign cycle actually observed
+            #               in 30 days was 5.
+            #
+            #      outer  max_over_time(...[6h:5m])
+            #             = latch the detection for 6h so point (2) above still
+            #               holds. The alert resolves only once 6h have passed
+            #               with no bad cycle, and since the refresh period is
+            #               4h that guarantees at least one LATER cycle was
+            #               observed and did not exhaust retries. Verified on
+            #               live data: the series steps up at a burst, holds,
+            #               and steps down only after subsequent clean cycles.
+            #               5m subquery resolution is enough to catch a ~5 min
+            #               burst inside a 15m inner window while keeping the
+            #               subquery cheap on a Pi (72 evaluations).
             alert = "BlocklistDownloadFailing";
-            expr = ''increase(blocky_failed_downloads_total[6h]) >= 5'';
+            expr = ''
+              max_over_time(
+                (
+                    max_over_time(blocky_failed_downloads_total[15m])
+                  - min_over_time(blocky_failed_downloads_total[15m])
+                )[6h:5m]
+              ) >= 9
+            '';
             "for" = "15m";
             labels.severity = "warning";
             annotations = {
               summary = "Blocky blocklist downloads are failing on {{ $labels.instance }}";
-              description = "{{ $labels.instance }} burned {{ $value }} download attempts in the last 6h — at least one list exhausted all 5 retries, so a group refresh genuinely failed. The previously-loaded lists are still being served, so blocking still works right now, but it is no longer being updated. This clears only once a later refresh cycle completes cleanly. Check `journalctl -u blocky | grep -iE 'download|status code|Populating of group cache failed'`.";
+              description = "{{ $labels.instance }} burned {{ $value }} download attempts inside a single refresh cycle. Two network-backed denylists with 5 retries each can burn at most 8 without any one of them failing, so at least one list exhausted its retries and that group's refresh genuinely failed — it is now serving the previously-loaded copy. Blocking still works right now, but that group is no longer being updated. This clears ~6h after the last bad cycle, which means later cycles have been observed refreshing cleanly. Check `journalctl -u blocky | grep -iE 'download|status code|Populating of group cache failed'`.";
             };
           }
           {
