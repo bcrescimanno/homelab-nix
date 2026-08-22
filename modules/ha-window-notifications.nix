@@ -9,6 +9,11 @@
 #   3. If today's forecast high is below 75°F, 1 and 2 are suppressed entirely
 #      and a single 08:00 notification says "Today is a windows open day!"
 #
+# "Today's forecast high" is sensor.forecast_high_today, which LATCHES the day's
+# maximum rather than reading met.no live — met.no's daily figure decays to the
+# current temperature as the day burns down, which silently made rule 2 unable
+# to fire at all. See the long comment on that sensor before touching it.
+#
 # ---------------------------------------------------------------------------
 # Why a local sensor and not Weather Underground
 # ---------------------------------------------------------------------------
@@ -153,18 +158,22 @@ let
     '';
   };
 
-  # "Today is not a windows-open day." Written as a negated `below` rather than
-  # `above: 75` so that exactly-75 lands on the normal-rules side, matching the
-  # spec ("below 75" is the open-day case). If the forecast sensor is unknown
-  # the inner check is false and this passes — an unavailable forecast degrades
-  # to running the temperature rules, not to silence.
+  # "Today is not a windows-open day." A `>=` test so that exactly-75 lands on
+  # the normal-rules side, matching the spec ("below 75" is the open-day case).
+  #
+  # Written as a template condition and NOT as `condition: not` wrapping a
+  # numeric_state, which is what this used to be. That construction does the
+  # opposite of what it looks like: a numeric_state condition on an `unknown` or
+  # `unavailable` entity raises ConditionError, and HA's `not` collects those
+  # errors and RE-RAISES rather than treating the inner check as false. An
+  # unavailable forecast sensor would therefore have blocked both temperature
+  # automations outright — silence, not degradation. The `float(999)` default
+  # makes the intended behaviour real: no forecast reading → not an open day →
+  # the temperature rules still run.
   notAnOpenDay = {
-    condition = "not";
-    conditions = [{
-      condition = "numeric_state";
-      entity_id = "sensor.forecast_high_today";
-      below = openAllDayBelowF;
-    }];
+    condition = "template";
+    value_template =
+      "{{ states('sensor.forecast_high_today') | float(999) >= ${toString openAllDayBelowF} }}";
   };
 
   outdoorTemperatureSensor =
@@ -192,11 +201,48 @@ let
     template = [
       { sensor = [ outdoorTemperatureSensor ]; }
 
-      # Today's forecast high. This has to be trigger-based: the daily high only
-      # comes back from the weather.get_forecasts action, and a plain template
-      # sensor cannot call actions. Re-read every 30 min (so it is populated well
-      # before the 08:00 announcement even if HA restarted at 07:50) and whenever
-      # met.no itself updates.
+      # Today's high, LATCHED: the running maximum since local midnight of
+      # (a) what met.no still forecasts for today and (b) what has actually been
+      # measured outside. Trigger-based because the daily figure only comes back
+      # from the weather.get_forecasts action and a plain template sensor cannot
+      # call actions. Re-read every 30 min (so it is populated well before the
+      # 08:00 announcement even if HA restarted at 07:50) and whenever met.no
+      # itself updates; the /30 pattern also lands on 00:00, which is the reset.
+      #
+      # THE LATCH IS THE WHOLE POINT — do not simplify it back to a plain read of
+      # the daily forecast. Diagnosed 2026-08-22, after the evening "open the
+      # windows" prompt had never fired even once (last_triggered was still null
+      # weeks after deployment, while the morning prompt fired daily).
+      #
+      # met.no's daily forecast entry for TODAY reports the maximum over the
+      # hours REMAINING in the day, not the calendar day's high. So it decays as
+      # the day burns down, and from roughly 16:00 onward it is numerically
+      # identical to the current outdoor temperature. Measured on rivendell's
+      # recorder, 2026-08-21:
+      #
+      #     time    outdoor   "forecast high"
+      #     16:18     83            83
+      #     18:14     77            77
+      #     20:10     69            69
+      #     21:08     67            67
+      #
+      # That made the evening automation structurally unfireable. It needs
+      # outdoor < 72 AND notAnOpenDay (high >= 75) to hold at the same instant,
+      # but the decayed "high" tracks the temperature exactly — so the moment the
+      # temperature condition passed, the open-day suppression killed the run.
+      # Not a threshold that needed tuning: the two conditions were mutually
+      # exclusive by construction, on every single day.
+      #
+      # Latching to the daily max fixes it because the value the evening rule
+      # reads is then the same one the 08:00 announcement decided on, which is
+      # what "is today a windows-open day" actually means. Folding in the
+      # observed outdoor temperature closes the mirror hole: a day forecast at
+      # 74 (open day) that really hits 79 now un-suppresses itself and gets its
+      # close prompt, instead of the house cooking behind an 08:00 all-clear.
+      #
+      # Revising the forecast DOWN mid-day cannot lower the latch. That is the
+      # right failure direction and matches closeAboveF above: a redundant
+      # prompt costs nothing, a missed one costs a hot house.
       {
         triggers = [
           { trigger = "time_pattern"; minutes = "/30"; }
@@ -215,14 +261,27 @@ let
           device_class = "temperature";
           state_class = "measurement";
           unit_of_measurement = "°F";
-          # Select by date rather than trusting forecast[0] to be today — after
-          # met.no's daily rollover index 0 can already be tomorrow, which would
-          # silently drive the open-day decision off the wrong day.
+          # high_for_date scopes the latch to one calendar day. It is compared
+          # against `this`, which is the state BEFORE this update, so a restart
+          # carries the day's high across (trigger-based template entities
+          # restore) while a rollover past midnight discards it.
+          #
+          # Select today by date rather than trusting forecast[0] — after
+          # met.no's daily rollover index 0 is already tomorrow, and late in the
+          # day today drops out of the list entirely. Every conversion carries an
+          # explicit default: HA's float/int filters RAISE without one, which in
+          # a state template means the sensor goes unavailable.
           state = ''
             {% set days = forecasts['${forecastEntity}'].forecast %}
-            {% set today = days | selectattr('datetime', 'search', now().strftime('%Y-%m-%d')) | list %}
-            {{ (today[0].temperature if today else days[0].temperature) | round(0) | int }}
+            {% set today_str = now().strftime('%Y-%m-%d') %}
+            {% set today = days | selectattr('datetime', 'search', today_str) | list %}
+            {% set forecast_high = (today[0].temperature | float(-999) | round(0) | int) if today else -999 %}
+            {% set latched = (this.state | int(-999)) if this.attributes.get('high_for_date') == today_str else -999 %}
+            {% set observed = states('sensor.outdoor_temperature') | float(-999) | round(0) | int %}
+            {% set best = [forecast_high, latched, observed] | max %}
+            {{ best if best > -999 else (days[0].temperature | float(0) | round(0) | int) }}
           '';
+          attributes.high_for_date = "{{ now().strftime('%Y-%m-%d') }}";
         }];
       }
     ];
