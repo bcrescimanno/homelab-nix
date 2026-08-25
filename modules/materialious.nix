@@ -129,6 +129,38 @@
 #      and an npm build on a Pi 5 is slow; the hashes and the installCheck greps
 #      are arch-independent, so a local build catches everything except the
 #      compile itself.
+#   6. While you are here, check whether this derivation can be RETIRED — see
+#      the watch list below.
+#
+# -----------------------------------------------------------------------------
+# WATCH LIST: getting off the manual pin (checked 2026-08-25)
+#
+# NIXPKGS — the outcome worth waiting for. Not packaged today. Two attempts,
+# both closed unmerged: nixpkgs issue #328282 (package request, closed
+# 2025-08-30) and PR #362445 ("materialious-desktop: init at 1.6.23", closed
+# 2025-09-20). #362445 was the ELECTRON DESKTOP app and would not have helped
+# regardless — this module serves the web SPA's static tree. If a `materialious`
+# web build lands in nixpkgs, updates arrive through ordinary Saturday
+# flake.lock maintenance and this whole derivation can go away.
+#
+# CONTAINER — available already, and deliberately NOT used. This is a decision,
+# not a pending item. `wardpearce/materialious` exists and renovate.json's
+# custom.regex manager would digest-pin and automerge it like every other image,
+# so switching WOULD solve auto-updating. It costs too much:
+#
+#   1. It cannot carry the two shaka patches below. Neither
+#      `preferredVideoCodecs` nor `defaultBandwidthEstimate` is exposed upstream
+#      in any configurable form — verified against 1.17.11: no VITE_ variable,
+#      no settings entry, no UI toggle, and zero hits for either identifier
+#      anywhere under src/. They exist ONLY because the source is patched before
+#      building. A prebuilt image gives up the measured AV1 -> H.264 startup fix.
+#   2. It moves config back to a runtime `replace_env_vars.sh` sed of VITE_
+#      placeholders, undoing the build-time baking below and re-opening the
+#      `#`-in-unquoted-dotenv truncation trap that installCheckPhase guards.
+#
+# So: revisit the container ONLY if upstream exposes codec/ABR preferences as
+# configuration. That single change flips the trade-off. Until then the manual
+# pin is the price of the codec fix, and it is worth it.
 
 { pkgs, lib, ... }:
 
