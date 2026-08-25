@@ -59,6 +59,33 @@
         http = 4000;    # DoH (/dns-query) + Prometheus metrics (/metrics)
       };
 
+      # ---------------------------------------------------------------------
+      # Force IPv4 for Blocky's own OUTBOUND connections (upstream DoH +
+      # blocklist downloads). This is not a preference — it is load-bearing.
+      #
+      # Both DNS hosts have ULA-only IPv6 (mirkwood fd0a:7e1:5e:1::8,
+      # rivendell ::9). ULA is private and NOT globally routable, but Linux
+      # still tags it `scope global`, so Blocky concludes IPv6 works, resolves
+      # AAAA for big.oisd.nl / phishing.army, dials IPv6 and hangs until the
+      # download timeout. Measured on mirkwood 2026-08-25:
+      #   curl -6 https://phishing.army/...  -> HTTP 000 after 25s (hung)
+      #   curl -4 (same URL, same host)      -> HTTP 200, 3.2MB, 0.26s
+      #
+      # Why this key fixes it, from the blocky 0.34 source: the blocklist
+      # downloader is built as
+      #   lists.NewDownloader(cfg.Loading.Downloads, bootstrap.NewHTTPTransport())
+      # and NewHTTPTransport sets DialContext = bootstrap.dialContext, which
+      # resolves via `connectIPVersion.QTypes()`. "v4" makes that return A
+      # records only, so the downloader never dials IPv6.
+      # Accepted values are dual | v4 | v6 (NOT "ipv4" / "ip4").
+      #
+      # This failed SILENTLY from ~2026-08-24: a running Blocky keeps serving
+      # from cached lists, so the only symptom was list-refresh WARNs in the
+      # journal. It surfaced on 2026-08-25 when a deploy restarted Blocky and
+      # it would not bind port 53 for ~4 min on each host.
+      # ---------------------------------------------------------------------
+      connectIPVersion = "v4";
+
 upstreams = {
         # strict strategy: try unbound first (recursive + DNSSEC), then fall
         # back to DoH. DoH uses port 443 which avoids ISP UDP/53 interception
@@ -189,6 +216,28 @@ upstreams = {
           attempts = 5;
           cooldown = "10s";
         };
+
+        # Serve DNS IMMEDIATELY and load blocklists in the background.
+        #
+        # The default is "blocking", which will not bind port 53 until every
+        # list has downloaded or exhausted `attempts`. With the retry budget
+        # above (5 attempts x 60s timeout + 10s cooldown) a single unreachable
+        # source can hold DNS down for minutes — which is exactly what happened
+        # on 2026-08-25, on both DNS hosts, from the ULA/IPv6 stall above.
+        #
+        # connectIPVersion fixes that specific cause; this makes the class of
+        # failure non-fatal. DNS availability must never depend on a third-party
+        # list host being reachable — hagezi's entire GitHub account vanishing
+        # on 2026-08-09 is the precedent for a source disappearing outright.
+        #
+        # Trade-off: for the first few seconds after a restart Blocky answers
+        # with empty denylists, so a handful of ad domains resolve. That is
+        # strictly better than answering nothing at all. A source that fails
+        # PERMANENTLY still surfaces via the blocky_denylist_cache_entries
+        # alert thresholds rather than by taking DNS down.
+        # Canonical key: `startStrategy` is DEPRECATED in 0.34 and silently
+        # migrated to blocking.loading.strategy — set the real one.
+        loading.strategy = "fast";
       };
 
       # Static entries for machines with DHCP reservations — resolves immediately

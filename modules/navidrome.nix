@@ -48,6 +48,40 @@
     };
   };
 
+  # ---------------------------------------------------------------------------
+  # Wait for the erebor NFS mount before starting.
+  #
+  # The upstream module sets BindPaths=/var/lib/media/music (rbind) for the
+  # sandbox but declares only RequiresMountsFor=/run/navidrome — nothing ties
+  # the unit to the media mount. /var/lib/media is an x-systemd.automount +
+  # noauto NFS mount (hosts/pirateship.nix), so at boot the path is an autofs
+  # trigger that has not been fired yet.
+  #
+  # systemd builds a unit's mount namespace BEFORE any process in it runs, and
+  # namespace setup does NOT trigger autofs. The bind source therefore does not
+  # exist and the unit dies at step NAMESPACE:
+  #   navidrome.service: Failed to set up mount namespacing:
+  #     /var/lib/media/music: No such device
+  #   Failed at step NAMESPACE ... status=226/NAMESPACE
+  # Observed on the 2026-08-25 08:55 boot; NRestarts=0, so nothing retried it
+  # and pirateship simply sat `degraded` for ~7h with music streaming dead.
+  #
+  # Requires= (not just After=) on the .mount unit is deliberate: the mount is
+  # `noauto`, so ordering alone would let navidrome start first and fail exactly
+  # as before. Requiring the real .mount — NOT the .automount — forces systemd
+  # to establish the NFS mount before namespace setup runs.
+  #
+  # Depending on the .mount does not defeat the automount for anything else; it
+  # only means this one unit pulls the mount up eagerly, which it needs anyway.
+  # navidrome is the only NATIVE unit binding this path (the arr stack reaches
+  # it through podman volumes, which resolve at container start, not namespace
+  # setup) — verified on pirateship 2026-08-25.
+  # ---------------------------------------------------------------------------
+  systemd.services.navidrome = {
+    requires = [ "var-lib-media.mount" ];
+    after    = [ "var-lib-media.mount" ];
+  };
+
   networking.firewall.allowedTCPPorts = [ 4533 ];
 
   homelab.postUpgradeCheck.services = [ "navidrome" ];
