@@ -98,7 +98,35 @@
         });
       };
 
-      commonOverlays = [ glancesOverlay ];
+      # nixpkgs bumped elmPackages.elm 0.19.1 -> 0.19.2 on 2026-08-24 (#541199),
+      # but alertmanager 0.33.1's ui/app/elm.json still pins "0.19.1". Elm matches
+      # that field EXACTLY and aborts with "ELM VERSION MISMATCH", so
+      # alertmanager-elm-ui fails to compile and takes mirkwood's whole closure
+      # with it. This is an upstream nixpkgs regression, not arch-specific —
+      # prometheus-alertmanager is broken on master on every platform.
+      #
+      # 0.19.2 is a performance-only patch release with no language changes, so
+      # retargeting the pin is safe. elmUi is a `let` binding inside
+      # package.nix, so overrideAttrs can't reach it — but it is re-exported as
+      # passthru.elmUi, so patch that and re-point postPatch at the result.
+      #
+      # Remove once nixpkgs fixes alertmanager (watch pkgs/by-name/pr/prometheus-alertmanager).
+      alertmanagerElmOverlay = final: prev:
+        let
+          patchedElmUi = prev.prometheus-alertmanager.elmUi.overrideAttrs (oldAttrs: {
+            postPatch = (oldAttrs.postPatch or "") + ''
+              substituteInPlace elm.json \
+                --replace-fail '"elm-version": "0.19.1"' '"elm-version": "0.19.2"'
+            '';
+          });
+        in
+        {
+          prometheus-alertmanager = prev.prometheus-alertmanager.overrideAttrs (_: {
+            postPatch = "cp -r ${patchedElmUi}/. ui/app/dist";
+          });
+        };
+
+      commonOverlays = [ glancesOverlay alertmanagerElmOverlay ];
       piOverlays = commonOverlays ++ [ prometheusOverlay musicAssistantOverlay ];
 
       piModules = extraModules: [
