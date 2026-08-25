@@ -53,10 +53,10 @@
             };
           }
           {
-            Piped = {
-              href = "https://piped.theshire.io";
-              description = "YouTube frontend";
-              icon = "piped.png";
+            YouTube = {
+              href = "https://yt.theshire.io";
+              description = "Invidious (Materialious UI)";
+              icon = "invidious.png";
             };
           }
           {

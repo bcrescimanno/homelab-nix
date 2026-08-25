@@ -244,7 +244,6 @@
           ./modules/minecraft.nix
           ./modules/jellyfin.nix
           ./modules/attic.nix
-          ./modules/piped.nix
           ./modules/invidious.nix
           ./hosts/orthanc.nix
         ];

@@ -72,7 +72,7 @@ Shell function in dotfiles `home/common.nix`. deploy-rs config in `flake.nix` un
   Sketch of the tiers (to be argued out properly when this is picked up):
   - **Tier 0 — never shed**: rivendell (DNS secondary, NUT itself, HA, ntfy, Caddy) and mirkwood (primary DNS). Losing DNS makes the whole house look broken.
   - **Tier 1 — shed immediately on `ONBATT`**: the media stack. Pause/stop qBittorrent + SABnzbd transfers, stop Jellyfin transcodes, suspend the arr containers, stop recyclarr/music-sync timers. Pure discretionary load.
-  - **Tier 2 — shed early**: orthanc's non-essential workloads (Piped/Invidious, Minecraft servers, attic, CI runner). Orthanc is a 5950X/32GB box and is by far the biggest single draw on the UPS.
+  - **Tier 2 — shed early**: orthanc's non-essential workloads (Invidious, Minecraft servers, attic, CI runner). Orthanc is a 5950X/32GB box and is by far the biggest single draw on the UPS.
   - **Tier 3 — graceful shutdown as the battery drains**: full `poweroff` for pirateship and orthanc well before `battery.charge.low` (currently 10%), leaving the DNS pair last.
 
   Open questions to settle first:

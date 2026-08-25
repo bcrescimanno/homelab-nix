@@ -1,21 +1,37 @@
 # modules/invidious.nix — Invidious: privacy-respecting YouTube frontend
 #
 # -----------------------------------------------------------------------------
-# STATUS 2026-08-01: TRIAL, running SIDE BY SIDE with Piped.
+# STATUS 2026-08-25: PROMOTED. This is the YouTube frontend. Piped is retired.
 #
-# modules/piped.nix documents why Piped's playback is dead (YouTube PoToken/SABR
-# defeating a dormant NewPipeExtractor). This module is the candidate
-# replacement. Piped is deliberately left running and untouched — different
-# ports, different vhost, different database — so the two can be compared on the
-# same subscriptions before anything is removed. Retire Piped ONLY after
-# playback here has been verified over several days; see the exit criteria at
-# the bottom of this comment.
+# Piped ran side by side with this from 2026-08-01 until its decommission on
+# 2026-08-25: modules/piped.nix, its four containers (postgres/backend/frontend/
+# proxy), the piped* Caddy vhosts, the Homepage tile, and the piped-api ingress
+# on orthanc's Cloudflare Tunnel are all gone. Piped's playback was dead —
+# YouTube's PoToken/SABR enforcement defeating a NewPipeExtractor that upstream
+# had stopped maintaining (last Piped-Backend commit 2026-05-29, image built
+# 2026-03-26, /streams/<id> returning audioStreams=0 on every video sampled).
+# The exit criteria that gated this retirement are recorded at the bottom of
+# this comment; all three were met.
+#
+# WHAT SURVIVES PIPED, and must not be "cleaned up" as leftovers:
+#   - orthanc's Cloudflare Tunnel, still ATTRIBUTE-NAMED "piped-api" in
+#     hosts/orthanc.nix. It now carries only stream.theshire.io (Navidrome) and
+#     the name is load-bearing in cloudflared.yml. See the comment there.
+#   - The stock Invidious UI at invidious.theshire.io. Materialious on
+#     yt.theshire.io is the UI actually used; the stock UI is the same service
+#     and the same database, and is the control that distinguishes a frontend
+#     bug from a companion/extraction failure. It costs nothing. Keep it.
+#
+# The DAY ONE user-facing frontend is Materialious (modules/materialious.nix),
+# not the stock UI — read that module's header before touching this one's
+# `domain`, which points at yt.theshire.io on purpose.
 #
 # -----------------------------------------------------------------------------
-# CORRECTION TO THE EARLIER ASSESSMENT: this is NOT a fully-native replacement.
+# THIS IS NOT A FULLY-NATIVE REPLACEMENT.
 #
-# The "replace 4 containers with a native service" framing in the piped.nix note
-# was wrong on the one point that decides the whole thing. Invidious ALSO cannot
+# The "replace 4 containers with a native service" framing that originally
+# justified this migration was wrong on the one point that decides the whole
+# thing. Invidious ALSO cannot
 # play video on its own any more. Since 2025 it delegates all stream retrieval
 # to `invidious-companion`, a separate Deno service that mints the po_token /
 # visitor_data pair YouTube now demands. Without it Invidious loads, searches,
@@ -62,18 +78,18 @@
 # vhost and a second firewall hole for a latency win we have no evidence we
 # need. Revisit only if playback is measurably slow.
 #
-# Unlike Piped, NO Cloudflare Tunnel is required: Invidious polls YouTube for
+# NO Cloudflare Tunnel is required by this module: Invidious POLLS YouTube for
 # subscription updates rather than receiving PubSubHubbub callbacks, so nothing
-# inbound from the public internet is needed. Leave the existing piped-api
-# tunnel in hosts/orthanc.nix alone until Piped is actually retired.
+# inbound from the public internet is needed. This is why retiring Piped let the
+# tunnel's piped-api ingress go — the tunnel itself stayed, for Navidrome.
 #
 # Required sops secret (secrets/orthanc.yaml):
 #   invidious_companion_key — 16 chars EXACTLY (upstream rejects any other
 #                             length). Generate with `pwgen -s 16 1`.
 #
-# EXIT CRITERIA before retiring Piped (modules/piped.nix + its 4 containers,
-# the piped-api Cloudflare tunnel, and the docker.io/postgres pin in
-# renovate.json):
+# EXIT CRITERIA that gated retiring Piped — ALL MET, retired 2026-08-25.
+# Kept because they are the same criteria to re-apply if playback here ever
+# degrades and a replacement is evaluated:
 #   1. Video playback works in the browser, on more than one video, on the
 #      device(s) actually used.
 #   2. Subscriptions imported and the feed populating.
@@ -95,11 +111,18 @@
 # (1226ms first, ~780µs after). Not a blocker; worth re-checking after a version
 # bump.
 #
-# If promoting this past the trial, still to do: Homepage tile, a Gatus monitor,
-# and a decision on backing up the new native PostgreSQL (subscriptions live
-# there — a restic snapshot of a live data dir is not crash-consistent, so it
-# probably wants a pg_dump pre-hook rather than a raw path in
-# homelab.backup.paths).
+# PROMOTION CHECKLIST: Homepage tile DONE (modules/homepage.nix, pointing at
+# yt.theshire.io). Gatus monitors DONE — "Invidious" plus "Invidious playback",
+# the latter asserting adaptiveFormats length AND the presence of an audio/*
+# entry, because zero audio streams is exactly how Piped died and a status-only
+# check calls that healthy.
+#
+# STILL OPEN: nothing backs up the native PostgreSQL, and SUBSCRIPTIONS LIVE
+# THERE. A restic snapshot of a live data dir is not crash-consistent, so this
+# wants a pg_dump pre-hook rather than a raw path in homelab.backup.paths.
+# Piped's own database was never backed up either, so this is not a regression
+# from the migration — it is an inherited gap that now holds the only copy of
+# the subscription list.
 
 { config, pkgs, lib, ... }:
 
