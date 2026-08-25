@@ -1,16 +1,16 @@
 # modules/materialious.nix — Materialious: Material Design frontend for Invidious
 #
 # -----------------------------------------------------------------------------
-# STATUS 2026-08-01: TRIAL, alongside the stock Invidious UI.
+# STATUS 2026-08-25: PROMOTED. This is the YouTube frontend actually used, at
+# yt.theshire.io. Piped is decommissioned and Invidious is out of trial.
 #
 # Materialious is a CLIENT-SIDE app, not a server. It is a SvelteKit SPA that
 # talks to the Invidious HTTP API from the browser. modules/invidious.nix is
-# completely unchanged by this — same service, same companion, same database,
-# same vhost — and the stock Invidious UI stays reachable at
-# invidious.theshire.io. That matters: Invidious is itself still on trial (see
-# the exit criteria in invidious.nix), and if playback breaks a week from now
-# the stock UI is the control that says whether it is companion's po_token or
-# this frontend.
+# completely unchanged by this — same service, same companion, same database —
+# and the stock Invidious UI stays reachable at invidious.theshire.io. Keep it:
+# it is the same service and the same database, so it costs nothing, and it is
+# the only cheap way to tell a Materialious bug apart from a companion/po_token
+# or extraction failure. That distinction has already mattered twice.
 #
 # -----------------------------------------------------------------------------
 # WHY THIS IS NOT A CONTAINER
@@ -89,9 +89,11 @@
 #     requests get none of that treatment.
 #
 # The stock Invidious UI at invidious.theshire.io is untouched and still works
-# as the control for the Invidious trial. Its vhost keeps a CORS block that
-# nothing needs any more; it is left in place for one release as a rollback
-# path and should be deleted once this is settled.
+# as the diagnostic control described at the top. Note that the CORS block on
+# the yt vhost in modules/caddy.nix is what KEEPS it working — Invidious'
+# `domain` is yt.theshire.io, so the stock UI receives yt URLs for its own media
+# and is itself the cross-origin consumer. It is NOT dead weight from the
+# two-origin era and must not be deleted as such.
 #
 # CONSEQUENCE ON FIRST DEPLOY: the Invidious session cookie is per-origin, so a
 # signed-in user must authorise once more under this hostname. The token itself
@@ -99,15 +101,34 @@
 # so nothing else about the flow changes.
 #
 # -----------------------------------------------------------------------------
-# UPGRADING (manual — Renovate's custom manager only matches container images)
+# UPGRADING IS FULLY MANUAL, AND NOTHING WILL REMIND YOU.
+#
+# renovate.json sets enabledManagers to ["nix", "custom.regex"]. The `nix`
+# manager only updates flake.lock inputs, and the custom regex only matches
+# `image = "repo:tag@digest"`. A `fetchFromGitHub { tag = version; }` is matched
+# by neither, so this pin is invisible to Renovate and simply sits at whatever
+# version it was last set to. It sat at 1.17.6 from 2026-07-29 to 2026-08-25
+# while upstream shipped five releases.
+#
+# Renovate COULD open the version PR via a second custom manager with a
+# `# renovate: datasource=github-tags` comment, but it cannot compute `hash` or
+# `npmDepsHash`, so every such PR would fail CI and need the steps below by hand
+# anyway. Left manual deliberately; check upstream releases when you notice
+# something missing.
 #
 #   1. bump `version`
 #   2. set `hash` to lib.fakeHash, build, take the "got:" value
 #   3. nix run nixpkgs#prefetch-npm-deps -- <checkout>/materialious/package-lock.json
 #      -> npmDepsHash
-#
-# Re-read this header's three build workarounds after any bump; they are all
-# upstream-behaviour-dependent.
+#   4. Re-read the build workarounds below — they are ALL
+#      upstream-behaviour-dependent, and one of them (the player race condition)
+#      was already made redundant by an upstream fix. --replace-fail means a
+#      moved anchor breaks the build loudly, but a workaround that is no longer
+#      NEEDED fails silently by simply continuing to apply.
+#   5. Build for x86_64 locally before pushing. rivendell builds this on aarch64
+#      and an npm build on a Pi 5 is slow; the hashes and the installCheck greps
+#      are arch-independent, so a local build catches everything except the
+#      compile itself.
 
 { pkgs, lib, ... }:
 
@@ -120,18 +141,18 @@ let
 
   materialious = pkgs.buildNpmPackage rec {
     pname = "materialious";
-    version = "1.17.6";
+    version = "1.17.11";
 
     src = pkgs.fetchFromGitHub {
       owner = "Materialious";
       repo = "Materialious";
       tag = version;
-      hash = "sha256-j8XQtBN1K0TDiK5nn7I5o/tYUybHW0gDy3Hns0a3xyE=";
+      hash = "sha256-8JR+A5jZRqcw4nPPBfbP9akBtlP3nViAJ1hM2KHhatk=";
     };
 
     sourceRoot = "${src.name}/materialious";
 
-    npmDepsHash = "sha256-schUn0ZNAen2iGtrQ7ohA8WVT2/OJbCSbYEKpHMOHPg=";
+    npmDepsHash = "sha256-o8LuVN9CAVbErMVz4RbyDQIK91IhGEnsBTeT8MX/ERY=";
 
     # WORKAROUND 1 — `sharp` (a devDependency reached via @capacitor/assets, and
     # used only to generate mobile app icons) has a postinstall that downloads a
@@ -144,58 +165,37 @@ let
     # need it. Verified: the build completes and the output is complete.
     npmFlags = [ "--ignore-scripts" ];
 
-    # UPSTREAM BUG — the player never mounts on a plain web build.
+    # UPSTREAM BUG, FIXED UPSTREAM IN 1.17.7 — patch removed at that bump.
     #
-    # watch/[slug]/+page.svelte starts two independent promises and only ONE of
-    # them defines `data.video`:
+    # Through 1.17.6 the player never mounted on a plain web build.
+    # watch/[slug]/+page.svelte started two independent promises and only ONE of
+    # them defined `data.video`: `getWatchPage` did, while the `playerStream`
+    # handler read `data.video.premium`. `getWatchPlayer` awaits
+    # `continueVideoPlayer()`, every branch of which is gated on
+    # `isUnrestrictedPlatform()` — false whenever there is no own backend and no
+    # Capacitor, i.e. exactly this legacy Invidious-only web build. So it
+    # resolved null in a microtask while `getWatchPage` was still waiting on a
+    # real /api/v1/videos round trip, the player handler ran FIRST, and it threw
+    # `Cannot read properties of undefined (reading 'premium')` — aborting the
+    # rest of the handler, which is where the player is actually mounted.
     #
-    #   data.streamed.page?.then(r => { data = r; ... })   // defines data.video
-    #   playerStream?.then(r => { ... data.video.premium ... })
+    # The failure was silent and extremely misleading: metadata, comments,
+    # thumbnails and the whole UI rendered perfectly, with no failed requests
+    # and no non-2xx responses; there was simply no <video> element and no DASH
+    # request ever made. It looked like a playback/CORS problem and was neither.
     #
-    # `getWatchPlayer` awaits `continueVideoPlayer()`, and every branch of that
-    # function is gated on `isUnrestrictedPlatform()` — false whenever there is
-    # no own backend and no Capacitor, i.e. exactly this legacy Invidious-only
-    # web build. So it returns null in a microtask while `getWatchPage` is still
-    # waiting on a real /api/v1/videos round trip. The player handler therefore
-    # runs FIRST, `data.video` is still undefined, and it throws
-    # `Cannot read properties of undefined (reading 'premium')`. That aborts the
-    # rest of the handler — which is where the player is actually mounted.
+    # Upstream shipped its own fix in 1.17.7 ("Fix race condition", 2026-08-02),
+    # and it is strictly better than the one carried here: it awaits `pageStream`
+    # only when `data.video` is still unset, catches a failed page load instead
+    # of hanging on it, and re-guards `data.video &&` afterwards. Verified
+    # present at 1.17.11 in +page.svelte. Both local substitutions are therefore
+    # deleted rather than re-anchored — keeping them would now redeclare
+    # `pageStream`, which upstream already declares.
     #
-    # The failure is silent and extremely misleading: metadata, comments,
-    # thumbnails and the whole UI render perfectly, there are no failed
-    # requests and no non-2xx responses; there is simply no <video> element and
-    # no DASH request ever made. It looks like a playback/CORS problem and is
-    # neither.
-    #
-    # The fix orders the two: capture the page promise (it cannot be read off
-    # `data` later, because `data` is reassigned to the page result) and await
-    # it before the player handler touches `data.video`. Registration order
-    # guarantees the assignment happens first.
-    #
-    # Measured before/after with headless chromium: before, zero manifest
-    # requests; after, HEAD+GET of the dash manifest followed by real
-    # /companion/videoplayback bytes.
-    #
-    # Upstream is unaware as of 2026-08-01 (no matching issue). Re-check on
-    # every version bump — --replace-fail means the build breaks loudly if
-    # these lines move, which is the intended behaviour.
-    # Both replacements are kept on a SINGLE line each — deliberately. Embedding
-    # the newline+tab of the surrounding .svelte file inside a Nix '' string
-    # makes the patch depend on this file's own indentation depth, which is a
-    # trap waiting for the next person who reindents the module.
+    # DO NOT reintroduce this patch on a future bump. If the player stops
+    # mounting again, confirm against the current source first; this specific
+    # ordering bug is fixed.
     postPatch = ''
-      W='src/routes/(app)/watch/[slug]/+page.svelte'
-
-      substituteInPlace "$W" \
-        --replace-fail \
-          'const playerStream = data.streamed.player;' \
-          'const playerStream = data.streamed.player; const pageStream = data.streamed.page;'
-
-      substituteInPlace "$W" \
-        --replace-fail \
-          'playerStream?.then((playerResult: any) => {' \
-          'playerStream?.then(async (playerResult: any) => { await pageStream;'
-
       # PREFER H.264 OVER AV1 — a startup-latency fix, not a quality change.
       #
       # Invidious offers each resolution twice, as AV1 and as H.264 (no VP9).
