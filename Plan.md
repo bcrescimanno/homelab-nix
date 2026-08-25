@@ -119,6 +119,40 @@ erebor is online (10G SFP+ at 10.0.1.22, 1G ethernet at 10.0.1.21 for management
 - [ ] **Node-RED** — visual flow editor for HA automations. More powerful than HA's built-in engine for complex logic. Container on rivendell alongside HA.
 - [ ] **HomeKit migration** — inventory all HomeKit-only devices; migrate to HomeKit-through-HA (HA as HomeKit bridge). Goal: single automation pane in HA while keeping Siri usable.
 
+### Watch list — get Materialious onto an auto-updating source
+
+`modules/materialious.nix` pins a `fetchFromGitHub` tag that **no automation
+watches**, so it silently sat five releases behind (2026-07-29 → 2026-08-25).
+Checked 2026-08-25; recheck when a bump feels overdue.
+
+- [ ] **nixpkgs package — the outcome we actually want.** Not packaged today.
+  Two attempts, both closed unmerged: issue #328282 (package request, closed
+  2025-08-30) and PR #362445 (`materialious-desktop: init at 1.6.23`, closed
+  2025-09-20). Note #362445 was the **Electron desktop app**, which would not
+  help — we serve the web SPA's static tree. What we need is the `materialious`
+  web build. If it lands, we inherit updates through the ordinary Saturday
+  `flake.lock` maintenance and the local derivation goes away entirely.
+  Recheck: `nix search nixpkgs materialious`, plus open nixpkgs PRs.
+
+- [ ] **Container — already available, and NOT the answer. Decided, not pending.**
+  `wardpearce/materialious` exists today and Renovate's `custom.regex` manager
+  would digest-pin and automerge it like every other image, so "wait for a
+  container" is already satisfied. The reason we don't use it is cost, not
+  availability:
+
+  1. **It cannot carry our two shaka patches.** `preferredVideoCodecs: ['avc1']`
+     and `defaultBandwidthEstimate` do not exist upstream in ANY configurable
+     form — verified against 1.17.11: no env var, no settings entry, no UI
+     toggle, zero hits for either identifier anywhere under `src/`. They exist
+     only because we patch the source before building. A prebuilt image means
+     giving up the measured AV1→H.264 startup fix (#524).
+  2. It returns config to a `replace_env_vars.sh` sed of VITE_ placeholders at
+     container start, replacing build-time baking — and re-opens the `#`-in-an-
+     unquoted-dotenv-value truncation trap that `installCheckPhase` guards.
+
+  Revisit ONLY if upstream exposes codec/ABR preferences as configuration. That
+  is the single condition that flips this decision.
+
 ---
 
 ## Orthanc: Power Optimization + Service Migration
