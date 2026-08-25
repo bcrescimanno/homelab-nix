@@ -108,23 +108,17 @@ in
       # orthanc backends
       "jellyfin.theshire.io".extraConfig         = proxy "orthanc.home.theshire.io:8096";
       "media.theshire.io".extraConfig            = proxy "orthanc.home.theshire.io:8096";
-      "piped.theshire.io".extraConfig            = proxy "orthanc.home.theshire.io:8181";
-      "piped-api.theshire.io".extraConfig        = proxy "orthanc.home.theshire.io:8180";
-      # flush_interval -1 disables Caddy's response buffering so video chunks are
-      # forwarded to the client immediately. Without this, Firefox's MSE times out
-      # waiting for the initial data and aborts the request before playback starts.
-      # WebKit is more tolerant of buffering delays, which is why Safari/Orion work.
-      "piped-proxy.theshire.io".extraConfig      = ''
-        reverse_proxy orthanc.home.theshire.io:8182 {
-          flush_interval -1
-        }
-        ${tlsConfig}
-      '';
-      # Invidious — trial replacement for Piped, running alongside it.
-      # flush_interval -1 for the same reason as piped-proxy above: video is
-      # streamed through this vhost (invidious proxies its companion rather than
-      # exposing it), and Caddy's default response buffering makes Firefox's MSE
-      # time out before playback starts.
+      # Invidious — the stock UI, kept as the diagnostic control for the
+      # Materialious frontend on yt.theshire.io below. Same service, same
+      # database, so it costs nothing to keep and it is the only way to tell a
+      # frontend bug from a companion/extraction failure.
+      #
+      # flush_interval -1 disables Caddy's response buffering so video chunks
+      # are forwarded to the client immediately: video is streamed through this
+      # vhost (invidious proxies its companion rather than exposing it), and the
+      # default buffering makes Firefox's MSE time out before playback starts.
+      # WebKit is more tolerant of it, which is why Safari/Orion appeared to
+      # work while Firefox did not.
       #
       # NO CORS BLOCK HERE ANY MORE — it moved to the yt vhost below, because
       # the direction of the cross-origin request reversed. Invidious' `domain`
@@ -158,7 +152,8 @@ in
       # and needs none of it. It is for the STOCK Invidious UI at
       # invidious.theshire.io, which since the `domain` change receives
       # yt.theshire.io URLs for its own media and is therefore the cross-origin
-      # consumer. Without it the stock UI, our control for the Invidious trial,
+      # consumer. Without it the stock UI — kept as the diagnostic control that
+      # separates a Materialious bug from a companion/extraction failure —
       # would break.
       #
       # `Range` is mandatory: Invidious' DASH uses <SegmentBase> with

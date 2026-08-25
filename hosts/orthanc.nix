@@ -143,10 +143,11 @@
       # also pushes its own outputs to the cache).
       attic_push_token = {};
 
-      # Cloudflare Tunnel credentials for piped-backend WebSub (PubSubHubbub).
-      # JSON file downloaded from Cloudflare Zero Trust → Networks → Tunnels.
-      # Allows YouTube's hub to POST subscription notifications to piped-api.theshire.io
-      # without requiring any inbound ports on the UDM Pro.
+      # Cloudflare Tunnel credentials — JSON downloaded from Cloudflare Zero
+      # Trust → Networks → Tunnels. The "piped" in the name is HISTORICAL: the
+      # tunnel was created for piped-backend's PubSubHubbub callbacks, Piped is
+      # retired, and its only remaining ingress is Navidrome. Renaming this key
+      # means renaming the tunnel in Cloudflare too — see the tunnel block below.
       cloudflared_piped_credentials = {
         owner = "cloudflared";
       };
@@ -157,25 +158,31 @@
   };
 
   # ---------------------------------------------------------------------------
-  # Cloudflare Tunnel — piped-backend WebSub ingress
+  # Cloudflare Tunnel — external ingress for Navidrome
   # ---------------------------------------------------------------------------
   #
-  # Allows YouTube's PubSubHubbub hub to reach piped-backend at
-  # piped-api.theshire.io without opening any inbound ports on the UDM Pro.
-  # cloudflared opens an outbound connection to Cloudflare's edge; the hub
-  # POSTs new video notifications inbound through that tunnel.
+  # cloudflared opens an OUTBOUND connection to Cloudflare's edge, so external
+  # clients (Amperfy on cellular) reach stream.theshire.io without any inbound
+  # port on the UDM Pro. Internal clients keep hitting Caddy on rivendell via
+  # split-horizon DNS; only the public path goes through here.
   #
-  # DNS: after first deploy, create a CNAME in the Cloudflare dashboard:
-  #   piped-api  →  <tunnel-id>.cfargotunnel.com  (Proxied)
-  # This makes piped-api.theshire.io publicly reachable via Cloudflare.
-  # Internal clients continue to hit Caddy on rivendell via split-horizon DNS.
+  # THE TUNNEL IS STILL NAMED "piped-api" AND THAT IS DELIBERATE. It was created
+  # for piped-backend's PubSubHubbub callbacks; Piped is retired but the name is
+  # load-bearing — nixpkgs writes the attribute name into cloudflared.yml as
+  # `tunnel: piped-api` (the ExecStart passes no tunnel argument), and cloudflared
+  # matches that against the tunnel's real name in Cloudflare. Renaming the
+  # attribute alone breaks external Navidrome access. To rename properly:
+  # rename the tunnel in the Cloudflare dashboard FIRST, then this attribute,
+  # then the sops key above.
+  #
+  # DNS in Cloudflare: `stream` → <tunnel-id>.cfargotunnel.com (Proxied).
+  # The `piped-api` CNAME that pointed at this same tunnel is dead — delete it.
 
   services.cloudflared = {
     enable = true;
     tunnels."piped-api" = {
       credentialsFile = config.sops.secrets.cloudflared_piped_credentials.path;
-      ingress."piped-api.theshire.io" = "http://localhost:8180";
-      ingress."stream.theshire.io"    = "http://pirateship.home.theshire.io:4533";
+      ingress."stream.theshire.io" = "http://pirateship.home.theshire.io:4533";
       default = "http_status:404";
     };
   };
