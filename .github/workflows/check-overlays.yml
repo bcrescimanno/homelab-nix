@@ -1,0 +1,40 @@
+name: Overlay expiry probe
+
+# Asks weekly whether each temporary overlay in flake.nix can be deleted yet, by
+# building the package UNPATCHED against the current lock. A clean build means
+# the upstream bug is fixed and the workaround is now dead weight.
+#
+# RUNS ON RIVENDELL (aarch64) because three of the four overlays work around
+# failures that only reproduce there — qemu-emulation races, aarch64 psutil
+# topology, torch QNNPACK. A clean x86_64 build would say nothing about whether
+# those patches are still load-bearing, so the probe skips them loudly rather
+# than reporting a false all-clear.
+#
+# Sunday, deliberately: lockFileMaintenance lands Saturday, so this asks the
+# question against the freshest nixpkgs available, and it stays clear of the
+# Wednesday refresh-pins slot so the two never contend for a runner.
+#
+# This is the SLOWEST scheduled job in the repo — four from-source builds
+# including music-assistant's torch test suite. That is why it is weekly, why
+# each probe is individually timeboxed (a heavy package cannot starve the rest),
+# and why nix-daemon on rivendell runs nice+idle with max-jobs=1.
+#
+# It never fails the workflow on a finding. "Droppable" is good news and a red
+# workflow for good news trains people to ignore it; the ntfy digest is the
+# signal, and it only fires when there is something to delete.
+
+on:
+  schedule:
+    - cron: '0 14 * * 0'
+  workflow_dispatch:
+
+jobs:
+  probe:
+    name: Probe unpatched builds
+    runs-on: [self-hosted, Linux, ARM64, nix-builder]
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe overlays
+        run: |
+          ./scripts/check-overlays --timeout 2700 --ntfy http://10.0.1.9:2586/homelab
