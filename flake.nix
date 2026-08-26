@@ -249,6 +249,7 @@
           ./modules/nut.nix
           ./modules/ntfy.nix
           ./modules/gatus.nix
+          ./modules/flake-freshness.nix
           ./modules/music-assistant.nix
           # github-runners.nix is not in nixos-raspberrypi's default module set
           "${nixpkgs}/nixos/modules/services/continuous-integration/github-runners.nix"
