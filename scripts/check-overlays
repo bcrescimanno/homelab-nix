@@ -55,21 +55,42 @@ ARCH="${SYSTEM%%-*}"
 echo "${CYAN}Probing unpatched builds on ${SYSTEM}${NC}"
 echo
 
-WORKAROUNDS="$(nix eval --json .#overlayWorkarounds 2>/dev/null)" \
+# Read the probe list with `nix eval` and nothing else. The github-runner
+# service PATH is built from its extraPackages (nix, git, openssh) and does NOT
+# include /run/current-system/sw/bin, so python3 and jq are absent there even
+# though they are installed on the host. An earlier version parsed this JSON
+# with python3, got "command not found", and printed a clean all-empty summary
+# having probed nothing — the exact failure this whole module exists to stop.
+names="$(nix eval --raw .#overlayWorkarounds \
+  --apply 'ws: builtins.concatStringsSep " " (builtins.attrNames ws)' 2>/dev/null)" \
   || { echo "${RED}could not read .#overlayWorkarounds from the flake${NC}" >&2; exit 1; }
 
 DROPPABLE=()
 NEEDED=()
 SKIPPED=()
 INCONCLUSIVE=()
+PROBED=0
 
-names="$(printf '%s' "$WORKAROUNDS" | python3 -c 'import json,sys; print("\n".join(sorted(json.load(sys.stdin))))')"
+# An empty list is never a valid answer: flake.nix has overlays, so it has
+# entries. Reaching the summary with nothing probed means the reader broke, and
+# that must be loud rather than a tidy "nothing to report".
+if [[ -z "${names// /}" ]]; then
+  echo "${RED}✗ .#overlayWorkarounds resolved to nothing.${NC}" >&2
+  echo "  Refusing to report an all-clear for zero probes." >&2
+  exit 1
+fi
 
 for name in $names; do
   [[ -n "$ONLY" && "$ONLY" != "$name" ]] && continue
 
-  want="$(printf '%s' "$WORKAROUNDS" | python3 -c "import json,sys; print(json.load(sys.stdin)['$name']['arch'])")"
-  note="$(printf '%s' "$WORKAROUNDS" | python3 -c "import json,sys; print(json.load(sys.stdin)['$name']['note'])")"
+  want="$(nix eval --raw ".#overlayWorkarounds.${name}.arch" 2>/dev/null)"
+  note="$(nix eval --raw ".#overlayWorkarounds.${name}.note" 2>/dev/null)"
+  if [[ -z "$want" ]]; then
+    echo "  ${RED}✗${NC} ${name} — could not read its arch; treating as unprobed"
+    INCONCLUSIVE+=("$name (unreadable)")
+    continue
+  fi
+  PROBED=$((PROBED + 1))
 
   # A probe on the wrong arch answers a different question than the one the
   # overlay exists for — three of these four reproduce only on aarch64, so a
@@ -101,12 +122,20 @@ for name in $names; do
   fi
 done
 
+if [[ $PROBED -eq 0 && -z "$ONLY" ]]; then
+  echo
+  echo "${RED}✗ probed 0 of the declared overlays — the probe itself is broken.${NC}" >&2
+  echo "  A summary of four empty lists is not an all-clear." >&2
+  exit 1
+fi
+
 echo
 echo "${CYAN}── summary ──${NC}"
 printf '  still needed : %s\n' "${NEEDED[*]:-none}"
 printf '  droppable    : %s\n' "${DROPPABLE[*]:-none}"
 printf '  skipped      : %s\n' "${SKIPPED[*]:-none}"
 printf '  inconclusive : %s\n' "${INCONCLUSIVE[*]:-none}"
+printf '  probed       : %s of %s declared\n' "$PROBED" "$(echo $names | wc -w)"
 
 if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
   {
