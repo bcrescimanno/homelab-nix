@@ -50,6 +50,16 @@ done
 
 RED=$'\033[0;31m'; GREEN=$'\033[0;32m'; YELLOW=$'\033[1;33m'; CYAN=$'\033[0;36m'; NC=$'\033[0m'
 
+# curl is NOT on the github-runner PATH — extraPackages is (nix, git, openssh)
+# and /run/current-system/sw/bin is not inherited. coreutils and bash come from
+# the runner's own environment, which is why `timeout` and `wc` work here and
+# curl does not. Resolve it once, through nix if the host has not put it on PATH.
+if command -v curl >/dev/null 2>&1; then
+  CURL=(curl)
+else
+  CURL=(nix run nixpkgs#curl --)
+fi
+
 SYSTEM="$(nix eval --raw --impure --expr 'builtins.currentSystem')"
 ARCH="${SYSTEM%%-*}"
 echo "${CYAN}Probing unpatched builds on ${SYSTEM}${NC}"
@@ -154,12 +164,23 @@ fi
 # how people learn to swipe the topic away, and this shares the homelab topic
 # with backup and upgrade failures.
 if [[ -n "$NTFY" && ${#DROPPABLE[@]} -gt 0 ]]; then
-  curl -s --connect-timeout 5 --max-time 30 --retry 3 --retry-delay 10 --retry-all-errors \
-    -H "Title: nixpkgs fixed $( [[ ${#DROPPABLE[@]} -eq 1 ]] && echo "an overlay" || echo "${#DROPPABLE[@]} overlays" )" \
-    -H "Priority: 2" -H "Tags: broom" \
-    -d "These now build unpatched on ${SYSTEM} and their overlays can be deleted from flake.nix: ${DROPPABLE[*]}" \
-    "$NTFY" >/dev/null || true
-  echo "  (ntfy digest sent)"
+  # Report what HAPPENED, not what was attempted. The previous version ended in
+  # `|| true` and then unconditionally printed "(ntfy digest sent)". On the first
+  # real run curl was missing, the send failed, and the script announced success
+  # anyway — a finding that nobody would have been told about, over a channel
+  # that claimed to have told them.
+  if "${CURL[@]}" -sS --fail-with-body \
+      --connect-timeout 5 --max-time 30 --retry 3 --retry-delay 10 --retry-all-errors \
+      -H "Title: nixpkgs fixed $( [[ ${#DROPPABLE[@]} -eq 1 ]] && echo "an overlay" || echo "${#DROPPABLE[@]} overlays" )" \
+      -H "Priority: 2" -H "Tags: broom" \
+      -d "These now build unpatched on ${SYSTEM} and their overlays can be deleted from flake.nix: ${DROPPABLE[*]}" \
+      "$NTFY" >/dev/null; then
+    echo "  ntfy digest sent"
+  else
+    echo "${RED}✗ could not send the ntfy digest — the finding above was NOT delivered.${NC}" >&2
+    echo "  droppable: ${DROPPABLE[*]}" >&2
+    exit 1
+  fi
 fi
 
 exit 0
