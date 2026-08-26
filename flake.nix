@@ -66,12 +66,6 @@
       r2AccountId = "e10a637fb9ef49068ff75e106b7a7c19";
       brianSshKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBEjcQUPpiMkeQJFlkrERftafbT/CpjaeRzbHUv/0P2W";
 
-      # prometheus-3.11.2 TestQueryLog race: HTTP server starts too slowly under qemu aarch64
-      # emulation — "connection refused" on 127.0.0.1:34589 before server is ready.
-      prometheusOverlay = final: prev: {
-        prometheus = prev.prometheus.overrideAttrs (_: { doCheck = false; });
-      };
-
       # glances test failures in the Nix sandbox:
       # - test_phys_core_returns_int: psutil.cpu_count(logical=False) returns None on aarch64 (no CPU topology)
       # - test_api.py, test_memoryleak.py: psutil.net_if_stats() → ioctl(SIOCETHTOOL) fails in sandbox
@@ -134,7 +128,7 @@
         };
 
       commonOverlays = [ glancesOverlay alertmanagerElmOverlay ];
-      piOverlays = commonOverlays ++ [ prometheusOverlay musicAssistantOverlay ];
+      piOverlays = commonOverlays ++ [ musicAssistantOverlay ];
 
       # Every overlay above is a workaround for an upstream bug, and every one
       # of their comments ends with some form of "remove once nixpkgs fixes it".
@@ -169,15 +163,6 @@
           arch = "aarch64";
           flaky = false;
           note = "sandbox + network-dependent tests; psutil topology returns None on aarch64";
-        };
-        prometheus = {
-          arch = "aarch64";
-          # A RACE: the test server is not listening yet when the test dials it.
-          # 2026-08-26 it built clean on the first probe — which is exactly what
-          # a race does some fraction of the time. Do not drop this overlay on a
-          # single green run.
-          flaky = true;
-          note = "TestQueryLog race: HTTP server too slow under qemu aarch64 emulation";
         };
         music-assistant = {
           arch = "aarch64";
