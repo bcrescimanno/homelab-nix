@@ -128,6 +128,22 @@
       github_runner_token = {
         owner = "github-runner-rivendell";
       };
+
+      # Read-only GitHub token for the Gatus CI-runner checks (modules/gatus.nix).
+      #
+      # Deliberately NOT github_runner_token above. That one is the runner's
+      # registration credential: rotating it must be paired with re-registering
+      # both runners, and it carries write access it would be careless to hand
+      # to a monitor. This one is a fine-grained PAT scoped to this repo with
+      # a single permission — Administration: Read-only — which is what
+      # GET /actions/runners requires. Same reasoning as the split between
+      # nut_upsmon_password and nut_ha_password.
+      #
+      # Must be the full env-file line, not a bare token:
+      #   GATUS_GITHUB_TOKEN=github_pat_...
+      # sops default 0400 root:root is correct — systemd reads EnvironmentFile
+      # as root before dropping to gatus' DynamicUser.
+      gatus_github_token = {};
     };
   };
 

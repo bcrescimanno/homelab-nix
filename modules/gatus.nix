@@ -12,6 +12,8 @@
 { config, pkgs, lib, ... }:
 
 let
+  githubRepo = "bcrescimanno/homelab-nix";
+
   mkHttp = { name, url, group }: {
     inherit name url group;
     interval = "1m";
@@ -74,11 +76,90 @@ let
     ];
     alerts = [{ type = "ntfy"; }];
   };
+
+  # Self-hosted CI runner liveness — asks GitHub, not the host.
+  #
+  # As of PR #609 the two pre-build jobs are REQUIRED status checks on main, so
+  # a runner that GitHub cannot reach does not fail a merge — it stops merges
+  # happening at all. Jobs queue against a runner that never arrives, Renovate's
+  # container-digest automerges quietly stop landing, and nothing else in the
+  # homelab notices: the runner is not a listening port, has no health endpoint,
+  # and its absence looks exactly like "no PRs opened today".
+  #
+  # WHY THE API AND NOT THE UNIT. `systemctl is-active github-runner-*` would be
+  # cheaper and needs no token, but it answers the wrong question. The runner
+  # holds a long-poll connection out to GitHub; it can be `active` with an
+  # expired credential, a revoked token, or a dead connection, and GitHub will
+  # still report it offline and route nothing to it. `replace = true` means it
+  # re-registers on every restart, so deregistration is a live failure mode too.
+  # This asks the only party whose opinion decides whether a job runs.
+  #
+  # WHY ?name= AND NOT AN INDEX. The unfiltered endpoint returns both runners in
+  # an array whose order GitHub does not document (it came back orthanc-first,
+  # id 22 before id 21 — so not registration order and not id order). Gatus'
+  # JSONPath is index-only: jsonpath.go runs strconv.Atoi on whatever is between
+  # the brackets, so `runners[*]` returns nil and `runners[0]` would silently
+  # monitor whichever runner GitHub felt like listing first. `?name=` narrows the
+  # array to one element, which makes index 0 unambiguous.
+  #
+  # Verified against gatus 5.36.0 with synthetic bodies rather than assumed —
+  # `runners[0]` on an empty array could plausibly have resolved to something
+  # falsy-but-passing. Measured, per condition:
+  #
+  #   body                       total_count == 1   runners[0].status == online
+  #   status:"online"            PASS               PASS            → healthy
+  #   status:"offline"           PASS               FAIL (offline)  → caught
+  #   total_count:0, runners:[]  FAIL (0)           FAIL (INVALID)  → caught
+  #
+  # So the offline case is caught only by the status condition, and the
+  # deregistered case trips both. total_count is therefore redundant for
+  # DETECTION and kept for DIAGNOSIS: Gatus reports the failing condition with
+  # its resolved value, so the alert distinguishes "GitHub cannot reach it"
+  # from "it is no longer registered" without anyone opening a browser.
+  #
+  # 5m × the default 3-failure threshold = ~15 min before alerting. That is
+  # deliberate headroom: deploying to either host restarts its runner, and with
+  # `replace = true` it briefly deregisters. A shorter threshold would alarm on
+  # every deploy.
+  #
+  # BLIND SPOT, by construction: Gatus runs on rivendell, so it cannot alert on
+  # rivendell's own runner while rivendell is down. That case is already covered
+  # by the `rivendell` SSH check above — this one catches the narrower and far
+  # more likely failure where the host is fine and only the runner is not.
+  #
+  # The token is expanded by Gatus itself, not Nix: config.go:287 runs
+  # os.ExpandEnv over the whole config file after reading it, and the value
+  # comes from environmentFile below. NB that ExpandEnv touches the ENTIRE
+  # config — any literal `$` added anywhere in this file must be written `$$`
+  # or it will be eaten. Nothing here contains one today.
+  mkRunner = { name, runner, group }: {
+    inherit name group;
+    url = "https://api.github.com/repos/${githubRepo}/actions/runners?name=${runner}";
+    headers = {
+      "Accept"               = "application/vnd.github+json";
+      "X-GitHub-Api-Version" = "2022-11-28";
+      "Authorization"        = "Bearer \${GATUS_GITHUB_TOKEN}";
+    };
+    interval = "5m";
+    conditions = [
+      "[STATUS] == 200"
+      "[BODY].total_count == 1"
+      "[BODY].runners[0].status == online"
+    ];
+    alerts = [{ type = "ntfy"; }];
+  };
 in
 
 {
   services.gatus = {
     enable = true;
+
+    # Supplies GATUS_GITHUB_TOKEN for the CI runner checks. systemd reads
+    # EnvironmentFile as root before dropping to gatus' DynamicUser, so the
+    # sops default of 0400 root:root is exactly right here — do NOT set an
+    # owner on that secret, the dynamic UID does not exist at activation.
+    environmentFile = config.sops.secrets.gatus_github_token.path;
+
     settings = {
       web.port = 8080;
 
@@ -106,6 +187,10 @@ in
 
         (mkAdBlockCanary { name = "mirkwood ad blocking";  host = "mirkwood";  group = "Infrastructure"; })
         (mkAdBlockCanary { name = "rivendell ad blocking"; host = "rivendell"; group = "Infrastructure"; })
+
+        # CI — the merge gate depends on both of these being reachable by GitHub.
+        (mkRunner { name = "CI runner — rivendell (aarch64)"; runner = "rivendell"; group = "CI"; })
+        (mkRunner { name = "CI runner — orthanc (x86_64)";    runner = "orthanc";   group = "CI"; })
 
         # Home
         (mkHttp { name = "Homepage";       url = "https://homepage.theshire.io"; group = "Home"; })
