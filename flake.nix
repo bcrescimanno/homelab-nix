@@ -136,6 +136,40 @@
       commonOverlays = [ glancesOverlay alertmanagerElmOverlay ];
       piOverlays = commonOverlays ++ [ prometheusOverlay musicAssistantOverlay ];
 
+      # Every overlay above is a workaround for an upstream bug, and every one
+      # of their comments ends with some form of "remove once nixpkgs fixes it".
+      # Nothing checked, so they accrued — and the dangerous direction is silent:
+      # an overlay that is no longer NEEDED keeps applying forever, disabling
+      # tests that would now pass. Same shape as a redundant --replace-fail patch
+      # in pkgs/materialious.nix.
+      #
+      # This list is the machine-checkable form of that question.
+      # scripts/check-overlays builds each package UNPATCHED against the current
+      # lock; a clean build means the overlay can go. Adding an overlay without
+      # adding it here is the mistake to avoid.
+      #
+      # `arch` records where the failure the overlay works around actually
+      # occurs, because that determines where the probe is meaningful — three of
+      # these four reproduce only on aarch64.
+      overlayWorkarounds = {
+        glances = {
+          arch = "aarch64";
+          note = "sandbox + network-dependent tests; psutil topology returns None on aarch64";
+        };
+        prometheus = {
+          arch = "aarch64";
+          note = "TestQueryLog race: HTTP server too slow under qemu aarch64 emulation";
+        };
+        music-assistant = {
+          arch = "aarch64";
+          note = "torch QNNPACK will not initialise in the aarch64 sandbox";
+        };
+        prometheus-alertmanager = {
+          arch = "any";
+          note = "nixpkgs regression: elm 0.19.2 vs alertmanager's exact 0.19.1 pin";
+        };
+      };
+
       piModules = extraModules: [
         ({ lib, ... }: {
           imports = with nixos-raspberrypi.nixosModules; [
@@ -216,7 +250,6 @@
           ./modules/ntfy.nix
           ./modules/gatus.nix
           ./modules/music-assistant.nix
-          ./modules/nixpkgs-watch.nix
           # github-runners.nix is not in nixos-raspberrypi's default module set
           "${nixpkgs}/nixos/modules/services/continuous-integration/github-runners.nix"
         ];
@@ -293,6 +326,11 @@
       materialious     = pkgs.callPackage ./pkgs/materialious.nix { };
       caddy-cloudflare = pkgs.callPackage ./pkgs/caddy-cloudflare.nix { };
     });
+
+    # Consumed by scripts/check-overlays. Kept as data next to the overlays it
+    # describes so the two cannot drift; `nix flake show` will call this an
+    # unknown output, same as `deploy` above, which is fine.
+    inherit overlayWorkarounds;
 
     deploy.nodes = {
       pirateship = piProfile "pirateship.home.theshire.io" self.nixosConfigurations.pirateship;
