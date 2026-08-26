@@ -55,6 +55,13 @@
 
   outputs = { self, nixpkgs, nixos-raspberrypi, disko, sops-nix, home-manager, deploy-rs, ... }@inputs:
     let
+      # Systems we can build the standalone packages below for. aarch64 is what
+      # actually runs them; x86_64 exists so the pin-refresh tooling and a local
+      # `nix build` work without a Pi.
+      pkgSystems = [ "x86_64-linux" "aarch64-linux" ];
+      forAllSystems = f:
+        nixpkgs.lib.genAttrs pkgSystems (system: f nixpkgs.legacyPackages.${system});
+
       # Not secret — appears in R2 endpoint URLs. Set this to your Cloudflare account ID.
       r2AccountId = "e10a637fb9ef49068ff75e106b7a7c19";
       brianSshKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBEjcQUPpiMkeQJFlkrERftafbT/CpjaeRzbHUv/0P2W";
@@ -275,6 +282,17 @@
         ];
       };
     };
+
+    # Standalone packages. These are the two pins Renovate cannot see — a
+    # fetchFromGitHub tag and a Go-module-graph FOD hash — and exposing them as
+    # flake outputs is what lets scripts/refresh-pins update them without a
+    # human transcribing hashes out of CI logs. Both are consumed by the NixOS
+    # modules via callPackage on the same files, so there is one definition
+    # each and the flake output cannot drift from what the hosts build.
+    packages = forAllSystems (pkgs: {
+      materialious     = pkgs.callPackage ./pkgs/materialious.nix { };
+      caddy-cloudflare = pkgs.callPackage ./pkgs/caddy-cloudflare.nix { };
+    });
 
     deploy.nodes = {
       pirateship = piProfile "pirateship.home.theshire.io" self.nixosConfigurations.pirateship;

@@ -1,0 +1,100 @@
+name: Refresh manual pins
+
+# Updates the two dependencies no bot could see — the materialious
+# fetchFromGitHub tag and the caddy-cloudflare Go-module FOD hash — and opens a
+# PR when either moved. See scripts/refresh-pins for what each one is and why it
+# was manual.
+#
+# Wednesday, deliberately: lockFileMaintenance lands Tuesday, and the Caddy hash
+# tracks the Go module graph, so the day after a lock update is when it can have
+# gone stale. Materialious is independent of the lock and any weekly slot suits.
+#
+# RUNS ON ORTHANC, not the Pi. The Caddy FOD is vendored Go source rather than
+# compiled output, so its hash is architecture-independent and an x86_64 result
+# is valid for the aarch64 hosts that run Caddy.
+#
+# -----------------------------------------------------------------------------
+# THE TOKEN IS NOT INTERCHANGEABLE WITH GITHUB_TOKEN.
+#
+# A PR opened using the default GITHUB_TOKEN does not trigger workflows — GitHub
+# suppresses that to prevent recursion. Since #609 the three status checks are
+# REQUIRED, so such a PR would sit at "expected — waiting for status" forever
+# with nothing able to run them. It would look like the automation worked right
+# up until nobody could merge the result.
+#
+# RENOVATE_TOKEN is a PAT, so PRs it opens trigger checks normally. It is reused
+# here rather than minting a second one because this is the same job Renovate
+# already does with it: open a dependency PR that CI then gates.
+
+on:
+  schedule:
+    - cron: '0 13 * * 3'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh:
+    name: Refresh pins
+    runs-on: [self-hosted, Linux, X64, nix-builder]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Must be the PAT: see the note above. With the default token the push
+          # below succeeds and the resulting PR is then unmergeable.
+          token: ${{ secrets.RENOVATE_TOKEN }}
+
+      - name: Refresh pins
+        run: ./scripts/refresh-pins
+
+      - name: Open a PR if anything moved
+        env:
+          GH_TOKEN: ${{ secrets.RENOVATE_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet -- pkgs/; then
+            echo "Both pins current — nothing to do."
+            exit 0
+          fi
+
+          echo "Changed:"
+          git --no-pager diff --stat -- pkgs/
+
+          BRANCH=automation/refresh-pins
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          git add pkgs/
+
+          cat > /tmp/refresh-pins-msg.txt <<'MSG'
+          chore(deps): refresh manual pins
+
+          Opened by .github/workflows/refresh-pins.yml. These two are updated by
+          scripts/refresh-pins because no Renovate manager can see them: a
+          fetchFromGitHub tag and an FOD hash over the Go module graph.
+
+          A materialious bump needs a human to re-read pkgs/materialious.nix
+          before merging. Every workaround there is upstream-behaviour-dependent,
+          and a workaround that is no longer NEEDED keeps applying silently — the
+          --replace-fail guards only catch the opposite case. installCheckPhase
+          asserts both shaka patches reached the built bundle, so a bump that
+          drops the codec fix fails the build rather than regressing playback
+          quietly.
+          MSG
+
+          git commit -F /tmp/refresh-pins-msg.txt
+
+          # Force-push a stable branch so a second run updates the open PR rather
+          # than stacking a duplicate.
+          git push --force-with-lease origin "$BRANCH"
+
+          OPEN=$(nix run nixpkgs#gh -- pr list --head "$BRANCH" --state open --json number --jq 'length')
+          if [ "$OPEN" = "0" ]; then
+            nix run nixpkgs#gh -- pr create --head "$BRANCH" --fill-first
+          else
+            echo "PR already open for $BRANCH — updated it in place."
+          fi
