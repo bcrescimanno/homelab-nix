@@ -472,21 +472,39 @@ PYEOF
 
       while true; do
         # Block until forwarded_port is written (or 5-minute timeout for
-        # periodic verification in case qBittorrent's port was reset externally)
+        # periodic verification in case qBittorrent's port was reset externally).
+        #
+        # inotifywait exit codes are 0 = event, 1 = error, 2 = -t timeout.
+        # BOTH details here are load-bearing and were previously wrong:
+        #
+        #   1. The `|| STATUS=$?` is mandatory. NixOS service scripts run under
+        #      set -e, so a bare inotifywait call kills the shell the instant it
+        #      returns non-zero — which the 300s timeout does on every normal
+        #      cycle. `STATUS=$?` on the next line never ran.
+        #   2. Timeout is 2, not 1. The old code treated `>= 2` as the error
+        #      branch, i.e. it had the timeout and error cases swapped.
+        #
+        # Together those made the service exit 2 every ~5 minutes and rely on
+        # Restart=always to resurrect it. The port still got synced (by the
+        # startup sync_port on each restart) so it looked healthy, but it left
+        # the unit permanently in a restart loop — which intermittently fails
+        # switch-to-configuration and thus the nightly homelab-upgrade — and it
+        # reset login_fail_count on every restart, so the qBittorrent-
+        # unreachable ntfy alert below could never reach its threshold of 3.
+        STATUS=0
         ${pkgs.inotify-tools}/bin/inotifywait -q -t 300 \
           -e close_write,create,moved_to \
           --include 'forwarded_port' \
-          "$PORT_DIR" 2>/dev/null
-        STATUS=$?
+          "$PORT_DIR" 2>/dev/null || STATUS=$?
 
-        if [ "$STATUS" -ge 2 ]; then
+        if [ "$STATUS" -ne 0 ] && [ "$STATUS" -ne 2 ]; then
           # inotifywait error — directory may not exist yet, back off
           echo "inotifywait error (status $STATUS), sleeping 30s before retry..."
           sleep 30
           continue
         fi
 
-        # status 0 = file event; status 1 = 5-minute timeout — sync either way
+        # status 0 = file event; status 2 = 5-minute timeout — sync either way
         sleep 1  # brief debounce in case gluetun writes in multiple steps
         sync_port || echo "Port sync failed, will retry on next event or timeout"
       done
