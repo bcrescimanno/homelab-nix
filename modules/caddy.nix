@@ -78,14 +78,11 @@ in
   services.caddy = {
     enable = true;
 
-    # NB: this hash covers the resolved Go module graph, not just the Caddy
-    # version — a nixpkgs Go toolchain bump moves it even when Caddy itself is
-    # unchanged (2.11.4 + go 1.26.5 did exactly that on 2026-07-31). Always take
-    # the replacement from the "got:" line of the build error.
-    package = pkgs.caddy.withPlugins {
-      plugins = [ "github.com/caddy-dns/cloudflare@v0.2.3" ];
-      hash = "sha256-to0fhW7LWBocw1ccpPQ7e2nod7iJO9gkWZpjHsZDeu4=";
-    };
+    # Plugin list and the FOD hash live in pkgs/caddy-cloudflare.nix, which is
+    # also exposed as .#caddy-cloudflare so scripts/refresh-pins can recompute
+    # the hash. Read that file before touching either — the hash tracks the Go
+    # module graph, not the Caddy version.
+    package = pkgs.callPackage ../pkgs/caddy-cloudflare.nix { };
 
     globalConfig = "";
 
