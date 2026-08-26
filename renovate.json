@@ -8,8 +8,25 @@
     "enabled": true
   },
   "lockFileMaintenance": {
+    "description": [
+      "Rewrites the whole flake.lock. This is the ONLY mechanism that moves our",
+      "inputs: Renovate's per-input nix updates use the git-refs datasource,",
+      "which needs a versioned ref to bump, and all eight inputs track branches",
+      "(nixpkgs-unstable, nixos-unstable, or a default branch). With no tags",
+      "there is no version to propose — only the locked rev moves, and that is",
+      "this. Splitting cheap inputs from nixpkgs is therefore not possible",
+      "without repinning inputs to tags, which we do not want for unstable.",
+      "",
+      "Automerges behind the three required status checks on main, which include",
+      "a native build of all four host closures. Measured cost of a real nixpkgs",
+      "bump: 42 min on rivendell's aarch64 runner, 13s on orthanc. Twice weekly",
+      "caps that at ~84 min/week on a host that is also serving Caddy, HA, DNS",
+      "and ntfy while it builds."
+    ],
     "enabled": true,
-    "schedule": ["on saturday"]
+    "schedule": ["on tuesday", "on saturday"],
+    "automerge": true,
+    "automergeType": "pr"
   },
   "customManagers": [
     {
@@ -24,9 +41,22 @@
   ],
   "packageRules": [
     {
-      "description": "Nix flake input updates run on Saturdays — no automerge, review manually to catch Caddy plugin hash changes",
+      "description": [
+        "Per-input flake updates. Inert today — see the lockFileMaintenance note",
+        "above — but kept aligned with it so that pinning any single input to a",
+        "tag later starts producing PRs on the same schedule and gate rather",
+        "than silently on Renovate's defaults.",
+        "",
+        "These used to be held back from automerge 'to catch Caddy plugin hash",
+        "changes'. That reason is gone: pre-build compiles caddy.withPlugins as",
+        "part of rivendell's toplevel and fails loudly on a mismatch, and as of",
+        "PR #609 that job is a REQUIRED check rather than an advisory one. The",
+        "gate always caught it; it just was not allowed to block."
+      ],
       "matchManagers": ["nix"],
-      "schedule": ["on saturday"]
+      "schedule": ["on tuesday", "on saturday"],
+      "automerge": true,
+      "automergeType": "pr"
     },
     {
       "description": "Automerge container image digest updates after CI passes",
