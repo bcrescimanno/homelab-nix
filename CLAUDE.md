@@ -161,6 +161,8 @@ Secrets use `sops-nix` with age encryption. Rendered at runtime to `/run/secrets
 - `caddy_cloudflare_env` — `CLOUDFLARE_API_TOKEN` for DNS-01 ACME
 - `nut_upsmon_password` — internal upsmon user password
 - `nut_ha_password` — Home Assistant NUT integration password
+- `github_runner_token` — registration credential for the aarch64 CI runner
+- `gatus_github_token` — `GATUS_GITHUB_TOKEN=<fine-grained PAT>`; read-only (Administration: Read) token Gatus uses to check both self-hosted runners are online
 
 **mirkwood** (`secrets/mirkwood.yaml`):
 - `grafana_env` — `GF_SECURITY_ADMIN_PASSWORD`
