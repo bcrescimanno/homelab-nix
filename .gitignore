@@ -1,3 +1,7 @@
 result
 .claude/*
 devices/
+
+# Stray debug output — caddy8.log (a failed nohup message) was committed
+# by accident in #526 and lived in the tree for weeks.
+*.log
