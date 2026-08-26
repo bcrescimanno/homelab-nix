@@ -151,21 +151,42 @@
       # `arch` records where the failure the overlay works around actually
       # occurs, because that determines where the probe is meaningful — three of
       # these four reproduce only on aarch64.
+      #
+      # `flaky` records whether that failure is TIMING-DEPENDENT, and it changes
+      # what a clean build is worth. For a deterministic failure — alertmanager's
+      # exact elm version pin — one clean build is proof the bug is fixed. For a
+      # race, one clean build only proves the race was won that time, which is
+      # the single-trial-on-an-intermittent-bug error, and acting on it would
+      # reintroduce an overlay-shaped hole that fails a few builds in a hundred.
+      #
+      # Marked entries must come back clean on every one of several forced
+      # rebuilds before the probe will call them droppable. Both fields are
+      # mandatory on every entry: an absent field would be read as a default,
+      # and a default that silently means "not flaky" is the failure mode this
+      # whole module exists to avoid.
       overlayWorkarounds = {
         glances = {
           arch = "aarch64";
+          flaky = false;
           note = "sandbox + network-dependent tests; psutil topology returns None on aarch64";
         };
         prometheus = {
           arch = "aarch64";
+          # A RACE: the test server is not listening yet when the test dials it.
+          # 2026-08-26 it built clean on the first probe — which is exactly what
+          # a race does some fraction of the time. Do not drop this overlay on a
+          # single green run.
+          flaky = true;
           note = "TestQueryLog race: HTTP server too slow under qemu aarch64 emulation";
         };
         music-assistant = {
           arch = "aarch64";
+          flaky = false;
           note = "torch QNNPACK will not initialise in the aarch64 sandbox";
         };
         prometheus-alertmanager = {
           arch = "any";
+          flaky = false;
           note = "nixpkgs regression: elm 0.19.2 vs alertmanager's exact 0.19.1 pin";
         };
       };

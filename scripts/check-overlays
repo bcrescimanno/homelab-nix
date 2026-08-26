@@ -29,6 +29,7 @@
 #   scripts/check-overlays                  probe everything meaningful here
 #   scripts/check-overlays --ntfy URL       also send a digest
 #   scripts/check-overlays --timeout 900    per-probe seconds (default 2700)
+#   scripts/check-overlays --attempts 5     forced rebuilds for flaky entries
 #   scripts/check-overlays glances          just one
 
 set -uo pipefail
@@ -38,11 +39,13 @@ cd "$REPO"
 
 NTFY=""
 TIMEOUT=2700
+ATTEMPTS=3
 ONLY=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --ntfy)    NTFY="${2:?--ntfy needs a URL}"; shift 2 ;;
-    --timeout) TIMEOUT="${2:?--timeout needs seconds}"; shift 2 ;;
+    --timeout)  TIMEOUT="${2:?--timeout needs seconds}"; shift 2 ;;
+    --attempts) ATTEMPTS="${2:?--attempts needs a count}"; shift 2 ;;
     -h|--help) sed -n '2,32p' "$0" | sed 's/^# \?//'; exit 0 ;;
     *)         ONLY="$1"; shift ;;
   esac
@@ -95,7 +98,12 @@ for name in $names; do
 
   want="$(nix eval --raw ".#overlayWorkarounds.${name}.arch" 2>/dev/null)"
   note="$(nix eval --raw ".#overlayWorkarounds.${name}.note" 2>/dev/null)"
-  if [[ -z "$want" ]]; then
+  # Mandatory, and read as a string so an absent field fails rather than
+  # defaulting to "not flaky" — a default here would silently reinstate the
+  # single-trial bug this field exists to prevent.
+  flaky="$(nix eval --raw ".#overlayWorkarounds.${name}.flaky" \
+             --apply 'v: if v then "yes" else "no"' 2>/dev/null)"
+  if [[ -z "$want" || -z "$flaky" ]]; then
     echo "  ${RED}✗${NC} ${name} — could not read its arch; treating as unprobed"
     INCONCLUSIVE+=("$name (unreadable)")
     continue
@@ -112,23 +120,65 @@ for name in $names; do
     continue
   fi
 
-  printf '  … %s (unpatched, up to %ss)\n' "$name" "$TIMEOUT"
-  if timeout "$TIMEOUT" nix build --no-link --impure --expr "
-        let f = builtins.getFlake \"path:$REPO\";
-        in f.inputs.nixpkgs.legacyPackages.\${builtins.currentSystem}.${name}
-      " >/dev/null 2>&1; then
-    echo "  ${GREEN}✓ ${name} BUILDS CLEAN — the overlay can be dropped${NC}"
-    DROPPABLE+=("$name")
-  else
-    rc=$?
-    if [[ $rc -eq 124 ]]; then
-      echo "  ${YELLOW}⚠${NC} ${name} — timed out, inconclusive"
-      INCONCLUSIVE+=("$name")
+  # A flaky entry gets several INDEPENDENT builds. nix caches aggressively, so
+  # simply invoking the build again after a success is a no-op that re-reports
+  # the same result — the nonce below perturbs the derivation hash so each
+  # attempt genuinely re-runs the test suite. It is an unused environment
+  # variable and changes nothing about the build itself.
+  runs=1
+  [[ "$flaky" == "yes" ]] && runs="$ATTEMPTS"
+
+  clean=0
+  outcome=""
+  for (( attempt = 1; attempt <= runs; attempt++ )); do
+    if [[ "$runs" -gt 1 ]]; then
+      printf '  … %s (unpatched, attempt %s/%s, up to %ss)\n' "$name" "$attempt" "$runs" "$TIMEOUT"
+      expr="let f = builtins.getFlake \"path:$REPO\";
+                p = f.inputs.nixpkgs.legacyPackages.\${builtins.currentSystem};
+            in p.${name}.overrideAttrs (o: { PROBE_NONCE = \"${attempt}\"; })"
+    else
+      printf '  … %s (unpatched, up to %ss)\n' "$name" "$TIMEOUT"
+      expr="let f = builtins.getFlake \"path:$REPO\";
+            in f.inputs.nixpkgs.legacyPackages.\${builtins.currentSystem}.${name}"
+    fi
+
+    if timeout "$TIMEOUT" nix build --no-link --impure --expr "$expr" >/dev/null 2>&1; then
+      clean=$((clean + 1))
+    else
+      rc=$?
+      [[ $rc -eq 124 ]] && { outcome="timeout"; break; }
+      outcome="failed"; break
+    fi
+  done
+
+  # Belt and braces: reaching here with no attempts recorded means the loop
+  # never ran, which must never be readable as a clean build. This exact shape
+  # — an empty loop rendering a tidy success — has now bitten twice, once via a
+  # missing python3 and once via a missing seq.
+  if [[ $clean -eq 0 && -z "$outcome" ]]; then
+    echo "  ${RED}✗${NC} ${name} — probe executed 0 attempts; refusing to interpret that"
+    INCONCLUSIVE+=("$name (0 attempts)")
+    continue
+  fi
+
+  if [[ "$outcome" == "timeout" ]]; then
+    echo "  ${YELLOW}⚠${NC} ${name} — timed out, inconclusive"
+    INCONCLUSIVE+=("$name")
+  elif [[ "$outcome" == "failed" ]]; then
+    if [[ "$runs" -gt 1 && $clean -gt 0 ]]; then
+      echo "  ${CYAN}·${NC} ${name} — ${clean}/${runs} clean then failed; still flaky, overlay still needed"
     else
       echo "  ${CYAN}·${NC} ${name} — still fails, overlay still needed"
-      echo "      ($note)"
-      NEEDED+=("$name")
     fi
+    echo "      ($note)"
+    NEEDED+=("$name")
+  else
+    if [[ "$runs" -gt 1 ]]; then
+      echo "  ${GREEN}✓ ${name} BUILDS CLEAN ${clean}/${runs} times — the overlay can be dropped${NC}"
+    else
+      echo "  ${GREEN}✓ ${name} BUILDS CLEAN — the overlay can be dropped${NC}"
+    fi
+    DROPPABLE+=("$name")
   fi
 done
 
