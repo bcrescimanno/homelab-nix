@@ -133,12 +133,27 @@ in
           set -uo pipefail
           ${notify}
 
+          # EVERY branch below exits 0, including the ones that refuse and the
+          # one that rolls back and finds the host still broken. That looks
+          # wrong and is deliberate: exiting non-zero fires this unit's
+          # OnFailure, which is the last-resort notifier, and the branch has
+          # already sent a precise alert of its own. Verified on orthanc
+          # 2026-08-26 by firing the prev==current guard for real — it produced
+          # two contradictory priority-5 messages, the guard's own correct one
+          # plus "the rollback did not complete", which was false.
+          #
+          # The unit result answers "did the rollback service do its job",
+          # not "is the host healthy" — the notification and the freshness
+          # dead-man's switch on homelab-upgrade-check answer that. A non-zero
+          # exit here is therefore reserved for the one case the script cannot
+          # report on: dying before it can notify.
+
           CURRENT=$(${pkgs.coreutils}/bin/readlink -f /run/current-system)
 
           if [[ ! -f ${prevFile} ]]; then
             notify 5 rotating_light "Upgrade unhealthy — NO ROLLBACK" \
               "${hostName}: services failed the post-upgrade check but no pre-upgrade system was recorded, so there is nothing to revert to. Check journalctl -u homelab-upgrade-check."
-            exit 1
+            exit 0
           fi
 
           PREVIOUS=$(< ${prevFile})
@@ -146,13 +161,13 @@ in
           if [[ "$PREVIOUS" == "$CURRENT" ]]; then
             notify 5 rotating_light "Services unhealthy — NOT an upgrade regression" \
               "${hostName}: the post-upgrade check failed but the system closure did not change, so this was already broken before tonight's run. Not rolling back. See journalctl -u homelab-upgrade-check."
-            exit 1
+            exit 0
           fi
 
           if [[ ! -e "$PREVIOUS" ]]; then
             notify 5 rotating_light "Upgrade unhealthy — ROLLBACK IMPOSSIBLE" \
               "${hostName}: wanted to revert to $PREVIOUS but it has been garbage collected. Host is running the bad configuration. Manual intervention required."
-            exit 1
+            exit 0
           fi
 
           echo "rolling back: $CURRENT -> $PREVIOUS" >&2
@@ -170,15 +185,16 @@ in
           if [[ ''${#failed[@]} -gt 0 ]]; then
             notify 5 rotating_light "Rolled back — STILL UNHEALTHY" \
               "${hostName}: reverted to $(${pkgs.coreutils}/bin/basename "$PREVIOUS") but these are still down: ''${failed[*]}. The upgrade was not the cause. Manual intervention required."
-            exit 1
+            exit 0
           fi
 
           notify 4 warning "Upgrade rolled back — services recovered" \
             "${hostName}: post-upgrade check failed, reverted $(${pkgs.coreutils}/bin/basename "$CURRENT") -> $(${pkgs.coreutils}/bin/basename "$PREVIOUS") and all services are healthy again. main is carrying a bad change for this host."
         '');
       };
-      # Last resort: if the rollback script itself dies before it can notify
-      # (curl gone, /nix unreadable), the original alert still fires.
+      # Last resort, and now genuinely last: every branch of the script above
+      # exits 0 after notifying, so this fires only if the script died before
+      # it could report — killed, or broken badly enough not to reach a notify.
       unitConfig.OnFailure = "homelab-upgrade-notify-unhealthy.service";
     };
 
@@ -191,7 +207,7 @@ in
           + "-H 'Title: NixOS Upgraded but Unhealthy' "
           + "-H 'Priority: 5' "
           + "-H 'Tags: rotating_light' "
-          + "-d '${hostName} failed the post-upgrade check AND the rollback did not complete — see journalctl -u homelab-upgrade-rollback' "
+          + "-d '${hostName} failed the post-upgrade check and the rollback service died without reporting — see journalctl -u homelab-upgrade-rollback' "
           + "${ntfyUrl}";
       };
     };
