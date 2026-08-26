@@ -30,7 +30,7 @@
 
 {
   caddy,
-  hash ? "sha256-to0fhW7LWBocw1ccpPQ7e2nod7iJO9gkWZpjHsZDeu4=",
+  hash ? "sha256-0000000000000000000000000000000000000000000=",
 }:
 
 caddy.withPlugins {
