@@ -1,5 +1,23 @@
 name: Flake check
 
+# `check` is a REQUIRED status check on main (ruleset "Protect Main").
+#
+# It runs on orthanc's self-hosted runner rather than ubuntu-latest so the
+# whole merge gate sits on hardware we control. On 2026-08-26 PR #608 was left
+# BLOCKED by this workflow: one run hit startup_failure and a retry sat queued
+# on ubuntu-latest for 2h36m, with nothing to restart. The other two required
+# checks were already self-hosted; this closes the last GitHub-hosted
+# dependency in the merge path.
+#
+# Pinned to X64 (orthanc, 32GB) rather than the bare `nix-builder` label:
+# evaluating every host closure is memory-hungry, and rivendell caps
+# nix-daemon at MemoryMax=4G while also serving Caddy, DNS, HA and ntfy.
+#
+# Nix, git and openssh come from the runner's extraPackages (hosts/orthanc.nix),
+# and attic is configured system-wide as a substituter — so the Determinate
+# installer and magic-nix-cache actions this job used to run are both redundant.
+#
+# Keep the job id `check`: it is the context name recorded in the ruleset.
 on:
   pull_request:
   push:
@@ -7,9 +25,8 @@ on:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, nix-builder]
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/magic-nix-cache-action@main
       - run: nix flake check --no-build

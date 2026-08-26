@@ -1,10 +1,18 @@
 name: Pre-build flake update
 
+# Both jobs below are REQUIRED status checks on main (ruleset "Protect Main").
+#
+# That is why the pull_request trigger carries no `paths:` filter, even though
+# only flake.lock and *.nix can change a closure. A required check that never
+# reports leaves the PR permanently "expected — waiting for status", so the
+# filter would block every docs-only PR forever rather than passing it. When
+# nothing relevant changed the run is a cache lookup: measured 58s (aarch64)
+# and 18s (x86_64) on PR #518.
+#
+# The push trigger keeps its filter — that path only exists to warm attic after
+# a merge, and nothing gates on it.
 on:
   pull_request:
-    types: [opened, synchronize]
-    paths:
-      - flake.lock
   push:
     branches: [main]
     paths:
