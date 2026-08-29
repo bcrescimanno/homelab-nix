@@ -99,35 +99,7 @@
         });
       };
 
-      # nixpkgs bumped elmPackages.elm 0.19.1 -> 0.19.2 on 2026-08-24 (#541199),
-      # but alertmanager 0.33.1's ui/app/elm.json still pins "0.19.1". Elm matches
-      # that field EXACTLY and aborts with "ELM VERSION MISMATCH", so
-      # alertmanager-elm-ui fails to compile and takes mirkwood's whole closure
-      # with it. This is an upstream nixpkgs regression, not arch-specific —
-      # prometheus-alertmanager is broken on master on every platform.
-      #
-      # 0.19.2 is a performance-only patch release with no language changes, so
-      # retargeting the pin is safe. elmUi is a `let` binding inside
-      # package.nix, so overrideAttrs can't reach it — but it is re-exported as
-      # passthru.elmUi, so patch that and re-point postPatch at the result.
-      #
-      # Remove once nixpkgs fixes alertmanager (watch pkgs/by-name/pr/prometheus-alertmanager).
-      alertmanagerElmOverlay = final: prev:
-        let
-          patchedElmUi = prev.prometheus-alertmanager.elmUi.overrideAttrs (oldAttrs: {
-            postPatch = (oldAttrs.postPatch or "") + ''
-              substituteInPlace elm.json \
-                --replace-fail '"elm-version": "0.19.1"' '"elm-version": "0.19.2"'
-            '';
-          });
-        in
-        {
-          prometheus-alertmanager = prev.prometheus-alertmanager.overrideAttrs (_: {
-            postPatch = "cp -r ${patchedElmUi}/. ui/app/dist";
-          });
-        };
-
-      commonOverlays = [ glancesOverlay alertmanagerElmOverlay ];
+      commonOverlays = [ glancesOverlay ];
       piOverlays = commonOverlays ++ [ musicAssistantOverlay ];
 
       # Every overlay above is a workaround for an upstream bug, and every one
@@ -143,15 +115,17 @@
       # adding it here is the mistake to avoid.
       #
       # `arch` records where the failure the overlay works around actually
-      # occurs, because that determines where the probe is meaningful — three of
-      # these four reproduce only on aarch64.
+      # occurs, because that determines where the probe is meaningful — both of
+      # the entries below reproduce only on aarch64, so an x86_64 probe would
+      # say nothing at all about whether they are still load-bearing.
       #
       # `flaky` records whether that failure is TIMING-DEPENDENT, and it changes
-      # what a clean build is worth. For a deterministic failure — alertmanager's
-      # exact elm version pin — one clean build is proof the bug is fixed. For a
-      # race, one clean build only proves the race was won that time, which is
-      # the single-trial-on-an-intermittent-bug error, and acting on it would
-      # reintroduce an overlay-shaped hole that fails a few builds in a hundred.
+      # what a clean build is worth. For a deterministic failure — torch's
+      # QNNPACK refusing to initialise — one clean build is proof the bug is
+      # fixed. For a race, one clean build only proves the race was won that
+      # time, which is the single-trial-on-an-intermittent-bug error, and acting
+      # on it would reintroduce an overlay-shaped hole that fails a few builds
+      # in a hundred.
       #
       # Marked entries must come back clean on every one of several forced
       # rebuilds before the probe will call them droppable. Both fields are
@@ -168,11 +142,6 @@
           arch = "aarch64";
           flaky = false;
           note = "torch QNNPACK will not initialise in the aarch64 sandbox";
-        };
-        prometheus-alertmanager = {
-          arch = "any";
-          flaky = false;
-          note = "nixpkgs regression: elm 0.19.2 vs alertmanager's exact 0.19.1 pin";
         };
       };
 
