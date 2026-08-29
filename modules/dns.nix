@@ -284,11 +284,38 @@ upstreams = {
   # Probe unbound health every 2 minutes. Sends ntfy alerts only on state
   # transitions (ok→failed, failed→ok) to avoid notification spam.
   # Probes port 5335 directly so Blocky's fallback to 1.1.1.1 doesn't mask failures.
+  # This unit rolled back a good deploy on 2026-08-29, and the way it did it is
+  # worth keeping written down.
+  #
+  # Its 2-min timer fired mid-activation. unbound was restarting (nixpkgs bump),
+  # so the single dig failed and the check declared "failed". It then curled
+  # ntfy to say so — but ntfy was restarting in the SAME activation, so curl
+  # retried 3x over 30s and exited 7. `script` runs under set -e, so curl's
+  # status became the unit's status, the unit failed, switch-to-configuration
+  # exited non-zero, and deploy-rs autoRollback tore down a perfectly good
+  # generation (and then failed to re-activate the old one, leaving the host
+  # running one closure with its profile pointing at another).
+  #
+  # Three separate faults, fixed below:
+  #
+  #   1. A single dig is not a finding. unbound restarts on every deploy and
+  #      this timer fires every 2 min, so a bare probe reports the restart as an
+  #      outage. It now re-probes after a grace period before deciding.
+  #   2. The state file was written BEFORE the notification, so an undelivered
+  #      alert was lost for good — 11:22 got no "failure" push, and 11:24 then
+  #      sent a bare "recovered" for an event never reported. State is now
+  #      written only once the push is actually delivered, so a failed send
+  #      retries on the next run instead of vanishing.
+  #   3. Push transport is not DNS health. A failure to reach ntfy must not fail
+  #      this unit, because a timer-driven oneshot that fails inside the
+  #      activation window rolls back the deploy. It logs and exits 0.
   systemd.services.unbound-health-check = {
     description = "Unbound DNS health check";
     serviceConfig = {
       Type = "oneshot";
       StateDirectory = "unbound-monitor";
+      # Worst case: grace sleep + a fully-retried curl.
+      TimeoutStartSec = "120s";
     };
     script =
       let
@@ -300,26 +327,40 @@ upstreams = {
         STATE_FILE=/var/lib/unbound-monitor/state
         LAST=$(cat "$STATE_FILE" 2>/dev/null || echo ok)
 
-        if ${dig} @127.0.0.1 -p 5335 +time=5 +tries=1 cloudflare.com A >/dev/null 2>&1; then
+        probe() {
+          ${dig} @127.0.0.1 -p 5335 +time=5 +tries=1 cloudflare.com A >/dev/null 2>&1
+        }
+
+        # Re-probe before calling it an outage; see fault 1 above. A real
+        # outage still alerts on this run or the next one 2 min later.
+        if probe; then
           NOW=ok
         else
-          NOW=failed
+          sleep 20
+          if probe; then NOW=ok; else NOW=failed; fi
         fi
 
         [ "$NOW" = "$LAST" ] && exit 0
-        echo "$NOW" > "$STATE_FILE"
 
         if [ "$NOW" = failed ]; then
-          ${curl} -s --connect-timeout 5 --max-time 30 --retry 3 --retry-delay 10 --retry-all-errors \
-            -H 'Title: Unbound DNS failure' -H 'Priority: 4' -H 'Tags: rotating_light' \
-            -d '${host}: unbound cannot resolve — Blocky may be falling back to 1.1.1.1' \
-            ${ntfy}
+          TITLE='Unbound DNS failure'; PRIO=4; TAGS=rotating_light
+          BODY='${host}: unbound cannot resolve — Blocky may be falling back to 1.1.1.1'
         else
-          ${curl} -s --connect-timeout 5 --max-time 30 --retry 3 --retry-delay 10 --retry-all-errors \
-            -H 'Title: Unbound DNS recovered' -H 'Priority: 2' -H 'Tags: white_check_mark' \
-            -d '${host}: unbound is resolving normally again' \
-            ${ntfy}
+          TITLE='Unbound DNS recovered'; PRIO=2; TAGS=white_check_mark
+          BODY='${host}: unbound is resolving normally again'
         fi
+
+        # State advances only on a delivered push (fault 2), and a transport
+        # failure never fails the unit (fault 3).
+        if ${curl} -sf --connect-timeout 5 --max-time 30 \
+             --retry 3 --retry-delay 10 --retry-all-errors \
+             -H "Title: $TITLE" -H "Priority: $PRIO" -H "Tags: $TAGS" \
+             -d "$BODY" ${ntfy} >/dev/null; then
+          echo "$NOW" > "$STATE_FILE"
+        else
+          echo "ntfy delivery failed; leaving state at '$LAST' so '$NOW' is retried" >&2
+        fi
+        exit 0
       '';
   };
 

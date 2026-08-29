@@ -180,7 +180,7 @@ def diagnose(pr):
 def notify(title, priority, tags, body):
     if not NTFY_URL:
         print(f"[ntfy skipped] {title}: {body}")
-        return
+        return True
     req = urllib.request.Request(
         NTFY_URL,
         data=body.encode(),
@@ -188,12 +188,71 @@ def notify(title, priority, tags, body):
     )
     try:
         urllib.request.urlopen(req, timeout=30).close()
+        return True
     except (urllib.error.URLError, TimeoutError) as e:
         # A push we could not deliver must not look like a push we did not need
-        # to send. Same failure shape as the digest the overlay probe claimed to
-        # have sent and had not (#620).
+        # to send (#620). But it must ALSO not fail this unit: ntfy restarts
+        # during a deploy, and a timer-driven oneshot that fails inside the
+        # activation window makes switch-to-configuration exit non-zero, which
+        # trips deploy-rs autoRollback. That is not hypothetical — it is exactly
+        # how unbound-health-check rolled back the 2026-08-29 deploy.
+        #
+        # So: report false, and the caller declines to record the alert as
+        # announced. The finding is retried next run rather than lost or fatal.
         print(f"ntfy delivery FAILED for {title!r}: {e}", file=sys.stderr)
-        raise Unknown(f"ntfy delivery failed: {e}") from e
+        return False
+
+
+# A run that learned nothing is not an all-clear — but neither is one blip a
+# reason to fail the unit. A timer-driven oneshot that fails inside a deploy's
+# activation window makes switch-to-configuration exit non-zero and trips
+# deploy-rs autoRollback; on 2026-08-29 unbound-health-check did exactly that
+# and rolled back a good deploy because ntfy was mid-restart. GitHub being
+# briefly unreachable is the same shape of non-event.
+#
+# So an unknown run is counted, not swallowed: it logs, and only once the
+# blindness PERSISTS does the unit fail and OnFailure fire. Three consecutive
+# hourly runs is far longer than any activation window and still same-morning.
+UNKNOWN_STREAK_LIMIT = 3
+
+
+def _streak_file():
+    return os.path.join(STATE_DIR, "unknown-streak")
+
+
+def clear_unknown_streak():
+    try:
+        os.remove(_streak_file())
+    except FileNotFoundError:
+        pass
+
+
+def escalate_unknown(detail):
+    """Record an inconclusive run. Return the process exit code."""
+    try:
+        with open(_streak_file()) as f:
+            n = int(f.read().strip() or 0)
+    except (FileNotFoundError, ValueError):
+        n = 0
+    n += 1
+    with open(_streak_file(), "w") as f:
+        f.write(str(n))
+
+    if n < UNKNOWN_STREAK_LIMIT:
+        print(
+            f"INCONCLUSIVE run {n}/{UNKNOWN_STREAK_LIMIT} (not yet alerting): {detail}",
+            file=sys.stderr,
+        )
+        return 0
+
+    notify(
+        "PR automerge watch is blind",
+        3,
+        "warning",
+        f"{n} consecutive runs could not determine whether any automerge PR is "
+        f"stuck, so automerge health is UNKNOWN — not confirmed fine. {detail}",
+    )
+    return 1
 
 
 def main():
@@ -203,16 +262,9 @@ def main():
     try:
         prs = get(f"/repos/{REPO}/pulls?state=open&per_page=100")
     except Unknown as e:
-        # Nothing at all is known this run. Say so and fail the unit.
+        # Nothing at all is known this run.
         print(f"could not list PRs: {e}", file=sys.stderr)
-        notify(
-            "PR automerge watch could not run",
-            3,
-            "warning",
-            f"Could not list open PRs for {REPO}, so automerge health is UNKNOWN "
-            f"— not confirmed fine. ({e})",
-        )
-        return 1
+        return escalate_unknown(f"could not list open PRs for {REPO}: {e}")
 
     open_numbers = set()
     stuck = []
@@ -243,15 +295,15 @@ def main():
         if prior == marker:
             continue  # already announced this exact state
 
-        notify(
+        if notify(
             "PR automerge is stuck",
             4,
             "rotating_light",
             f"{REPO} #{num} ({pr['title']}) will not merge on its own: {text}. "
             f"https://github.com/{REPO}/pull/{num}",
-        )
-        with open(statefile, "w") as f:
-            f.write(marker)
+        ):
+            with open(statefile, "w") as f:
+                f.write(marker)
 
     # Anything we had flagged that is no longer open got resolved somehow.
     for name in os.listdir(STATE_DIR):
@@ -260,20 +312,22 @@ def main():
         num = int(name[3:])
         if num in open_numbers:
             continue
-        notify(
+        if notify(
             "PR automerge unstuck",
             2,
             "white_check_mark",
             f"{REPO} #{num} is no longer open — the stuck automerge cleared.",
-        )
-        os.remove(os.path.join(STATE_DIR, name))
+        ):
+            os.remove(os.path.join(STATE_DIR, name))
 
     print(
         f"checked {len(prs)} open PRs; stuck:{','.join(stuck) or 'none'}; "
         f"unknown:{'; '.join(unknowns) or 'none'}"
     )
-    # Partial knowledge is a failed run, not a quiet success.
-    return 1 if unknowns else 0
+    if unknowns:
+        return escalate_unknown("; ".join(unknowns))
+    clear_unknown_streak()
+    return 0
 
 
 if __name__ == "__main__":
