@@ -49,6 +49,15 @@
 # inputs is the direct question and catches every route to it: automerge broken,
 # a PR blocked on a hash mismatch, Renovate's cron dead, or a host that stopped
 # deploying.
+#
+# What it does NOT give is speed, and that is the tradeoff, not an oversight.
+# Ten days is right for "are the running inputs stale" and useless for catching
+# a single blocked lock PR before the next nightly upgrade. On 2026-08-29 #627
+# was blocked at 22:15 PDT and the hosts rebuilt the old lock at 04:02; this
+# check would have said so on 2026-09-08. modules/pr-automerge-watch.nix asks
+# the narrow, hourly version of the question — is anything armed to merge unable
+# to — and the two are complements: it is blind to Renovate never opening a PR,
+# which is exactly what this one sees.
 
 { config, pkgs, lib, ... }:
 
