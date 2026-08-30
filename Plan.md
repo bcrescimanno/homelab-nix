@@ -101,14 +101,49 @@ erebor is online (10G SFP+ at 10.0.1.22, 1G ethernet at 10.0.1.21 for management
 ### Home Assistant / IoT
 
 - [x] **Wake-on-LAN across IoT VLAN** — rivendell has `eth0.4` (VLAN 4, 10.0.12.2/22) tagged subinterface on its existing port (UniFi "Allow All" was already set). HA sends WoL broadcasts to `10.0.15.255` (IoT /22 broadcast); no UDM Pro changes required.
-- [ ] **Thread border router (ZBT-2)** — Home Assistant Connect ZBT-2 USB dongle ordered. When it arrives: add OTBR (OpenThread Border Router) container to `modules/homeassistant.nix` alongside HA and Matter Server (`--privileged` + host networking), then wire HA's Thread integration to it. The ZBT-2 will be auto-accessible inside privileged containers.
-- [ ] **Eve Weather outdoor sensor (~$80)** — buy, commission over Thread, then set `outdoorSensor` in `modules/ha-window-notifications.nix` to the resulting entity ID (confirm it in Developer Tools → States) and redeploy rivendell. **Mount it in permanent shade** — an outdoor sensor in direct sun reads 10–20°F high, which would fire "close the windows" on every clear morning.
+- [x] **Thread border router (ZBT-2)** — DONE (native `services.openthread-border-router`, migrated off the container 2026-08-01). Original note: Home Assistant Connect ZBT-2 USB dongle ordered. When it arrives: add OTBR (OpenThread Border Router) container to `modules/homeassistant.nix` alongside HA and Matter Server (`--privileged` + host networking), then wire HA's Thread integration to it. The ZBT-2 will be auto-accessible inside privileged containers.
+- [x] **Eve Weather outdoor sensor (~$80)** — DONE 2026-08-30 (#636): paired as Matter node 7, `outdoorSensor` set to `sensor.eve_weather_temperature`, close threshold returned to 68°F, mounted shaded under a low eave. Original note: buy, commission over Thread, then set `outdoorSensor` in `modules/ha-window-notifications.nix` to the resulting entity ID (confirm it in Developer Tools → States) and redeploy rivendell. **Mount it in permanent shade** — an outdoor sensor in direct sun reads 10–20°F high, which would fire "close the windows" on every clear morning.
 
   The window open/close notifications are deployed and running *today*, but off the met.no forecast as a placeholder, which is not the hyperlocal reading they were designed around. Until this is done the thresholds are being compared against a grid forecast, not the yard.
 
   Weather Underground was evaluated and ruled out: WU only issues API keys to accounts already uploading from their own PWS, so there is no supported way to read a nearby station — hardware is required either way, and once you are buying hardware a sensor in your own yard beats a station a mile off. Eve Weather wins on fit: Matter-over-Thread, IPX4, no cloud and no account, and it pairs with the OTBR + Matter stack rivendell already runs (no new coordinator, no new integration). Runner-up was Ecowitt GW2000 + WH32 (~$85, local push, expandable to rain/wind/solar) — rejected only because it adds a second radio ecosystem.
 
   Once real hardware is the source, the fallback stops being a silent failover: a dead sensor makes `sensor.outdoor_temperature` unavailable rather than quietly reverting to forecast data, and the `Windows: outdoor temperature sensor unavailable` automation alerts to ntfy after 2h.
+
+- [ ] **Merge the Thread network with Apple's — POSSIBLE, DEFERRED BY CHOICE.** Measured
+  2026-08-30 by mDNS `_meshcop._udp` browse from rivendell: there are **two** Thread
+  networks in the house.
+
+  | network | border routers |
+  |---|---|
+  | `MyHome56` (Apple) | 3× HomePod mini (`B520AP`) + 2× Apple TV (`J255AP`, `J305AP`) — 10.0.1.236 / .114 / .64 / .204 / .170 |
+  | `OpenThread-0b14` (ours) | rivendell only |
+
+  So five mains-powered Thread routers already exist and are useless to our devices.
+  The Eve links direct to rivendell at −85 dBm / LQ 2 with no hop available.
+
+  **The merge only works in one direction.** Apple's border routers manage their own
+  network and will not adopt a foreign dataset; rivendell would have to join
+  `MyHome56`. HA's iOS companion app holds Apple's `ThreadNetwork` entitlement and can
+  import those credentials into HA's `thread.datasets` store (today that store has one
+  entry, `source: otbr`, ours).
+
+  **Deferred deliberately — Brian does not want to tie the homelab tightly to Apple's
+  ecosystem.** Two real costs back that up: changing OTBR's dataset orphans every
+  existing Thread device (they hold the old credentials and need re-pairing), and the
+  Thread dataset in `/var/lib/thread` becomes *Apple-sourced* imperative state,
+  reproducible only by re-importing from an iPhone — which cuts against the declarative
+  principle in CLAUDE.md.
+
+  **The coupling-free alternative that gets the same result:** any *mains-powered*
+  Matter-over-Thread device commissioned onto OUR network becomes a Thread router.
+  Battery sensors are sleepy end devices and never route, which is why the mesh has no
+  depth today. One mains-powered device sited between rivendell and the yard fixes the
+  Eve's link with no Apple dependency at all. Prefer this unless the count of Thread
+  devices grows enough that one shared mesh clearly wins.
+
+  Cheaper first step, unrelated to either: put the ZBT-2 on a USB extension cable. It is
+  plugged straight into a Pi 5 and USB 3.0 ports are strong 2.4 GHz emitters.
 
 ### Future Services
 
