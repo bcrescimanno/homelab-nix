@@ -101,12 +101,23 @@ let
   # forecast high was 96°F. Landing exactly on an integer threshold is routine
   # against a whole-degree source, not an edge case.
   #
-  # The Eve removes the premise. Measured from the recorder the afternoon it was
-  # paired: 78.08, 78.8, 79.16, 79.7, 80.06, 80.6, 80.528, 80.96, 81.5, 81.86 —
-  # hundredths of a degree, every 30–90s. A sample cannot step over a threshold
-  # band that is 0.5°F wide in practice, and exact-68.0 is now vanishingly
-  # unlikely rather than routine. Compare the same window from met.no, which is
-  # what the 66 was compensating for: 57, 62, 66, 71, 75, 80.
+  # The Eve removes the premise, and RESOLUTION is why, not cadence. Measured
+  # from the recorder the afternoon it was paired: 78.08, 78.8, 79.16, 79.7,
+  # 80.06, 80.6, 80.528, 80.96, 81.5, 81.86 — hundredths of a degree. Against
+  # met.no over the same window: 57, 62, 66, 71, 75, 80. A source with two
+  # decimal places cannot step clean over a threshold, so landing on exactly
+  # 68.0 goes from routine to vanishingly unlikely.
+  #
+  # Do not restate the cadence as "every 30-90s" — that was this device
+  # EQUILIBRATING after being carried outdoors. Matter temperature reporting is
+  # change-driven, so the interval is proportional to how fast the value is
+  # moving: ~30-90s while it climbs, ~5 min once it settles (measured 3 reports
+  # in the 15 min after the 13:01 cutover, while the raw entity sat near 83.6).
+  #
+  # That is a STRONGER guarantee than a fixed poll, and it is the real argument:
+  # a change-driven source emits a report BECAUSE the value changed, so a
+  # threshold crossing generates its own sample by construction. met.no's timer
+  # had no such relationship to the data and could sleep straight through one.
   #
   # If this ever reverts to the met.no fallback (outdoorSensor = null), put the
   # margin back — the trigger is only safe at 68 because the source is fine.
