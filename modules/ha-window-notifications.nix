@@ -2,9 +2,7 @@
 #
 # Three household notifications, driven by the outdoor temperature at the house:
 #
-#   1. Morning  — outdoor temp climbs above 66°F  → "close the windows"
-#      (66 rather than 68 is margin for the coarse met.no fallback; see
-#      closeAboveF below for the measurement that forced it)
+#   1. Morning  — outdoor temp climbs above 68°F  → "close the windows"
 #   2. Evening  — outdoor temp falls below 72°F   → "open the windows"
 #   3. If today's forecast high is below 75°F, 1 and 2 are suppressed entirely
 #      and a single 08:00 notification says "Today is a windows open day!"
@@ -23,12 +21,15 @@
 # neighbour's station. Buying hardware is unavoidable either way, and once you
 # are buying hardware a sensor in your own yard beats a station a mile off.
 #
-# The target sensor is an Eve Weather (Matter-over-Thread, IPX4, no cloud and no
-# account). rivendell already runs OTBR + the Matter integration, so it pairs
-# with no new coordinator and no new integration — see
-# devices/temperature-humidity-sensors.md, which already picked it for outdoor
-# use. MOUNT IT IN PERMANENT SHADE: an outdoor sensor in direct sun reads
-# 10–20°F high, which would fire "close the windows" every clear morning.
+# The sensor is an Eve Weather (Matter-over-Thread, IPX4, no cloud and no
+# account), paired 2026-08-30 as Matter node 7 on rivendell's existing OTBR +
+# Matter integration — no new coordinator, no new integration. See
+# devices/temperature-humidity-sensors.md, which picked it for outdoor use.
+#
+# MOUNT IT IN PERMANENT SHADE: an outdoor sensor in direct sun reads 10–20°F
+# high, which would fire "close the windows" every clear morning — and because
+# sensor.forecast_high_today folds the observed temperature into its latch, a
+# sunlit reading also poisons the open-day suppression for the rest of the day.
 #
 # ---------------------------------------------------------------------------
 # How this reaches Home Assistant
@@ -58,10 +59,11 @@
 # ---------------------------------------------------------------------------
 #
 # The automations never name the hardware. They read sensor.outdoor_temperature,
-# a template sensor whose source is `outdoorSensor` below. Until the Eve is
-# paired that is null and the sensor falls back to the met.no forecast, so the
-# logic can be deployed and watched now; swapping in the real hardware is then a
-# one-line change and the automations do not move.
+# a template sensor whose source is `outdoorSensor` below. That indirection is
+# what made the 2026-08-30 hardware swap a one-line change with no automation
+# edits; keep it. Setting outdoorSensor back to null restores the met.no
+# forecast fallback, which is the way to keep the prompts running if the Eve
+# ever has to come down.
 #
 # The fallback is deliberately NOT a silent runtime failover. Once outdoorSensor
 # names a real entity, that entity going unavailable makes
@@ -74,39 +76,52 @@
 let
   # ---- Configuration ------------------------------------------------------
 
-  # Entity ID of the physical outdoor temperature sensor. Set this once the Eve
-  # Weather is paired — it will be something like "sensor.eve_weather_temperature"
-  # (confirm the exact ID in Developer Tools → States after commissioning).
-  # While null, sensor.outdoor_temperature reads the met.no forecast instead.
-  outdoorSensor = null;
+  # Entity ID of the physical outdoor temperature sensor. Set to the Eve Weather
+  # 2026-08-30. Set back to null to fall back to the met.no forecast.
+  #
+  # NOT sensor.eve_weather_20ebs9901_temperature — the entities carrying the
+  # serial in their ID are the Matter diagnostics (thread channel, reboot count,
+  # radio faults) and every one of them is disabled_by: integration. The
+  # measurement entities have the bare name.
+  #
+  # HA converts this for us: the Matter cluster reports Celsius, but the entity
+  # registry has unit_of_measurement = °F because HA is configured
+  # us_customary, so states() already returns °F. No conversion anywhere below.
+  outdoorSensor = "sensor.eve_weather_temperature";
 
   # HA is configured us_customary, so every temperature below is already °F and
   # no conversion is needed anywhere in this file.
-  # 66, not 68, and the gap is deliberate margin for a coarse data source.
   #
-  # Measured 2026-08-01: met.no publishes WHOLE DEGREES on a ~56 min cadence,
-  # and that morning it stepped 61 -> 68 in a single update. `above` is a strict
+  # Back to 68 on 2026-08-30, with the Eve Weather as the source. This sat at 66
+  # from 2026-08-01, and the 2°F was pure margin for met.no's coarseness, not a
+  # comfort judgement: met.no published WHOLE DEGREES on a ~56 min cadence, and
+  # one morning it stepped 61 -> 68 in a single update. `above` is a strict
   # greater-than in HA, so a reading of exactly 68.0 satisfied neither the
   # trigger nor the condition, and the close prompt never fired on a day whose
-  # forecast high was 96°F. Landing precisely on an integer threshold is not an
-  # edge case against a whole-degree source — it is routine, and it happened on
-  # day one.
+  # forecast high was 96°F. Landing exactly on an integer threshold is routine
+  # against a whole-degree source, not an edge case.
   #
-  # Dropping to 66 means an hourly sample that leaps over the 68 mark still
-  # lands comfortably inside the trigger band. It widens the morning rule (more
-  # days get the prompt) which is the right failure direction: a redundant
-  # "close the windows" costs nothing, a missed one costs a hot house.
+  # The Eve removes the premise. Measured from the recorder the afternoon it was
+  # paired: 78.08, 78.8, 79.16, 79.7, 80.06, 80.6, 80.528, 80.96, 81.5, 81.86 —
+  # hundredths of a degree, every 30–90s. A sample cannot step over a threshold
+  # band that is 0.5°F wide in practice, and exact-68.0 is now vanishingly
+  # unlikely rather than routine. Compare the same window from met.no, which is
+  # what the 66 was compensating for: 57, 62, 66, 71, 75, 80.
   #
-  # REVISIT when the Eve Weather replaces the met.no fallback. It reports
-  # fractional degrees far more often, so the margin stops being necessary and
-  # this should go back toward 68 — see outdoorSensor above.
-  closeAboveF = 66;   # morning: warmer than this outside → shut the house up
+  # If this ever reverts to the met.no fallback (outdoorSensor = null), put the
+  # margin back — the trigger is only safe at 68 because the source is fine.
+  closeAboveF = 68;   # morning: warmer than this outside → shut the house up
 
-  # NOTE: this has the mirror of the bug described above and has NOT been
-  # widened. `below` is likewise strict, so exactly 72.0 fires nothing, and a
-  # hourly step from 75 -> 72 would be missed the same way. Fixing it means
-  # RAISING this (e.g. to 74), which is a real behaviour change — windows get
-  # opened earlier and warmer — so it was left alone pending a decision.
+  # This carried the mirror of the bug described above — `below` is likewise
+  # strict, so exactly 72.0 fires nothing and an hourly step from 75 -> 72 was
+  # missed the same way. It was left at 72 pending a decision, because the fix
+  # would have been to RAISE it (to ~74), and that is a real behaviour change:
+  # windows get opened earlier and warmer.
+  #
+  # RESOLVED 2026-08-30 by the source change rather than by a threshold change.
+  # The Eve's fractional 30–90s samples cross 72 continuously, so the crossing
+  # the trigger needs is now always there to detect. 72 is the comfort number we
+  # actually wanted, and it no longer needs padding to work.
   openBelowF = 72;    # evening: cooler than this outside → let the night in
   openAllDayBelowF = 75;  # forecast high under this → skip 1 & 2 entirely
 
@@ -411,8 +426,15 @@ let
       # announce itself. Goes to the infra topic, not to phones — this is an
       # operator problem, not a household one.
       #
-      # NOTE: while outdoorSensor is null this can never fire, because the
-      # met.no fallback is always available. It becomes live with the hardware.
+      # LIVE as of 2026-08-30 — it could never fire while outdoorSensor was
+      # null, because the met.no fallback is always available.
+      #
+      # The 2h window is doing real work now: the Eve sits at the edge of Thread
+      # range (-93 dBm, Link Quality 1 of 3, and rivendell's border router is
+      # the only router in the mesh), so brief dropouts are plausible and should
+      # NOT page anyone. Two hours of silence is a flat battery or a dead link;
+      # ninety seconds is weather. Do not shorten this without first adding a
+      # Thread router to the mesh.
       {
         id = "homelab_outdoor_temp_unavailable";
         alias = "Windows: outdoor temperature sensor unavailable";
