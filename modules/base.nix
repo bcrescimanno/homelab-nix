@@ -112,6 +112,33 @@ in
     description = "Homelab NixOS upgrade";
     requires = [ "network-online.target" ];
     after = [ "network-online.target" ];
+
+    # This unit activates the closure that contains this unit, so without
+    # these two lines it restarts itself out from under the upgrade.
+    #
+    # Every NixOS-generated unit embeds coreutils/findutils/gnugrep/gnused/
+    # systemd store paths in its Environment=PATH, so a stdenv-wide bump
+    # changes homelab-upgrade.service's own unit FILE. switch-to-configuration
+    # then dutifully restarts it. nixos-rebuild runs activation in a detached
+    # `systemd-run --unit=nixos-rebuild-switch-to-configuration` transient
+    # unit, so the switch survives — but the shell driving it takes SIGTERM
+    # mid-run (result 'signal' -> OnFailure -> ntfy), and the restart starts a
+    # SECOND nixos-rebuild that collides with the still-running transient unit:
+    #   Failed to start transient service unit: Unit
+    #   nixos-rebuild-switch-to-configuration.service was already loaded or
+    #   has a fragment file.
+    # That is a second failure and a second ntfy, for an upgrade that in fact
+    # applied cleanly. Hit orthanc, mirkwood and pirateship on 2026-08-30
+    # (systemd 261 -> 261.2, findutils 4.10 -> 4.11, tzdata 2026b -> 2026c);
+    # rivendell was spared only because a manual deploy the day before had
+    # already taken that stdenv bump while this unit was not running.
+    #
+    # restartIfChanged = false makes switch-to-configuration leave the unit
+    # alone; the new definition is picked up at the next timer trigger, which
+    # is the only time a oneshot upgrade unit runs anyway. Upstream's
+    # system.autoUpgrade does exactly this, including X-StopOnRemoval.
+    restartIfChanged = false;
+
     serviceConfig = {
       Type = "oneshot";
       # --refresh re-fetches the latest flake revision from GitHub.
@@ -124,6 +151,9 @@ in
     unitConfig = {
       OnSuccess = "homelab-upgrade-check.service";
       OnFailure = "homelab-upgrade-notify-failure.service";
+      # Do not stop a running upgrade just because the unit disappeared from
+      # the closure it is currently activating.
+      X-StopOnRemoval = false;
     };
   };
 
