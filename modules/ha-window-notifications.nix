@@ -26,10 +26,37 @@
 # Matter integration — no new coordinator, no new integration. See
 # devices/temperature-humidity-sensors.md, which picked it for outdoor use.
 #
-# MOUNT IT IN PERMANENT SHADE: an outdoor sensor in direct sun reads 10–20°F
-# high, which would fire "close the windows" every clear morning — and because
-# sensor.forecast_high_today folds the observed temperature into its latch, a
-# sunlit reading also poisons the open-day suppression for the rest of the day.
+# PLACEMENT: SHADE IS NECESSARY BUT NOT SUFFICIENT — IT NEEDS AIRFLOW.
+#
+# Measured 2026-08-30 with the Eve mounted under a low roof eave: fully shaded,
+# off metal, and still badly wrong. Delta against met.no across the day:
+#
+#     14:04  +6.2    17:13  -0.2    20:22  +1.0
+#     15:07  +7.9    18:16  -2.2    21:25  +2.2
+#     16:10  +6.5    19:19  -0.7    22:28  +2.1
+#
+# Two distinct errors. A sharp afternoon radiant load peaking near 15:00 at
+# +7.9°F, which vanished within an hour of the sun leaving the wall — it fell
+# 8.6°F in one hour while ambient fell 2°F. Then a steady +2.1°F overnight
+# offset that appears after sunset and plateaus: the structure releasing stored
+# heat into the still air trapped under the eave.
+#
+# The device itself is fine. At 17:13, between the two regimes, it read -0.2°F.
+# A miscalibrated sensor cannot be right at one moment and 8°F wrong two hours
+# earlier. Corroborated independently against local Weather Underground
+# stations, which read 81-85°F while the Eve read 91.2°F.
+#
+# So: open air on all sides, on a post or railing, away from walls and roof.
+# North-facing if there is a choice; a radiation shield is the proper answer.
+#
+# FIX PLACEMENT, NEVER THE THRESHOLDS. No threshold compensates for an error
+# that swings 10°F over an afternoon. And the damage is not limited to one
+# prompt: sensor.forecast_high_today folds the observed temperature into its
+# daily latch, so an inflated afternoon reading raises the latch for the rest of
+# the day — on 2026-08-30 it pushed the latch to 94 against met.no's 88, which
+# on a borderline day flips the open-day suppression. The overnight offset is
+# the more insidious one, because it peaks near dawn, which is exactly where
+# closeAboveF is evaluated.
 #
 # ---------------------------------------------------------------------------
 # How this reaches Home Assistant
