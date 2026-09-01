@@ -41,11 +41,11 @@
         "utils": "utils"
       },
       "locked": {
-        "lastModified": 1786361680,
-        "narHash": "sha256-IxaZkb9rCGEZ+yGndxKXONeIEcKMzoFUsvLTB5G/caw=",
+        "lastModified": 1788271056,
+        "narHash": "sha256-LISF6pdADVdxdBOQU459xkzKIHdeDzLR27b7zLYGxYw=",
         "owner": "serokell",
         "repo": "deploy-rs",
-        "rev": "16901271e5b30b591e56f7a84f25f186fb20f3e1",
+        "rev": "c7890645c660f3789cc8f616c5db407766f91507",
         "type": "github"
       },
       "original": {
@@ -84,11 +84,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1788197824,
-        "narHash": "sha256-AeeiwyDbYfe0rrv7VxpCZUW9V2Tz3aUgP3ApUPIQz8I=",
+        "lastModified": 1788271601,
+        "narHash": "sha256-Z4mnT40nmRY9YQP8Mpzrpw4iVQEDFEK6odKzUEp2ruw=",
         "owner": "bcrescimanno",
         "repo": "dotfiles",
-        "rev": "9d2c856cb9278c12277af81e6a355e418af2b492",
+        "rev": "f030d854537a877f7a28ace7480b5806c2c921e9",
         "type": "github"
       },
       "original": {
