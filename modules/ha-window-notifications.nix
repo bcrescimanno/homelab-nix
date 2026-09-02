@@ -176,7 +176,43 @@ let
   # Household push targets. These are actionable prompts for whoever is home,
   # so they go to phones — not to the ntfy homelab topic, which carries infra
   # alerts (backups, upgrades, freshness) and would be diluted by them.
-  phones = [ "notify.brians_iphone_14" "notify.queen_s_iphone14_pro" ];
+  #
+  # NAME THE LIVE REGISTRATION, NOT THE PRETTIEST ENTITY ID. Corrected
+  # 2026-09-01 after the morning prompt raised "Error sending notification to
+  # Brian's iPhone 14" and delivered nothing. Both entities named here were
+  # orphaned mobile_app config entries — the husks left behind when the iOS app
+  # re-registers, which keep the original entity_id and hand the *new* entry a
+  # suffixed one:
+  #
+  #   notify.brians_iphone_14       entry created 2024-08-10, last modified
+  #                                 2024-12-13 — the same day the replacement
+  #                                 entry was created. Its only entity is the
+  #                                 notify one; the live registration owns the
+  #                                 device_tracker and all ~20 sensors.
+  #   notify.queen_s_iphone14_pro   superseded 2026-08-01, two minutes before
+  #                                 Queen's iPhone16 Pro 2 was registered.
+  #
+  # The trap is that a husk KEEPS WORKING, for a long time, and then stops
+  # without warning. Delivery to notify.brians_iphone_14 was confirmed daily by
+  # the household right up to the evening of 2026-08-31 — twenty-one months
+  # after the entry it belongs to was superseded. APNs held the old token valid
+  # that entire time; it was invalidated some time overnight, and the next send
+  # (10:00 on 2026-09-01) was the first to fail. So there was no period of
+  # silent non-delivery to notice, and nothing to notice it with: the husk was
+  # indistinguishable from the real thing until the moment it wasn't.
+  #
+  # Do not read the entity's state as proof of delivery either way. A notify
+  # entity's state is the timestamp of its last send, and it advances whenever
+  # the HTTP call to HA's push proxy does not raise. The proxy will accept a
+  # push for a token APNs has already dropped, because APNs reports invalidation
+  # asynchronously — so that timestamp confirms the request was accepted, never
+  # that a phone rendered it. It is the only server-side evidence available, and
+  # on 2026-09-01 the household was the instrument that actually caught this.
+  #
+  # When re-pointing these, check .storage/core.entity_registry for which
+  # config_entry_id owns the entity and confirm that entry also owns the phone's
+  # sensors. An entry whose sole entity is `notify.*` is a husk.
+  phones = [ "notify.brians_iphone" "notify.queen_s_iphone16_pro_2" ];
 
   # Infrastructure alerting, for the sensor-health automation only.
   infraNotify = "notify.homelab_alerts";
@@ -192,11 +228,19 @@ let
   # service at all — so naming the entity as if it were a service fails at run
   # time, per-action, with nothing but a log line. Verified against
   # /api/services on rivendell rather than assumed.
+  #
+  # continue_on_error so one bad target cannot mute the household. HA scripts
+  # abort the whole sequence on the first raising action, so on 2026-09-01 the
+  # failure against Brian's phone at position 1 meant the action for Queen's
+  # phone never ran at all — one stale registration silenced both recipients.
+  # A push that fails for one person is not a reason to withhold it from the
+  # other, and the per-action error is still logged either way.
   notify = title: message:
     map (target: {
       action = "notify.send_message";
       target.entity_id = target;
       data = { inherit title message; };
+      continue_on_error = true;
     }) phones;
 
   # Only fire once per calendar day. `last_triggered` is set when the actions
