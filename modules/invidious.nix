@@ -271,7 +271,7 @@ in
   # ---------------------------------------------------------------------------
 
   virtualisation.oci-containers.containers.invidious-companion = {
-    image = "quay.io/invidious/invidious-companion:latest@sha256:298cad3da121cc6ee290f00e6cc02a64feb36085097a3bba03d88eaa31d4dafd";
+    image = "quay.io/invidious/invidious-companion:latest@sha256:e3e4e79490bb85e72ab233d332b4169142ed7907def7111223665c84952b0c7e";
     autoStart = true;
 
     # Loopback-only. Invidious proxies for it; nothing external should reach it.
