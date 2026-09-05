@@ -107,11 +107,22 @@ in
   systemd.tmpfiles.rules = [ "d ${stateDir} 0755 root root -" ];
 
   # --------------------------------------------------------------- change watch
+  #
+  # All three timer-driven oneshots below carry restartIfChanged = false. The
+  # timer is their ONLY legitimate trigger: switch-to-configuration STARTS an
+  # inactive oneshot whose store path changed, so a nixpkgs bump ran them
+  # mid-activation while Lidarr/Music Assistant were still restarting ->
+  # connection refused -> the unit failed -> s-t-c exited 4 -> homelab-upgrade
+  # failed and pushed an ntfy, for an upgrade that had in fact applied
+  # (pirateship, 2026-09-05). Leaving them alone means the new definition is
+  # picked up at the next timer trigger. Same guard upstream puts on
+  # restic-backups-*, nix-gc and podman-prune (X-RestartIfChanged=false).
   systemd.services.music-sync = {
     description = "Refresh music libraries when the shared music tree changes";
     after = [ "podman-lidarr.service" "network-online.target" "var-lib-media.mount" ];
     wants = [ "network-online.target" ];
     unitConfig.OnFailure = "music-sync-notify-failure.service";
+    restartIfChanged = false;  # see the section note above
     serviceConfig = {
       Type = "oneshot";
       # Well above the measured 1.3s cold walk, but low enough that a hung NFS
@@ -139,6 +150,7 @@ in
     after = [ "podman-lidarr.service" "network-online.target" "var-lib-media.mount" ];
     wants = [ "network-online.target" ];
     unitConfig.OnFailure = "music-sync-notify-failure.service";
+    restartIfChanged = false;  # see the section note above
     serviceConfig = {
       Type = "oneshot";
       TimeoutStartSec = "15m";
@@ -167,6 +179,7 @@ in
     after = [ "network-online.target" ];
     wants = [ "network-online.target" ];
     unitConfig.OnFailure = "music-sync-notify-failure.service";
+    restartIfChanged = false;  # see the section note above
     serviceConfig = {
       Type = "oneshot";
       # Measured at ~25s per artist -- the cost is MA querying MusicBrainz,

@@ -66,6 +66,9 @@ in
 {
   systemd.services.pr-automerge-watch = {
     description = "Alert when an automerge-armed PR cannot merge";
+    # Timer-driven oneshot; see modules/music-sync.nix for why activation must
+    # not start it. Its only legitimate trigger is the timer.
+    restartIfChanged = false;
     after = [ "network-online.target" ];
     wants = [ "network-online.target" ];
 

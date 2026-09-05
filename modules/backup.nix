@@ -186,6 +186,9 @@ in
 
     systemd.services.restic-freshness-check = {
       description = "Check that backups and upgrades ran recently";
+      # Timer-driven oneshot; see modules/music-sync.nix for why activation must
+      # not start it. Its only legitimate trigger is the timer.
+      restartIfChanged = false;
       serviceConfig.Type = "oneshot";
       script = ''
         MAX_AGE_HOURS=36

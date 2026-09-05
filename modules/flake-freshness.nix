@@ -87,6 +87,9 @@ in
 {
   systemd.services.flake-freshness-check = {
     description = "Check that the flake inputs this system was built from are current";
+    # Timer-driven oneshot; see modules/music-sync.nix for why activation must
+    # not start it. Its only legitimate trigger is the timer.
+    restartIfChanged = false;
     after = [ "network-online.target" ];
     wants = [ "network-online.target" ];
     serviceConfig = {

@@ -77,6 +77,9 @@ in
     description = "Apply seeding policy (private = forever, public = ratio 1.0)";
     after = [ "podman-gluetun.service" "podman-qbittorrent.service" ];
     unitConfig.OnFailure = "qbittorrent-seed-policy-notify-failure.service";
+    # Timer-driven oneshot; see modules/music-sync.nix for why activation must
+    # not start it. Its only legitimate trigger is the timer.
+    restartIfChanged = false;
     serviceConfig = {
       Type = "oneshot";
       # A steady-state run is a couple of API calls; 5m only matters when the
