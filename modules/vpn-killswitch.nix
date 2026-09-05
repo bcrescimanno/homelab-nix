@@ -88,6 +88,9 @@ in
 {
   systemd.services.vpn-leak-check = {
     description = "Verify the arr stack VPN is not leaking; latch the stack off if it is";
+    # Timer-driven oneshot; see modules/music-sync.nix for why activation must
+    # not start it. Its only legitimate trigger is the timer.
+    restartIfChanged = false;
     after = [ "podman-gluetun.service" "network-online.target" ];
     wants = [ "network-online.target" ];
 

@@ -311,6 +311,9 @@ upstreams = {
   #      activation window rolls back the deploy. It logs and exits 0.
   systemd.services.unbound-health-check = {
     description = "Unbound DNS health check";
+    # Timer-driven oneshot; see modules/music-sync.nix for why activation must
+    # not start it. Its only legitimate trigger is the timer.
+    restartIfChanged = false;
     serviceConfig = {
       Type = "oneshot";
       StateDirectory = "unbound-monitor";
