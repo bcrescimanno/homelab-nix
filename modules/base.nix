@@ -137,6 +137,12 @@ in
     # alone; the new definition is picked up at the next timer trigger, which
     # is the only time a oneshot upgrade unit runs anyway. Upstream's
     # system.autoUpgrade does exactly this, including X-StopOnRemoval.
+    #
+    # It is NOT sufficient on its own: X-RestartIfChanged only governs whether
+    # an ACTIVE unit is restarted, and this oneshot is inactive between timer
+    # triggers. X-OnlyManualStart (below) is the marker that stops s-t-c
+    # STARTING it -- which here would mean an upgrade recursively launching a
+    # second upgrade. See modules/music-sync.nix for how this bit us.
     restartIfChanged = false;
 
     serviceConfig = {
@@ -154,6 +160,8 @@ in
       # Do not stop a running upgrade just because the unit disappeared from
       # the closure it is currently activating.
       X-StopOnRemoval = false;
+      # Never let activation start an upgrade; only the timer may.
+      X-OnlyManualStart = true;
     };
   };
 
