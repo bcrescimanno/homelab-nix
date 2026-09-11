@@ -115,16 +115,34 @@ in
   # s-t-c exits 4 -> homelab-upgrade fails and pushes an "Upgrade FAILED" ntfy,
   # for an upgrade that in fact applied cleanly.
   #
-  # Both markers are needed, and this is the part #657 got wrong.
-  # restartIfChanged = false (X-RestartIfChanged) governs only whether s-t-c
-  # RESTARTS a unit that is currently ACTIVE. A timer-driven oneshot is
-  # inactive almost all of the time, so that marker never applies to it;
-  # the decision to START an inactive unit is governed by X-OnlyManualStart,
-  # which is a separate check in s-t-c. #657 set only the first and the
-  # failures continued: pirateship 2026-09-09 and 2026-09-10 both started the
-  # audit at 05:02 against a 09:30 OnCalendar, with the unit file byte-identical
-  # to the previous generation (gens 264/265/266 hash the same) -- so it was
-  # not even a changed-unit restart. X-OnlyManualStart is what actually stops it.
+  # Why both markers, and what is still not explained.
+  #
+  # restartIfChanged = false (X-RestartIfChanged, [Service]) governs only
+  # whether s-t-c RESTARTS a unit that is currently ACTIVE. A timer-driven
+  # oneshot is inactive almost all of the time, so #657's guard never applied
+  # to it. X-OnlyManualStart ([Unit]) is the flag that makes s-t-c SKIP a unit
+  # it would otherwise start; it is what upstream sets on restic's and acme's
+  # timer units. Both are correct and both are kept.
+  #
+  # BUT neither one explains the failures that prompted this. Per the NixOS
+  # manual (doc/manual/development/unit-handling.section.md) that whole
+  # skip-flag chain only runs "if the unit files differ" -- and on pirateship
+  # 2026-09-09 and 2026-09-10 the audit unit file was BYTE-IDENTICAL across
+  # generations 264/265/266, yet it was started at 05:02 against a 09:30
+  # OnCalendar. So the markers close a real path, but not demonstrably THAT one.
+  #
+  # Ruled out on the host, each by direct test: the timer does not fire on
+  # restart (Persistent had a stamp whose next elapse was still in the future,
+  # matching the failing days); restarting podman-lidarr does not pull the unit
+  # in; WantedBy/RequiredBy/BoundBy are all empty and TriggeredBy is the timer
+  # alone; no sops restartUnits, activation script or program calls systemctl
+  # start on it; it is not a sysinit unit. The trigger remains UNKNOWN.
+  #
+  # So the guard that actually holds is in music-library-audit.py: it waits for
+  # Lidarr rather than dying on connection refused, which makes the failure
+  # impossible whatever started the unit. If a 05:0x "Starting" line shows up in
+  # `journalctl -u music-library-audit` after a future nixpkgs bump, the markers
+  # were not the fix and the real trigger is still out there.
   #
   # Neither marker affects the timer: both are read by s-t-c alone, and systemd
   # ignores unknown X- keys in [Unit]. Manual `systemctl start` still works too.
