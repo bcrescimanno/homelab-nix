@@ -108,21 +108,33 @@ in
 
   # --------------------------------------------------------------- change watch
   #
-  # All three timer-driven oneshots below carry restartIfChanged = false. The
-  # timer is their ONLY legitimate trigger: switch-to-configuration STARTS an
-  # inactive oneshot whose store path changed, so a nixpkgs bump ran them
-  # mid-activation while Lidarr/Music Assistant were still restarting ->
-  # connection refused -> the unit failed -> s-t-c exited 4 -> homelab-upgrade
-  # failed and pushed an ntfy, for an upgrade that had in fact applied
-  # (pirateship, 2026-09-05). Leaving them alone means the new definition is
-  # picked up at the next timer trigger. Same guard upstream puts on
-  # restic-backups-*, nix-gc and podman-prune (X-RestartIfChanged=false).
+  # All three timer-driven oneshots below carry BOTH restartIfChanged = false
+  # and X-OnlyManualStart. The timer is their ONLY legitimate trigger:
+  # switch-to-configuration starts these mid-activation, while Lidarr/Music
+  # Assistant are still restarting -> connection refused -> the unit fails ->
+  # s-t-c exits 4 -> homelab-upgrade fails and pushes an "Upgrade FAILED" ntfy,
+  # for an upgrade that in fact applied cleanly.
+  #
+  # Both markers are needed, and this is the part #657 got wrong.
+  # restartIfChanged = false (X-RestartIfChanged) governs only whether s-t-c
+  # RESTARTS a unit that is currently ACTIVE. A timer-driven oneshot is
+  # inactive almost all of the time, so that marker never applies to it;
+  # the decision to START an inactive unit is governed by X-OnlyManualStart,
+  # which is a separate check in s-t-c. #657 set only the first and the
+  # failures continued: pirateship 2026-09-09 and 2026-09-10 both started the
+  # audit at 05:02 against a 09:30 OnCalendar, with the unit file byte-identical
+  # to the previous generation (gens 264/265/266 hash the same) -- so it was
+  # not even a changed-unit restart. X-OnlyManualStart is what actually stops it.
+  #
+  # Neither marker affects the timer: both are read by s-t-c alone, and systemd
+  # ignores unknown X- keys in [Unit]. Manual `systemctl start` still works too.
   systemd.services.music-sync = {
     description = "Refresh music libraries when the shared music tree changes";
     after = [ "podman-lidarr.service" "network-online.target" "var-lib-media.mount" ];
     wants = [ "network-online.target" ];
     unitConfig.OnFailure = "music-sync-notify-failure.service";
     restartIfChanged = false;  # see the section note above
+    unitConfig.X-OnlyManualStart = true;  # see the section note above
     serviceConfig = {
       Type = "oneshot";
       # Well above the measured 1.3s cold walk, but low enough that a hung NFS
@@ -151,6 +163,7 @@ in
     wants = [ "network-online.target" ];
     unitConfig.OnFailure = "music-sync-notify-failure.service";
     restartIfChanged = false;  # see the section note above
+    unitConfig.X-OnlyManualStart = true;  # see the section note above
     serviceConfig = {
       Type = "oneshot";
       TimeoutStartSec = "15m";
@@ -180,6 +193,7 @@ in
     wants = [ "network-online.target" ];
     unitConfig.OnFailure = "music-sync-notify-failure.service";
     restartIfChanged = false;  # see the section note above
+    unitConfig.X-OnlyManualStart = true;  # see the section note above
     serviceConfig = {
       Type = "oneshot";
       # Measured at ~25s per artist -- the cost is MA querying MusicBrainz,

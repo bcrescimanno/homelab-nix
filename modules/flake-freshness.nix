@@ -90,6 +90,10 @@ in
     # Timer-driven oneshot; see modules/music-sync.nix for why activation must
     # not start it. Its only legitimate trigger is the timer.
     restartIfChanged = false;
+    # X-OnlyManualStart is the marker that actually keeps s-t-c from starting
+    # this mid-activation; restartIfChanged only covers ACTIVE units, and a
+    # timer oneshot is inactive. See modules/music-sync.nix for the full why.
+    unitConfig.X-OnlyManualStart = true;
     after = [ "network-online.target" ];
     wants = [ "network-online.target" ];
     serviceConfig = {

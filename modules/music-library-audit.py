@@ -30,6 +30,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -53,6 +54,35 @@ def http(url, method="GET", headers=None, data=None, timeout=60):
     return json.loads(raw) if raw and raw[:1] in b"[{" else raw
 
 
+def wait_for_lidarr(url, headers, deadline=300, interval=10):
+    """Fetch `url`, tolerating a Lidarr that is still coming up.
+
+    The timer is meant to be this unit's only trigger, but activation has
+    started it more than once (see modules/music-sync.nix), landing it while
+    the Lidarr container is mid-restart. A connection refused against a
+    container that is twenty seconds from ready is not a fault, and failing
+    here fails switch-to-configuration, which fails the nightly upgrade and
+    pushes a false "Upgrade FAILED" ntfy.
+
+    So retry the first call for `deadline` seconds, then give up loudly: a
+    Lidarr still unreachable after five minutes is a real problem worth an
+    alert. HTTP errors (a bad API key, say) are faults, not readiness, and
+    are never retried.
+    """
+    waited = 0
+    while True:
+        try:
+            return http(url, headers=headers)
+        except urllib.error.HTTPError:
+            raise
+        except (urllib.error.URLError, OSError) as e:
+            if waited >= deadline:
+                raise
+            print("lidarr not ready (%s); retrying in %ds" % (e, interval), flush=True)
+            time.sleep(interval)
+            waited += interval
+
+
 def to_host(p):
     """Translate a Lidarr path to the host's view of the same file."""
     rel = os.path.relpath(p.rstrip("/"), LROOT)
@@ -69,7 +99,7 @@ with open(LIDARR["configPath"]) as fh:
 base = "http://127.0.0.1:%d/api/v1" % LIDARR["port"]
 hdr = {"X-Api-Key": key, "Content-Type": "application/json"}
 
-artists = http(base + "/artist", headers=hdr)
+artists = wait_for_lidarr(base + "/artist", hdr)
 disk = sorted(d.name for d in os.scandir(ROOT) if d.is_dir(follow_symlinks=False))
 
 
