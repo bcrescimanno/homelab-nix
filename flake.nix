@@ -85,22 +85,8 @@
         });
       };
 
-      # music-assistant 2.9.9: test_digital_silence_yields_finite_spectral_centroid
-      # errors with "RuntimeError: failed to initialize QNNPACK" — torch's quantized
-      # backend can't initialise in the aarch64 Nix sandbox. 3113 tests pass; this is
-      # the only environment-dependent failure. nixpkgs already disables four tests in
-      # this same smart_fades module, so this extends an existing upstream workaround
-      # rather than inventing one. Remove once nixpkgs disables it too.
-      musicAssistantOverlay = final: prev: {
-        music-assistant = prev.music-assistant.overrideAttrs (oldAttrs: {
-          disabledTests = (oldAttrs.disabledTests or []) ++ [
-            "test_digital_silence_yields_finite_spectral_centroid"
-          ];
-        });
-      };
-
       commonOverlays = [ glancesOverlay ];
-      piOverlays = commonOverlays ++ [ musicAssistantOverlay ];
+      piOverlays = commonOverlays;
 
       # Every overlay above is a workaround for an upstream bug, and every one
       # of their comments ends with some form of "remove once nixpkgs fixes it".
@@ -115,13 +101,13 @@
       # adding it here is the mistake to avoid.
       #
       # `arch` records where the failure the overlay works around actually
-      # occurs, because that determines where the probe is meaningful — both of
-      # the entries below reproduce only on aarch64, so an x86_64 probe would
+      # occurs, because that determines where the probe is meaningful — the
+      # entries below reproduce only on aarch64, so an x86_64 probe would
       # say nothing at all about whether they are still load-bearing.
       #
       # `flaky` records whether that failure is TIMING-DEPENDENT, and it changes
-      # what a clean build is worth. For a deterministic failure — torch's
-      # QNNPACK refusing to initialise — one clean build is proof the bug is
+      # what a clean build is worth. For a deterministic failure — glances'
+      # aarch64 psutil topology check — one clean build is proof the bug is
       # fixed. For a race, one clean build only proves the race was won that
       # time, which is the single-trial-on-an-intermittent-bug error, and acting
       # on it would reintroduce an overlay-shaped hole that fails a few builds
@@ -137,11 +123,6 @@
           arch = "aarch64";
           flaky = false;
           note = "sandbox + network-dependent tests; psutil topology returns None on aarch64";
-        };
-        music-assistant = {
-          arch = "aarch64";
-          flaky = false;
-          note = "torch QNNPACK will not initialise in the aarch64 sandbox";
         };
       };
 
