@@ -281,7 +281,10 @@
             # Home Connect program OPTION (Cooking.Oven.Option.FastPreHeat),
             # available only while an oven program is selected, so HomeKit
             # shows it as No Response almost all the time.
-            "vacuum.kitchen_robo"
+            #
+            # Not vacuum.kitchen_robo: HomeKit has no vacuum service, so the
+            # bridge can only present it as an on/off switch (start / return
+            # to dock). Not worth a tile; use the Roborock app or HA.
           ])
           (bridge "HASS Hall" 21066 [
             "climate.main_floor"
