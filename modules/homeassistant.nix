@@ -277,7 +277,10 @@
             "light.hood_light"
             "switch.dishwasher_power"
             "switch.hood_power"
-            "switch.wall_oven_fast_pre_heat"
+            # Not switch.wall_oven_fast_pre_heat: despite the name it is a
+            # Home Connect program OPTION (Cooking.Oven.Option.FastPreHeat),
+            # available only while an oven program is selected, so HomeKit
+            # shows it as No Response almost all the time.
             "vacuum.kitchen_robo"
           ])
           (bridge "HASS Hall" 21066 [
