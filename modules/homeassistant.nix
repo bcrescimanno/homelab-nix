@@ -201,22 +201,22 @@
       script = "!include scripts.yaml";
       scene = "!include scenes.yaml";
 
-      http = {
-        use_x_forwarded_for = true;
-        # Caddy is on this same host and connects over loopback (see
-        # modules/caddy.nix — rivendell-local backends deliberately use
-        # 127.0.0.1 and not localhost, because trusted_proxies here is IPv4 and
-        # localhost resolves to ::1).
-        #
-        # The container-era list also trusted 172.18.0.0/24 and 10.88.0.0/16.
-        # Those were podman bridge subnets, and trusting an entire container
-        # bridge as a reverse proxy is worth not carrying forward: nothing
-        # proxies HA from a container, and matter-server uses host networking.
-        trusted_proxies = [
-          "127.0.0.1"
-          "10.0.1.0/24"
-        ];
-      };
+      # NO `http:` block — deliberately. HA now owns HTTP settings in
+      # .storage/http (UI: Settings > System > Network). It migrated the YAML
+      # once (`yaml_migration_done: true`), ignores it from then on, and raises
+      # a repair until it is removed. Adding it back here changes nothing.
+      #
+      # That makes these settings IMPERATIVE: they are no longer in the repo,
+      # and editing this module cannot change them. What .storage/http held
+      # when this block was removed (2026-09-13):
+      #   use_x_forwarded_for = true
+      #   trusted_proxies     = [ "127.0.0.1/32" "10.0.1.0/24" ]
+      # Caddy is on this same host and connects over loopback. See
+      # modules/caddy.nix: rivendell-local backends use 127.0.0.1, not
+      # localhost, because trusted_proxies is IPv4 and localhost resolves to
+      # ::1. The container-era podman bridge subnets (172.18.0.0/24,
+      # 10.88.0.0/16) were intentionally NOT carried forward. Keep them out if
+      # you edit this in the UI.
     };
   };
 
