@@ -217,6 +217,67 @@
       # ::1. The container-era podman bridge subnets (172.18.0.0/24,
       # 10.88.0.0/16) were intentionally NOT carried forward. Keep them out if
       # you edit this in the UI.
+
+      # HomeKit Bridge — ONE BRIDGE PER ROOM, on purpose.
+      #
+      # HAP has no room attribute, so HA cannot tell Apple Home which area an
+      # entity is in. Every accessory on a bridge lands in whatever room the
+      # bridge itself was added to. With a single bridge, everything landed in
+      # Office. One bridge per area, each paired into its matching Home room,
+      # puts each accessory in the right room at once, and so does anything
+      # added later.
+      #
+      # YAML is authoritative. On every start, HA matches each bridge below to
+      # an existing config entry by NAME or PORT and overwrites its data and
+      # options (homekit/__init__.py _async_update_config_entry_from_yaml).
+      # Any filter edited in the UI is reverted on restart. Matching keeps the
+      # pairing: port 21064 is the original UI bridge, already paired into
+      # Office. Changing a bridge's port AND name orphans its pairing and
+      # makes a new bridge that needs re-pairing.
+      #
+      # Ports: 21064 Office (original bridge), 21065 Kitchen (took over an
+      # unpaired leftover entry), 21066 Hall, 21067 Boys Bathroom.
+      #
+      # Only explicit include_entities, never include_domains. The old
+      # domain-wide filter exposed about 40 accessories: Music Assistant
+      # players that Home already shows natively as AirPlay, plus dishwasher
+      # program and sabbath-mode switches.
+      #
+      # advertise_ip pins mDNS to the main LAN. Otherwise HA advertises every
+      # adapter, including eth0.4 (10.0.12.2, IoT VLAN), which no Apple home
+      # hub can reach. Same class of bug as the Music Assistant publish_ip race.
+      # Firewall: eth0 is a trustedInterface (modules/music-assistant.nix).
+      #
+      # The ecobee is exposed here AND paired to Apple Home directly (it
+      # advertises sf=0). Drop climate.main_floor from Hall if it shows up
+      # twice in Home.
+      homekit =
+        let
+          bridge = name: port: entities: {
+            inherit name port;
+            mode = "bridge";
+            advertise_ip = [ "10.0.1.9" ];
+            filter.include_entities = entities;
+          };
+        in
+        [
+          (bridge "HASS Office" 21064 [
+            "light.desktop_key_light"
+          ])
+          (bridge "HASS Kitchen" 21065 [
+            "light.hood_light"
+            "switch.dishwasher_power"
+            "switch.hood_power"
+            "switch.wall_oven_fast_pre_heat"
+            "vacuum.kitchen_robo"
+          ])
+          (bridge "HASS Hall" 21066 [
+            "climate.main_floor"
+          ])
+          (bridge "HASS Boys Bathroom" 21067 [
+            "light.boys_bathroom_boys_bathroom_lights"
+          ])
+        ];
     };
   };
 
