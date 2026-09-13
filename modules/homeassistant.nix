@@ -231,12 +231,21 @@
       # an existing config entry by NAME or PORT and overwrites its data and
       # options (homekit/__init__.py _async_update_config_entry_from_yaml).
       # Any filter edited in the UI is reverted on restart. Matching keeps the
-      # pairing: port 21064 is the original UI bridge, already paired into
-      # Office. Changing a bridge's port AND name orphans its pairing and
+      # pairing. Changing a bridge's port AND name orphans its pairing and
       # makes a new bridge that needs re-pairing.
       #
-      # Ports: 21064 Office (original bridge), 21065 Kitchen (took over an
-      # unpaired leftover entry), 21066 Hall, 21067 Boys Bathroom.
+      # THE TRAP: matching only considers entries with source "import"
+      # (_async_get_imported_entries_indices). A bridge created in the UI
+      # (source "user") is invisible to it, and a YAML bridge on the same port
+      # does not take it over. Its import flow aborts `port_name_in_use`,
+      # logged below warning level, and the UI entry keeps its old filter.
+      # Verified on the first deploy (2026-09-13): 21066/21067 imported, but
+      # 21064/21065 were silently skipped. The fix was to delete both UI
+      # entries in Settings > Devices & services and restart HA. YAML then
+      # created them fresh, so every bridge had to be paired again in Home.
+      # Never create a HomeKit bridge in the UI again; add it here.
+      #
+      # Ports: 21064 Office, 21065 Kitchen, 21066 Hall, 21067 Boys Bathroom.
       #
       # Only explicit include_entities, never include_domains. The old
       # domain-wide filter exposed about 40 accessories: Music Assistant
