@@ -3,7 +3,7 @@
 ## Context
 
 - **Current setup**: Two ecobee SmartSensors (front door, kitchen door), local in HA via `homekit_controller` since 2026-09-13. Kitchen Door is unavailable (device-side).
-- **On order (2026-09-13)**: Eve Door & Window 3-pack, plus a mains-powered Thread smart plug to give the mesh a router (see `smart-plugs.md`). See Decision below for the install plan.
+- **On order (2026-09-13)**: Eve Door & Window 3-pack, plus an Eve Energy plug to give the Thread mesh a router (see `smart-plugs.md`). See Decision below for the install plan.
 - **Goal**: Monitor doors and windows for open/close state; drive HVAC automations (see thermostats.md), security alerting via Alarmo or HA alarm_control_panel, and general home automation.
 - **Scale**: Large deployment likely — 10–20+ sensors across all doors and windows.
 - **Protocol**: **Thread only (decided 2026-09-13).** No Zigbee or Z-Wave coordinator will be added. Every candidate in this file is Matter-over-Thread.
