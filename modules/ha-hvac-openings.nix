@@ -112,6 +112,10 @@ let
   # ---- Configuration ------------------------------------------------------
 
   # Contact sensors (device_class opening/door/window; `on` = open).
+  #
+  # binary_sensor.front_door_contact is deliberately NOT here. The front door
+  # isn't kept open when the house is opened up for cooling, so it must not
+  # pause the HVAC. Not an omission — don't add it.
   openings = [ "binary_sensor.kitchen_door_contact" ];
 
   thermostat = "climate.main_floor";
