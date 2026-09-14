@@ -211,6 +211,7 @@
           ./modules/flake-freshness.nix
           ./modules/pr-automerge-watch.nix
           ./modules/music-assistant.nix
+          ./modules/piper.nix
           # github-runners.nix is not in nixos-raspberrypi's default module set
           "${nixpkgs}/nixos/modules/services/continuous-integration/github-runners.nix"
         ];

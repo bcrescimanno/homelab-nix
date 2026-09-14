@@ -161,6 +161,9 @@
       "radarr"            # aiopyarr
       "sabnzbd"           # pysabnzbd
       "sonarr"            # aiopyarr
+
+      # Local TTS — the Piper server declared in modules/piper.nix.
+      "wyoming"
     ];
 
     # HACS. It is a custom component, not a nixpkgs one — it lives in
