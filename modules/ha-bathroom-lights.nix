@@ -27,12 +27,33 @@
 #
 # Durations are written as { minutes = 15; }, never "00:15:00". A mapping cannot
 # go through YAML's sexagesimal-int trap at all (see ha-nix-packages-pattern).
+#
+# Shower window: 19:00–20:30, nothing turns the lights off
+#
+# Evening showers run past 15 minutes, and the lights went out on one. A time
+# condition sits right before the turn_off, so it gates every trigger path,
+# including a start run that checks after its 15-minute delay.
+#
+# Suppressing alone would leave a gap. Turn the light on at 19:10 and the state
+# trigger fires once at 19:25, gets blocked, and never fires again. So a third
+# trigger fires at 20:30 and turns off anything that has been on for at least
+# 15 minutes. A light turned on at 20:20 fails that check, but its own state
+# trigger fires at 20:35, outside the window, so it is still covered.
+#
+# This is a stopgap. The time rule is only here because the room has no
+# occupancy sensing. Once a presence sensor (mmWave, since a still person in a
+# shower defeats PIR) is in the bathroom, replace the window and the 15-minute
+# timer with "off after N minutes of no presence". Tracked in Plan.md.
 
 { ... }:
 
 let
   light = "light.boys_bathroom_boys_bathroom_lights";
   onFor = { minutes = 15; };
+
+  # HA's time condition wraps midnight when after > before.
+  showerStart = "19:00:00";
+  showerEnd = "20:30:00";
 
   turnOff = {
     action = "light.turn_off";
@@ -60,6 +81,11 @@ in
             event = "start";
             id = "ha_start";
           }
+          {
+            trigger = "time";
+            at = showerEnd;
+            id = "shower_window_end";
+          }
         ];
         actions = [
           {
@@ -69,6 +95,14 @@ in
               { condition = "state"; entity_id = light; state = "on"; "for" = onFor; }
             ];
           }
+          {
+            "if" = [{ condition = "trigger"; id = "shower_window_end"; }];
+            "then" = [
+              { condition = "state"; entity_id = light; state = "on"; "for" = onFor; }
+            ];
+          }
+          # Outside the shower window only.
+          { condition = "time"; after = showerEnd; before = showerStart; }
           turnOff
         ];
       }

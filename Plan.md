@@ -59,6 +59,10 @@ Shell function in dotfiles `home/common.nix`. deploy-rs config in `flake.nix` un
 
 - [ ] **Prune `atticd-migrate` leftovers** (orthanc): `/var/lib/private/atticd/atticd-migrate` is 280M of residue from the April 2026 migration and, since #569 fixed the atticd backup path, it is now copied to both restic repos nightly for no reason. Confirm atticd no longer reads it, then delete. Small, but it is ~11% of that host's backup volume.
 
+### Home Automation
+
+- [ ] **Presence sensor for the Boys Bathroom** — make the lights auto-off presence based instead of time based. Today `modules/ha-bathroom-lights.nix` turns the lights off after 15 minutes, with a 19:00–20:30 exception added because it cut the lights mid-shower. A timer can't tell a long shower from a forgotten light. Needs mmWave (PIR misses someone standing still in a shower), ideally Matter-over-Thread per the device criteria, placed so steam and the shower curtain don't blind it. Then replace the window and the 15-minute timer with "off after N minutes of no presence".
+
 ### Power / Battery Resilience
 
 - [ ] **Low power mode — shed load while running on battery**. Prompted by the 2026-08-09 outage (~19:57, all hosts hard-cut). Design only, not yet implemented.
