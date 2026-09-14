@@ -61,7 +61,7 @@ Shell function in dotfiles `home/common.nix`. deploy-rs config in `flake.nix` un
 
 ### Home Automation
 
-- [ ] **Install the Thread plug and Eve Door & Window 3-pack (ordered 2026-09-13)** — the first Thread router for our mesh and the first batch of window/door sensors. Install the plug first and confirm it routes, then pair the three Eves through it. Add the ones that matter for cooling to `openings` in `modules/ha-hvac-openings.nix` and deploy rivendell. Full steps in `devices/contact-sensors.md` → Decision and `devices/smart-plugs.md` → Decision.
+- [ ] **Install the Eve Energy plug and Eve Door & Window 3-pack (ordered 2026-09-13)** — the first Thread router for our mesh and the first batch of window/door sensors. Install the plug first and confirm it routes, then pair the three Eves through it. Add the ones that matter for cooling to `openings` in `modules/ha-hvac-openings.nix` and deploy rivendell. Full steps in `devices/contact-sensors.md` → Decision and `devices/smart-plugs.md` → Decision.
 
 - [ ] **Presence sensor for the Boys Bathroom** — make the lights auto-off presence based instead of time based. Today `modules/ha-bathroom-lights.nix` turns the lights off after 15 minutes, with a 19:00–20:30 exception added because it cut the lights mid-shower. A timer can't tell a long shower from a forgotten light. Needs mmWave (PIR misses someone standing still in a shower), ideally Matter-over-Thread per the device criteria, placed so steam and the shower curtain don't blind it. Then replace the window and the 15-minute timer with "off after N minutes of no presence".
 
