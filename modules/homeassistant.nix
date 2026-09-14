@@ -257,9 +257,12 @@
       # hub can reach. Same class of bug as the Music Assistant publish_ip race.
       # Firewall: eth0 is a trustedInterface (modules/music-assistant.nix).
       #
-      # The ecobee is exposed here AND paired to Apple Home directly (it
-      # advertises sf=0). Drop climate.main_floor from Hall if it shows up
-      # twice in Home.
+      # The ecobee is paired ONLY to HA (homekit_controller, since 2026-09-13)
+      # and reaches Apple Home solely through the Hall bridge below. It is not
+      # paired to Apple Home directly: adding it in the Home app means
+      # resetting its HomeKit pairing, which removes HA's and breaks
+      # climate.main_floor (and ha-hvac-openings.nix with it). Add it to Home
+      # only via this bridge.
       homekit =
         let
           bridge = name: port: entities: {
