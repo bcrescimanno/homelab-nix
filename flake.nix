@@ -201,6 +201,7 @@
           ./modules/ha-window-notifications.nix
           ./modules/ha-dashboard.nix
           ./modules/ha-bathroom-lights.nix
+          ./modules/ha-hood-light.nix
           ./modules/ha-hvac-openings.nix
           ./modules/caddy.nix
           ./modules/materialious.nix
