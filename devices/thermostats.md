@@ -66,7 +66,7 @@ Remaining reasons to replace it anyway: the eventual heat pump install (verify t
 - [ ] **2026-03-16** — When adding downstairs thermostat: decide whether to match upstairs (Lux or Meross) or wait for Eve if heat pump support confirmed.
 - [ ] **2026-09-13** — Decide whether to replace the ecobee at all now that it is local. The window/door shutoff is already done (`modules/ha-hvac-openings.nix`, #699) and does not depend on this decision.
 - [ ] **2026-09-13** — Kitchen Door SmartSensor and Living Room room sensor were unavailable at pairing (device-side — check battery/range in the ecobee app). The kitchen door sensor is the one `modules/ha-hvac-openings.nix` watches; it dropped out for ~40 min on 2026-09-13, and the module's unavailable alert now covers that.
-- [ ] **2026-09-13** — Decide whether `binary_sensor.front_door_contact` belongs in `openings`. It is paired and working but not watched — deliberate (a door opened briefly and often) or an omission?
+- [x] **2026-09-13** — Decide whether `binary_sensor.front_door_contact` belongs in `openings`. **Decided: deliberately excluded.** The front door isn't kept open when the windows are opened for cooling, so it shouldn't pause the HVAC. Also recorded as a comment next to `openings` in the module.
 - [ ] **Future** — When heat pump upgrade is planned: verify chosen thermostat's heat pump wiring support with the HVAC contractor before ordering. Confirm O/B, W2/AUX, dual-fuel terminals match the new system's requirements.
 
 ## HA Automation: Pause HVAC While the House Is Open
@@ -82,7 +82,7 @@ How it behaves:
 - **Dead sensor:** `unavailable`/`unknown` is not closed. A dark sensor never pauses and blocks resume; after 30 min it sends one alert to `notify.homelab_alerts`.
 - **Restarts:** the saved mode is an `input_text`, which survives restarts (a `scene.create` snapshot would not), and every state-keeping automation re-checks on `homeassistant: start`.
 
-**Watched today:** only `binary_sensor.kitchen_door_contact`. `binary_sensor.front_door_contact` exists but is **not** in `openings` — see Follow-ups.
+**Watched today:** only `binary_sensor.kitchen_door_contact`. `binary_sensor.front_door_contact` is **deliberately excluded**: the front door isn't kept open when the house is opened up for cooling, so it should not pause the HVAC. Don't add it.
 
 ### Adding sensors
 
