@@ -199,6 +199,7 @@
           ./modules/dns.nix
           ./modules/homeassistant.nix
           ./modules/ha-window-notifications.nix
+          ./modules/ha-dashboard.nix
           ./modules/caddy.nix
           ./modules/materialious.nix
           ./modules/monitoring.nix
