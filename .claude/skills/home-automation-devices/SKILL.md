@@ -1,7 +1,7 @@
 ---
 name: home-automation-devices
 description: This skill should be used when the user asks about home automation devices, smart home hardware, sensors, switches, bulbs, locks, thermostats, plugs, presence detection, cameras, doorbells, or any connected home device. Provides recommendations based on defined selection criteria prioritizing Matter, Thread, local control, and HomeKit/Home Assistant compatibility.
-version: 1.1.0
+version: 1.2.0
 ---
 
 # Home Automation Device Advisor
@@ -54,7 +54,7 @@ If a Matter device exists for the use case, it should be the default recommendat
 
 **Thread** is the preferred radio for devices that need a mesh network (sensors, locks, buttons, etc.):
 - Low power, mesh routing, no Wi-Fi congestion
-- Works with the Thread border router on rivendell (Home Assistant Connect ZBT-2, pending setup)
+- Works with the Thread border router on rivendell (Home Assistant Connect ZBT-2, native OTBR). The mesh currently has one router, so check range — see Homelab Context below
 
 **Wi-Fi** is acceptable for mains-powered devices where Thread is not available, but flag the trade-offs (network congestion, router association limits, higher power draw).
 
@@ -111,12 +111,15 @@ When recommending devices, structure the response as follows:
 
 ## Homelab Context
 
-- **Home Assistant** runs on rivendell (10.0.1.9) as a container with host networking and `--privileged` for USB access
-- **Matter Server** is already running on rivendell alongside HA
-- **Thread border router**: Home Assistant Connect ZBT-2 ordered but not yet set up — Thread devices will work once OTBR is configured on rivendell
-- **Zigbee**: no coordinator currently configured — Zigbee devices would need a coordinator added before they work
+- **Home Assistant** runs on rivendell (10.0.1.9) as a native NixOS service (`services.home-assistant`, migrated off the container 2026-08-01). A new integration's domain must be added to `extraComponents` in `modules/homeassistant.nix` and deployed *before* it can be set up in the UI.
+- **Matter Server** runs on rivendell as a container (the only container left there) and binds `eth0`. It does not do BLE: the iPhone commissions over BLE, then hands the device off on-network.
+- **Thread border router**: Home Assistant Connect ZBT-2 running native `services.openthread-border-router`, Thread channel 19. **The mesh has exactly one router — rivendell itself.** Battery devices never route, so every battery Thread device must reach the Pi directly, and range is the binding constraint. Only mains-powered Thread devices (plugs, in-wall switches) add routers. When recommending a Thread device that will sit far from the office, recommend a mains-powered Thread router near it too (see `devices/smart-plugs.md`).
+- **Apple's Thread network** (`MyHome56`, served by HomePod minis and Apple TVs) also exists in the house. Merging with it was **declined** — Apple devices are fine as clients, never as load-bearing infrastructure. Don't recommend the merge as the range fix.
+- **Zigbee**: no coordinator. The ZBT-2 is committed to Thread and cannot run Zigbee at the same time, so any Zigbee recommendation implies a **second radio** (second ZBT-2 or a Sonoff dongle) plus Zigbee2MQTT.
 - **Z-Wave**: no controller currently configured
-- **IoT VLAN**: VLAN 4 (`10.0.12.0/22`) exists on rivendell — new IoT devices should be placed on this VLAN for network isolation
+- **IoT VLAN**: VLAN 4 (`10.0.12.0/22`), reachable from rivendell via `eth0.4`. Use it for non-Matter Wi-Fi devices with local integrations (e.g. the Elgato Key Light). **Wi-Fi Matter devices cannot go there**: the VLAN advertises no IPv6 prefix and matter-server binds `eth0`, so they must be commissioned from the main LAN's 2.4 GHz SSID.
+- **2.4 GHz coexistence**: Thread ch19 overlaps Wi-Fi ch6 and ch11. Never recommend locking the UniFi 2.4 GHz radio to ch6 — on 2026-09-13 that knocked the Eve Weather off Thread.
+- **Devices already in HA** (not exhaustive): ecobee EB-STATE5 via `homekit_controller` (local; the ecobee cloud integration is deliberately removed), Leviton D26HD (Wi-Fi Matter), Eve Weather (Thread Matter), Elgato Key Light, Sonos, WiiM, Apple TVs, Samsung and LG TVs, Roborock, Litter-Robot, Home Connect.
 - **UniFi controller**: UDM Pro at 10.0.1.1 manages the network; UniFi Protect available if UniFi cameras/doorbells are deployed
 
 ---
