@@ -200,6 +200,7 @@
           ./modules/homeassistant.nix
           ./modules/ha-window-notifications.nix
           ./modules/ha-dashboard.nix
+          ./modules/ha-bathroom-lights.nix
           ./modules/caddy.nix
           ./modules/materialious.nix
           ./modules/monitoring.nix
