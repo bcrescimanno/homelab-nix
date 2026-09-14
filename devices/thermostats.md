@@ -45,7 +45,7 @@ Matter thermostat market is still maturing. Most "smart" thermostats are cloud-d
 
 Refresh of the March research. Three things changed.
 
-**1. The replacement is now optional, not urgent.** The problem this file was opened to solve was ecobee's cloud breaking the window/door HVAC shutoff. The ecobee now runs locally through `homekit_controller`, and its door SmartSensors are already HA binary sensors, so the shutoff can be an HA automation today with no new hardware. The "What to Avoid: Ecobee" entry still stands for *new purchases* — it is about ecobee's cloud, which is now out of the path for the unit already on the wall.
+**1. The replacement is now optional, not urgent.** The problem this file was opened to solve was ecobee's cloud breaking the window/door HVAC shutoff. The ecobee now runs locally through `homekit_controller`, and its door SmartSensors are already HA binary sensors, so the shutoff can be an HA automation today with no new hardware — since implemented as `modules/ha-hvac-openings.nix` (#699). The "What to Avoid: Ecobee" entry still stands for *new purchases* — it is about ecobee's cloud, which is now out of the path for the unit already on the wall.
 
 Remaining reasons to replace it anyway: the eventual heat pump install (verify the ecobee's terminals then), and `homekit_controller` being a less-travelled path than Matter.
 
@@ -64,77 +64,41 @@ Remaining reasons to replace it anyway: the eventual heat pump install (verify t
 - [~] **2026-03-16** — Check Eve Thermostat specs when units start shipping (Q1 2026). **2026-09-13:** US model still "Coming Soon", no HVAC specs published. Also confirm whether HA-only Matter control works without an Apple home hub. Recheck at [evehome.com/en-us/eve-thermostat](https://www.evehome.com/en-us/eve-thermostat) — read the US section only.
 - [ ] **2026-03-16** — When ready to buy: check HA community for any new Lux TQ1 issues or Meross MTS300MA regressions. (2026-09-13: none found for Lux.)
 - [ ] **2026-03-16** — When adding downstairs thermostat: decide whether to match upstairs (Lux or Meross) or wait for Eve if heat pump support confirmed.
-- [ ] **2026-09-13** — Decide whether to replace the ecobee at all now that it is local. If not, implement the window/door shutoff below against the ecobee.
-- [ ] **2026-09-13** — Kitchen Door SmartSensor and Living Room room sensor were unavailable at pairing (device-side — check battery/range in the ecobee app). Must be fixed before the shutoff automation can rely on them.
+- [ ] **2026-09-13** — Decide whether to replace the ecobee at all now that it is local. The window/door shutoff is already done (`modules/ha-hvac-openings.nix`, #699) and does not depend on this decision.
+- [ ] **2026-09-13** — Kitchen Door SmartSensor and Living Room room sensor were unavailable at pairing (device-side — check battery/range in the ecobee app). The kitchen door sensor is the one `modules/ha-hvac-openings.nix` watches; it dropped out for ~40 min on 2026-09-13, and the module's unavailable alert now covers that.
+- [ ] **2026-09-13** — Decide whether `binary_sensor.front_door_contact` belongs in `openings`. It is paired and working but not watched — deliberate (a door opened briefly and often) or an omission?
 - [ ] **Future** — When heat pump upgrade is planned: verify chosen thermostat's heat pump wiring support with the HVAC contractor before ordering. Confirm O/B, W2/AUX, dual-fuel terminals match the new system's requirements.
 
-## HA Automation: Window/Door Shutoff
+## HA Automation: Pause HVAC While the House Is Open
 
-**Rewritten 2026-09-13.** The March version used placeholder entities, the deprecated `platform:`/`service:` keys and `"00:05:00"` duration strings. In this repo it should be declared as a Home Assistant package in Nix (like `modules/ha-bathroom-lights.nix`), not added through the UI.
+**Implemented 2026-09-13 in `modules/ha-hvac-openings.nix` (#699).** The module is the source of truth; read its header before changing behaviour. The draft YAML that used to live here was superseded by it and has been removed, so there is only one version of the logic.
 
-```yaml
-# Turn off HVAC when any door is opened, remembering the prior mode
-- alias: HVAC off when doors open
-  triggers:
-    - trigger: state
-      entity_id:
-        - binary_sensor.front_door_contact
-        - binary_sensor.kitchen_door_contact
-        # add window sensors here as they are installed
-      to: "on"
-      for: { seconds: 30 }        # ignore walking through the door
-  conditions:
-    - condition: not
-      conditions:
-        - condition: state
-          entity_id: climate.main_floor
-          state: "off"
-  actions:
-    - action: scene.create
-      data:
-        scene_id: hvac_before_door_open
-        snapshot_entities: [climate.main_floor]
-    - action: climate.set_hvac_mode
-      target: { entity_id: climate.main_floor }
-      data: { hvac_mode: "off" }
+How it behaves:
 
-# Restore after every door has been closed for 5 minutes
-- alias: HVAC restore when doors closed
-  triggers:
-    - trigger: state
-      entity_id:
-        - binary_sensor.front_door_contact
-        - binary_sensor.kitchen_door_contact
-      to: "off"
-      for: { minutes: 5 }
-  conditions:
-    # All sensors must read "off". An "unavailable" sensor (the Kitchen Door
-    # SmartSensor today) fails this, so the HVAC stays off rather than
-    # restoring blind. Fix the sensor rather than loosening the condition.
-    - condition: state
-      entity_id:
-        - binary_sensor.front_door_contact
-        - binary_sensor.kitchen_door_contact
-      state: "off"
-    # Only restore a snapshot the first automation actually took. Test that
-    # the entity EXISTS — a created scene's state is "unknown" until it is
-    # activated, so a has_value()/state check would never pass.
-    - condition: template
-      value_template: "{{ states.scene.hvac_before_door_open is not none }}"
-  actions:
-    - action: scene.turn_on
-      target: { entity_id: scene.hvac_before_door_open }
-    # Delete it, or a later door opening shorter than the 30 s trigger (which
-    # takes no new snapshot) would still fire this restore 5 min after closing
-    # and silently revert any mode change made since.
-    - action: scene.delete
-      target: { entity_id: scene.hvac_before_door_open }
-```
+- **Pause:** any sensor in `openings` open for 60 s while `climate.main_floor` is in heat, cool or heat_cool → set it off, save the prior mode in `input_text.hvac_openings_saved_mode`, and push "HVAC paused" to both phones.
+- **Resume:** every sensor in `openings` reports `off` → restore the saved mode immediately, silently. It also retries when the thermostat comes back from `unavailable`.
+- **Manual override:** setting heat, cool or heat_cool by hand while paused abandons the pause; nothing is restored on close.
+- **Already off:** a thermostat that is off is never paused, so a closing door never turns it on.
+- **Dead sensor:** `unavailable`/`unknown` is not closed. A dark sensor never pauses and blocks resume; after 30 min it sends one alert to `notify.homelab_alerts`.
+- **Restarts:** the saved mode is an `input_text`, which survives restarts (a `scene.create` snapshot would not), and every state-keeping automation re-checks on `homeassistant: start`.
 
-Caveat: `scene.create` scenes live in memory, so a HA restart while a door is open loses the snapshot. The restore then does nothing and the HVAC stays off — acceptable failure direction, but see `modules/ha-bathroom-lights.nix` for the restart-trigger pattern if it matters.
+**Watched today:** only `binary_sensor.kitchen_door_contact`. `binary_sensor.front_door_contact` exists but is **not** in `openings` — see Follow-ups.
 
-*2026-09-13 fix:* the first rewrite restored without deleting the snapshot, so a brief door opening could revert a manual mode change up to 5 minutes later. The existence check and `scene.delete` above close that.
+### Adding sensors
+
+When contact sensors are added (candidates in `contact-sensors.md`), do this for each one:
+
+1. **Pair it and confirm the entity.** Find the entity ID in Developer Tools → States and check it reads `on` when open (device class door, window or opening). For a Thread sensor, check its link in `ot-ctl child table` at its final mounting position: the mesh has one router, and a sensor that drops to `unavailable` blocks every resume.
+2. **Add the entity ID to `openings`** in `modules/ha-hvac-openings.nix`. That is the whole change — the any-open pause, all-closed resume, notification text and unavailable alert all follow the list.
+3. **Deploy rivendell and test both directions**: open for 60 s → pause and notification; close everything → resume. deploy-rs does not catch Home Assistant failing to load a package, so confirm the automations exist and check a trace.
+
+When the change is more than a longer list, follow the module header's expansion plan:
+
+- **Windows want a different delay than doors** → make `openings` an attrset of entity → duration and emit one pause trigger per distinct duration.
+- **A second thermostat or zone** (e.g. the downstairs thermostat in Follow-ups) → map each opening to the climate entity it affects, with one saved-mode helper per thermostat.
+- **One dead sensor keeps blocking resume** once there are many → the escape hatch is to treat a sensor unavailable for longer than `unavailableFor` as closed *for resume only*, keeping the alert. Don't do it pre-emptively: it trades a noisy failure (HVAC stays off, alert fires) for a quiet one (AC runs with a window open).
+- **Replacing the ecobee** (Lux TQ1 or otherwise) → change `thermostat`, and check the new entity's HVAC modes still match `activeModes`.
 
 ## Decision
 
-*(Pending)* — 2026-09-13 leaning: keep the ecobee (now local via `homekit_controller`), implement the shutoff in HA, and revisit replacement at heat pump time. Lux TQ1 remains the pick if replacing sooner.
+*(Pending)* — 2026-09-13 leaning: keep the ecobee (now local via `homekit_controller`) and revisit replacement at heat pump time. The shutoff is implemented in `modules/ha-hvac-openings.nix`. Lux TQ1 remains the pick if replacing sooner.
