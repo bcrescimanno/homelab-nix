@@ -2,8 +2,10 @@
 
 ## Context
 
-- **Current setup**: One Aqara FP2 on hand (gifted). No presence sensors deployed yet.
+- **Current setup**: One Aqara FP2 on hand (gifted), going in the **main living space** (easy USB power there). No presence sensors deployed yet.
 - **Goal**: True occupancy detection per room — must detect stationary people (desk work, sleeping, reading). Lights-off-while-you-sit-there is unacceptable.
+- **Pets**: two cats. Sensors must not be tripped by them all the time — see "Use cases and pets" under 2026-09-13.
+- **Three use cases, not one** (2026-09-13): office/studio (still person = present), bedroom (awake / asleep / empty), in-and-out rooms (only the transition to empty matters). They don't need the same hardware.
 - **HA setup**: Thread border router (ZBT-2 + OTBR) running, Matter Server running, **no Zigbee coordinator**.
 - **Priority**: High accuracy over cost.
 
@@ -110,16 +112,83 @@ Research covered: matteralpha.com, SmartHomeScene, HA community forums, r/homeas
 
 **Range reminder:** battery Thread presence sensors never extend the mesh, which has one router (rivendell). The FP2 and Apollo sensors are Wi-Fi and don't depend on Thread.
 
+### 2026-09-13 — use cases and pets
+
+The FP2 goes in the main living space. That leaves three room types with different needs, in a house with two cats.
+
+#### Pets: nothing tells a cat from a person
+
+Every radar here sees a cat as a moving, breathing body.
+- **FP2**: firmware (Feb 2024) tries to classify pets as interference. Owners still report cats triggering it, and the one fix that worked in the [Aqara forum thread](https://forum.aqara.com/t/my-cat-keeps-triggering-the-fp2-sensor/74368) was moving the sensor.
+- **FP300**: reviews disagree. BGR says a cat didn't trigger it. [Derek Seaman](https://www.derekseaman.com/2025/11/aqara-fp300-the-ultimate-presence-sensor-home-assistant-edition.html) says it cannot tell pets from humans.
+- **MS605 and MYGGSPRAY**: no pet reports either way.
+
+Treat pet tolerance as a design problem, not a spec-sheet feature:
+
+1. **Choose automations where a cat can only cause "on too long".** A sensor that only turns lights *off* when a room empties can't be hurt by a cat turning them on. The worst a cat can do is hold the room "occupied" a bit longer. Use cases 1 and 3 are this shape. Don't use presence to turn lights *on* in rooms the cats hang out in.
+2. **Geometry.** Mount high (about 2 m or more), tilt down at the person's position, and shrink the detection distance so the floor and cat perches are out of range. A narrow cone aimed at a desk chair can't see a cat on the rug.
+3. **Zones.** FP2: zone the sofa or desk, and mark cat routes, window sills and cat trees as interference zones. MS605: use its distance zones the same way.
+4. **Weight for beds.** Cats sleep on beds, and radar can't help there. A load or pressure sensor thresholded between cat and human weight (about 5 kg vs 30 kg+) is pet-proof by physics. See use case 2.
+
+#### Use case 1 — Office / studio: a still person counts
+
+Needs static presence (breathing-level), a narrow field of view, and a short distance. Pets are handled by aiming at the chair.
+
+- **Primary: Meross MS605** (~$35, Matter over Thread, battery). The office is where rivendell and the ZBT-2 are, so Thread range is at its best. Reviews say it holds occupancy for a completely still sitter. Configure zone 1 as the desk-chair distance and automate on that zone. The known complaint is ~2 s slower detection than wired sensors ([HA owners thread](https://community.home-assistant.io/t/meross-ms605-owners-thread/994484)). That doesn't matter for "is someone here".
+- **Alternative: Apollo MSR-2** (~$38, Wi-Fi ESPHome, USB). Its LD2410 60°×60° cone and per-gate sensitivity are the best tool for "only the chair". Tuning shows up as HA entities rather than hidden in a phone app. Costs: needs USB power at the desk, and adds a Wi-Fi device plus the `esphome` component.
+- **Not the FP300** for this: Thread mode exposes too little to tune out a cat.
+
+#### Use case 2 — Bedroom: awake / asleep / empty
+
+**No sensor in our criteria gives "asleep" to Home Assistant.**
+- The FP2's sleep monitoring stays in the Aqara app. Over HomeKit Controller it exposes presence per zone only ([HA community, 2025-12](https://community.home-assistant.io/t/automation-to-detect-sleep-with-aqara-fp2/967666)). Getting sleep data out means Aqara's cloud API.
+- Withings Sleep Analyzer reaches HA only through the Withings cloud integration.
+- The **Aqara FP400** reportedly exposes posture over Matter, including "lying" ([Smartifiers](https://smartifiers.com/articles/aqara-fp400-vs-fp2-is-the-new-2026-presence-sensor-king-worth-the-upgrade/)). That is still not "asleep", and it's unconfirmed until an HA owner shows it. It's on Aqara's EU store with no US price yet. Worth noting: it's USB-powered Thread, so it would be a **mesh router**.
+
+So "asleep" is a derived state. Build it from two signals:
+
+| Signal | Sensor | Why |
+|---|---|---|
+| Someone in the room | mmWave (MS605, or FP400 later) | Awake people move around; covers "empty" |
+| Someone in the bed | **Weight-based bed sensor** (ESPHome load cells under the bed legs or an FSR strip under the mattress, ~$20–30 DIY) | The only pet-proof way to know a *person* is in bed. Cats on the bed read as ~5 kg. |
+
+The HA template rule for "asleep" is: in bed ≥ 20 min **and** bedroom lights off **and** after 21:00. It's a heuristic, but it's local and declarable in Nix like the other HA packages. "Awake in bed reading" is the state it will get wrong; the lights-off term is what separates it.
+
+Recommendation: **don't buy bedroom hardware yet.** Do use case 3 first. Revisit when an FP400 HA review confirms posture over Matter, and decide whether the bed-weight build is worth it before then.
+
+#### Use case 3 — In and out: "the room just emptied"
+
+Starting point: `modules/ha-bathroom-lights.nix` (15-min timer + 19:00–20:30 shower suppression). A timer can't tell a long shower from a forgotten light.
+
+Only the transition to empty matters, so the sensor can be cheap. The failure to design out is a still person in the shower, behind a curtain.
+
+- **Primary: "wasp in a box"** — door contact + cheap PIR, both Matter over Thread.
+  - **IKEA MYGGSPRAY** (~$10, 2×AAA, fixed 30 s cooldown, [HA thread](https://community.home-assistant.io/t/ikea-myggspray-matter-over-thread-new-motion-sensor/958847)) plus an **Eve Door & Window** (one of the ordered 3-pack, or a 4th).
+  - Logic: motion seen while the door is closed → occupied, and it **stays** occupied until the door opens, however still the person is. Door opened, then no motion for ~2 min → empty → lights off.
+  - The shower case is solved by the door, not the radar. Cats can't close the door behind them, and a cat alone inside can only keep the lights on.
+  - **Weakness:** kids leave doors open. With the door open it's just a PIR, and a still showerer would time out. Keep a long fallback (lights on + door open + no motion for 15 min) rather than the shower window.
+- **Alternative: Meross MS605 alone** (~$35). mmWave sees a still person through a fabric curtain and ignores steam, so it doesn't depend on the door. Hold time is set in the Meross app. Its slow detection doesn't matter for off-only automations. Choose it if the door habit makes wasp-in-a-box pointless.
+- **Range:** both are battery Thread devices that must reach rivendell directly. Install the Eve Energy plug first and check the bathroom child's RSSI (see `smart-plugs.md`).
+
+#### Use-case cost summary
+
+| Use case | Pick | ≈ Cost | Pet strategy |
+|---|---|---|---|
+| Living space | Aqara FP2 (on hand) | $0 | Interference zones on cat paths; don't drive lights-on from it |
+| Office / studio | Meross MS605 (alt: Apollo MSR-2) | $35 | Aim at the chair, shorten range, zone 1 only |
+| Bedroom | Wait; later mmWave + ESPHome bed weight | $35 + ~$25 | Weight threshold for bed; room presence only for "empty" |
+| In and out (Boys Bathroom) | MYGGSPRAY + Eve Door & Window (alt: MS605) | ~$10 (+ contact) | Off-only automation; the door holds occupancy |
+
 ## Use-Case Guide
 
 | Scenario | Best option | Runner-up |
 |---|---|---|
-| **Sitting at a desk (stationary)** | Apollo R PRO-1 (LD2412 handles micro-motion, narrow tuning) | Aqara FP2 (zone for desk area, breathing-level detection) |
-| **Bedroom / sleeping** | Aqara FP2 (breathing detection, fall detection, sleep monitoring) | Apollo R PRO-1 (LD2412) |
-| **Living room (multi-person)** | Aqara FP2 (5 targets, 8m range, zone per zone) | Apollo MTR-1 (3-zone, 120° coverage) |
-| **Bathroom (steam environment)** | Aqara FP1E or FP300 (60 GHz, wired or battery, steam-immune) | Sonoff SNZB-06P (budget, steam-immune) |
+| **Sitting at a desk (stationary)** | Meross MS605, desk-distance zone (2026-09-13) | Apollo MSR-2 (narrow cone, per-gate tuning) |
+| **Bedroom / sleeping** | Derived: mmWave room presence + ESPHome bed-weight sensor (pet-proof); FP400 once HA-confirmed | Aqara FP2 (presence only in HA; sleep data stays in app) |
+| **Living room (multi-person)** | Aqara FP2 (5 targets, 8m range, zone per zone) — **deployed here** | Apollo MTR-1 (3-zone, 120° coverage) |
+| **Bathroom / in-and-out** | MYGGSPRAY + Eve Door & Window, wasp-in-a-box (2026-09-13) | Meross MS605 (steam-immune, sees through curtain) |
 | **Works right now (no new hardware)** | Aqara FP2 via HomeKit Controller | Apollo MSR-2 (Wi-Fi/ESPHome) |
-| **Native Matter/Thread (best long-term)** | Meross MS605 (multi-zone; 2026-09-13) | Aqara FP300 (little exposed in Thread mode) |
+| **Native Matter/Thread (best long-term)** | Meross MS605 (multi-zone; 2026-09-13) | Aqara FP300 (little exposed in Thread mode; can't tell pets apart per Seaman) |
 
 ## Deployment Notes
 
@@ -146,7 +215,10 @@ Requires a Zigbee coordinator first. Add a **Sonoff Zigbee 3.0 USB Dongle Plus**
 ## Follow-ups
 
 - [ ] **2026-03-17** — Set up Aqara FP2 via HomeKit Controller. Configure zones in Aqara app first. Place on IoT VLAN. Test occupancy entity accuracy for desk use. Status unknown as of 2026-09-13; nothing blocks it (`homekit_controller` is already loaded for the ecobee). Unverified whether HomeKit discovery works across `eth0.4` — if the FP2 isn't discovered, that is the first suspect.
-- [ ] **2026-09-13** — Choose the Thread presence sensor for rooms without the FP2: Meross MS605 (multi-zone, cheaper, tuning via app) vs Aqara FP300 (strong detection, little exposed over Thread). If unsure, trial one of each at a desk and in a bedroom.
+- [ ] **2026-09-13** — Choose the Thread presence sensor for rooms without the FP2. Leaning Meross MS605 for the office after the use-case pass (see "use cases and pets"); FP300's Thread mode is too thin to tune out cats.
+- [ ] **2026-09-13** — Boys Bathroom: buy an IKEA MYGGSPRAY, pair it with an Eve Door & Window, and replace the timer + shower window in `modules/ha-bathroom-lights.nix` with wasp-in-a-box logic plus a 15-min open-door fallback. Check the Thread RSSI there after the Eve Energy plug is in.
+- [ ] **2026-09-13** — Bedroom: which bedroom(s)? Revisit when an HA owner confirms what the FP400 exposes over Matter (posture?) and its US price. Separately decide on a DIY ESPHome bed-weight sensor. It's the only pet-proof in-bed signal.
+- [ ] **2026-09-13** — FP2 in the living space: after pairing, draw interference zones over cat routes and perches, and watch a week of occupancy history for cat-only triggers before automating on it.
 - [ ] **2026-03-17** — Decide whether to add a Zigbee coordinator to rivendell. It would need its own radio (the ZBT-2 stays on Thread). With one, FP300 in Zigbee mode gets full configuration, FP1E is available at ~$50 for high-accuracy rooms, SNZB-06P at ~$18 for bathrooms/utility rooms.
 - [x] **2026-09-17** — Check if new Matter-over-Thread mmWave sensors have shipped. Checked 2026-09-13: Meross MS605 shipped; Aqara FP400 announced. Next look 2027-03, including an HA review of the FP400.
 
