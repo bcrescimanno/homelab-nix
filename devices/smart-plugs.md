@@ -2,7 +2,7 @@
 
 ## Context
 
-- **Current setup**: No Matter-over-Thread plugs.
+- **Current setup**: No Matter-over-Thread plugs. **One ordered 2026-09-13** to act as the first Thread router; see Decision.
 - **Goal**: Two jobs.
   1. Ordinary switched and energy-metered outlets.
   2. **Give the Thread mesh routers.** Measured 2026-08-30: rivendell's border router is the *only* router on our Thread network (`OpenThread-0b14`), so every Thread device links straight to the Pi in the office. The Eve Weather sits outdoors at roughly -85 to -93 dBm. A mains-powered Matter-over-Thread device normally becomes a router, and a plug is the cheapest, most freely placeable one.
@@ -40,15 +40,15 @@ Mains-powered Thread devices are the vendor-neutral fix for a mesh with no depth
 ## Follow-ups
 
 - [ ] **2026-09-13** — Cheapest step first: put the ZBT-2 on a USB extension cable (Pi 5 USB 3.0 ports are strong 2.4 GHz emitters). Re-read the Eve Weather's link quality in `ot-ctl child table` before buying anything.
-- [ ] **2026-09-13** — Buy one Eve Energy. Commissioning through the iPhone Matter flow also adds it to an Apple Home fabric (as happened with the Eve Weather); remove that fabric afterwards if unwanted. Place it between the office and the Eve Weather, then confirm (a) it shows as a router, and (b) the Eve Weather's link improves. A sleepy child may take a while, or need a reset, to move to the new router.
+- [x] **2026-09-13** — Buy one Thread plug. Ordered 2026-09-13 alongside an Eve Door & Window 3-pack (see `contact-sensors.md`).
+- [ ] **2026-09-13** — On arrival, install it before pairing the new contact sensors. Commissioning through the iPhone Matter flow also adds it to an Apple Home fabric (as happened with the Eve Weather); remove that fabric afterwards if unwanted. Place it between the office and the Eve Weather, then confirm (a) it shows as a router, and (b) the Eve Weather's link improves. A sleepy child may take a while, or need a reset, to move to the new router.
 - [ ] **2026-09-13** — Verify Eve Energy and GRILLPLATS current US prices.
 
 ## Decision
 
-*(Fill in when a purchase is made)*
-
-- **Chosen device**:
-- **Date purchased**:
-- **Where purchased**:
-- **Installation notes**:
-- **HA integration**:
+- **Chosen device**: Matter-over-Thread smart plug. *Record the model on arrival.* If it isn't the Eve Energy, confirm it actually becomes a router.
+- **Date purchased**: 2026-09-13 (ordered, not yet arrived)
+- **Where purchased**: *(record)*
+- **Purpose**: First Thread router for `OpenThread-0b14`. It arrives with the Eve Door & Window 3-pack and must be up before they are paired.
+- **Installation notes** (plan, not done yet): place between the office and the exterior wall/doors where the sensors go. Confirm role `R` in `ot-ctl neighbor table`. Check whether the Eve Weather's link improves in `ot-ctl child table` (-85 to -93 dBm today). Record placement and the before/after RSSI here.
+- **HA integration**: Matter

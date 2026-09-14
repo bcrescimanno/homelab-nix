@@ -3,6 +3,7 @@
 ## Context
 
 - **Current setup**: Two ecobee SmartSensors (front door, kitchen door), local in HA via `homekit_controller` since 2026-09-13. Kitchen Door is unavailable (device-side).
+- **On order (2026-09-13)**: Eve Door & Window 3-pack, plus a mains-powered Thread smart plug to give the mesh a router (see `smart-plugs.md`). See Decision below for the install plan.
 - **Goal**: Monitor doors and windows for open/close state; drive HVAC automations (see thermostats.md), security alerting via Alarmo or HA alarm_control_panel, and general home automation.
 - **Scale**: Large deployment likely — 10–20+ sensors across all doors and windows.
 - **Protocol**: **Thread only (decided 2026-09-13).** No Zigbee or Z-Wave coordinator will be added. Every candidate in this file is Matter-over-Thread.
@@ -100,8 +101,7 @@ No coordinator cost for any of them. Budget separately for one or more mains-pow
 
 ## Follow-ups
 
-- [ ] **2026-09-13** — Pilot one Aqara P2 and one Eve Door & Window at the window farthest from rivendell. Watch for `unavailable` over a week and check the link in `ot-ctl child table`. (Replaces the 2026-03-17 "test Aqara P2 pairing" item, which was never done.)
-- [ ] **2026-09-13** — Before any bulk buy: if the pilot link is marginal, add a mains-powered Thread router first (see `smart-plugs.md`).
+- [ ] **2026-09-13** — When the Eve 3-pack arrives, run it as the pilot (replaces the planned P2-vs-Eve pilot; the P2 is no longer being tested). Follow the install order in Decision. Watch each sensor for `unavailable` over a week and check its link in `ot-ctl child table` before buying more.
 - [ ] **2026-09-13** — Kitchen Door ecobee sensor has been unavailable since pairing; check its battery and range in the ecobee app.
 - [ ] **2026-09-13** — Re-check IKEA MYGGBETT when [core #162230](https://github.com/home-assistant/core/issues/162230) (disconnects) and [core #174389](https://github.com/home-assistant/core/issues/174389) (OTA fails) close. If both are fixed it becomes the bulk pick on price.
 - [ ] **2026-09-13** — Buy Eve units during a sale (Feb, Mar and Jun 2026 each had one at $32–34).
@@ -110,8 +110,15 @@ No coordinator cost for any of them. Budget separately for one or more mains-pow
 ## Decision
 
 - **Protocol**: Matter-over-Thread only (2026-09-13). No Zigbee or Z-Wave.
-- **Chosen device**: *(fill in after the pilot)*
-- **Date purchased**:
-- **Where purchased**:
-- **Installation notes**:
+- **Chosen device**: Eve Door & Window (Matter), 3-pack. It's the first batch and doubles as the pilot. Aqara P2 stays the fallback if the Eves disappoint.
+- **Date purchased**: 2026-09-13 (ordered, not yet arrived)
+- **Price**: $32 per sensor (the sale price)
+- **Where purchased**: *(record)*
+- **Placement**: *(decide on arrival — which three doors/windows)*
 - **HA integration**: Matter
+- **Installation notes** (plan, not done yet):
+  1. **Install the Thread smart plug first** (ordered the same day, see `smart-plugs.md`). Confirm it is a router (`ot-ctl neighbor table` on rivendell, role `R`) before pairing the sensors, so they attach through it rather than straight to rivendell.
+  2. Commission each Eve through HA's Matter integration. Pairing from an iPhone also adds an Apple Home fabric, as happened with the Eve Weather; remove it if unwanted.
+  3. Check each sensor's link in `ot-ctl child table`. Match each sensor to its node by the ext MAC in the Matter `NetworkInterfaces` attribute, not by guessing from RSSI.
+  4. Give each entity a clear name (`binary_sensor.<room>_window_contact`), and confirm `device_class` is `window` or `door`.
+  5. For sensors on openings used to air out the house, add the entity ID to `openings` in `modules/ha-hvac-openings.nix` and deploy rivendell. Otherwise the HVAC won't pause for them.
