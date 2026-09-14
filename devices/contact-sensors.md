@@ -49,7 +49,7 @@ Sources checked: Home Assistant community forums, r/homeassistant, matterdevices
 
 ### 2026-09-13
 
-**Current setup changed.** The ecobee SmartSensors are now in HA locally through `homekit_controller` (2026-09-13), not the ecobee cloud: `binary_sensor.front_door_contact` and `binary_sensor.kitchen_door_contact`. The Kitchen Door sensor was unavailable at pairing — device-side (battery or range), check it in the ecobee app. These are usable today for the HVAC shutoff automation in `thermostats.md`.
+**Current setup changed.** The ecobee SmartSensors are now in HA locally through `homekit_controller` (2026-09-13), not the ecobee cloud: `binary_sensor.front_door_contact` and `binary_sensor.kitchen_door_contact`. The Kitchen Door sensor was unavailable at pairing — device-side (battery or range), check it in the ecobee app. The kitchen door sensor drives the HVAC pause in `modules/ha-hvac-openings.nix` (#699); the front door sensor is paired but not watched. **Every door or window sensor added later must also be added to `openings` in that module**, or it won't pause the HVAC — see `thermostats.md` → Adding sensors.
 
 **The border router is live** (ZBT-2, native OTBR since 2026-08-01), so the Matter/Thread candidates can be bought now. But the Thread mesh has **one router — rivendell**. Contact sensors are battery devices and never route, so each must reach the Pi on its own; windows at the far end of the house may be out of range until a mains-powered Thread device is added nearby (see `smart-plugs.md` and `switches-dimmers.md`). Pair one sensor at the farthest door first and check its link in `ot-ctl child table` on rivendell before a bulk order.
 
