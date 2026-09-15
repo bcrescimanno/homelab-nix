@@ -1,110 +1,210 @@
-# modules/ha-bathroom-lights.nix — Boys Bathroom lights auto-off
+# modules/ha-bathroom-lights.nix — Boys Bathroom lights auto-off, gated on the door
 #
-# Any time the Boys Bathroom lights have been on for 15 minutes, turn them off.
-# No occupancy check: the room has no motion sensor, so "on for 15 min" is the
-# whole rule.
+# The room has no occupancy sensing, so the door is the proxy for it: a closed
+# door means someone is in there. The rules:
 #
-# Declared as a Home Assistant package, like modules/ha-window-notifications.nix,
-# so it merges additively with the UI-authored automations.yaml. It shows in the
-# UI (traces work) but is read-only there — edit this file.
+#   1. Nothing ever turns the light ON. Manual only.
+#   2. Door CLOSED  → the light is left alone, except the 60-minute backstop (5).
+#   3. Door closed → open while the light is ON → wait 30s; if the light is
+#      still on and the door is still open, turn it off. (Someone left.)
+#   4. Light on AND door open, both continuously for 5 minutes → turn it off.
+#   5. Light on for 60 minutes while the door is CLOSED → turn it off.
+#   6. Door sensor unavailable for 30 minutes → one infra alert. Nothing is
+#      turned off while it is dark.
 #
-# Why two triggers, not one
+# This replaces a flat "off after 15 minutes on" rule, which cut the lights
+# mid-shower and needed a 19:00–20:30 suppression window to compensate. That
+# window is GONE and must not come back: a shower means a closed door, and rule
+# 2 already blocks every fast path. Rule 5 is the only thing that fires behind a
+# closed door, and an hour is far longer than any shower.
 #
-# A state trigger with `for` keeps its countdown in memory. Restart HA 10
-# minutes into a 15-minute window and the countdown is gone. It only re-arms on
-# the next state change, so a light left on across a restart could stay on
-# forever. The Matter light usually does flap unavailable -> on during startup,
-# which re-arms it, but that depends on whether the automation or the Matter
-# integration finishes loading first. Don't rely on it.
+# Declared as a Home Assistant package, like modules/ha-hvac-openings.nix, so it
+# merges additively with the UI-authored automations.yaml. It shows in the UI
+# (traces work) but is read-only there — edit this file.
 #
-# The start trigger closes that gap. It waits 15 minutes, then re-checks with
-# a `for` condition. That condition reads the entity's last_changed, which HA
-# resets at startup, so it asks "on, untouched, for the full 15 minutes since
-# boot". If someone toggles the light during the wait, the condition fails and
-# the normal state trigger owns the new window. mode = parallel so a start run
-# sitting in its delay never blocks or cancels a state-trigger run. A second
-# turn_off on an already-off light is harmless.
+# ---------------------------------------------------------------------------
+# Entities
+# ---------------------------------------------------------------------------
 #
-# Durations are written as { minutes = 15; }, never "00:15:00". A mapping cannot
+# The door is a Matter Eve Door & Window (node 10), device_class `door`, so
+# `on` = OPEN and `off` = closed. Verified against the recorder, not assumed.
+#
+# `unavailable` is neither open nor closed. Every condition below names the
+# state it wants explicitly, so a dark sensor satisfies none of them: nothing
+# turns off, including the backstop. That is deliberate — the failure mode is
+# "the light stays on", not "the light dies on someone in the shower" — and
+# rule 6 makes the dead sensor visible instead of silent.
+#
+# ---------------------------------------------------------------------------
+# Why rule 3 checks the light BEFORE its delay, not after
+# ---------------------------------------------------------------------------
+#
+# "Closed → open WITH the light on" means the light must be on at the moment
+# the door opens. The obvious encoding — a state trigger with `for = 30s`, then
+# a light condition — gets the common case backwards: someone walks in (door
+# opens while the light is off), turns the light on 5s later, and is switched
+# off at 30s. So the light condition sits immediately after the trigger, before
+# the delay, and the state is re-checked after it.
+#
+# mode = "restart": closing and re-opening inside the 30s starts a fresh grace
+# period rather than leaving a stale run to fire against the new state.
+#
+# ---------------------------------------------------------------------------
+# Restarts
+# ---------------------------------------------------------------------------
+#
+# A `for` countdown lives in memory and is lost on restart (see the comment in
+# modules/ha-hvac-openings.nix). Rules 4 and 5 therefore also trigger on
+# `homeassistant: start`, wait their duration, and re-check with a `for`
+# condition — that reads last_changed, which HA resets at startup, so it asks
+# "on, untouched, for the full duration since boot".
+#
+# Rule 3 deliberately has NO start trigger. After a restart there is no way to
+# know whether a closed → open edge happened, and re-running it would turn off
+# a light someone switched on during boot. A light left on across a restart is
+# rules 4 and 5's job.
+#
+# ---------------------------------------------------------------------------
+# Rule 4's clock
+# ---------------------------------------------------------------------------
+#
+# "5 minutes without the door state changing" is measured from whichever of the
+# two events happened LAST. That falls out of requiring both `for` conditions at
+# once: each entity has its own trigger at its own 5-minute mark, and only the
+# later one finds both conditions true. Light on at t=0, door opens at t=3 →
+# the light's trigger at t=5 fails (door open only 2 min); the door's trigger at
+# t=8 passes. In practice rule 3 usually fires first; rule 4's real job is the
+# case with no open-edge at all — the light switched on while the door already
+# stood open.
+#
+# Durations are written as { minutes = 5; }, never "00:05:00". A mapping cannot
 # go through YAML's sexagesimal-int trap at all (see ha-nix-packages-pattern).
-#
-# Shower window: 19:00–20:30, nothing turns the lights off
-#
-# Evening showers run past 15 minutes, and the lights went out on one. A time
-# condition sits right before the turn_off, so it gates every trigger path,
-# including a start run that checks after its 15-minute delay.
-#
-# Suppressing alone would leave a gap. Turn the light on at 19:10 and the state
-# trigger fires once at 19:25, gets blocked, and never fires again. So a third
-# trigger fires at 20:30 and turns off anything that has been on for at least
-# 15 minutes. A light turned on at 20:20 fails that check, but its own state
-# trigger fires at 20:35, outside the window, so it is still covered.
-#
-# This is a stopgap. The time rule is only here because the room has no
-# occupancy sensing. Once a presence sensor (mmWave, since a still person in a
-# shower defeats PIR) is in the bathroom, replace the window and the 15-minute
-# timer with "off after N minutes of no presence". Tracked in Plan.md.
 
 { ... }:
 
 let
   light = "light.boys_bathroom_boys_bathroom_lights";
-  onFor = { minutes = 15; };
 
-  # HA's time condition wraps midnight when after > before.
-  showerStart = "19:00:00";
-  showerEnd = "20:30:00";
+  # device_class `door`: on = OPEN, off = closed.
+  door = "binary_sensor.boys_bathroom_door";
+
+  openGrace = { seconds = 30; };
+  openTimeout = { minutes = 5; };
+  closedBackstop = { minutes = 60; };
+  unavailableFor = { minutes = 30; };
+
+  infraNotify = "notify.homelab_alerts";
+
+  description = "Declared in modules/ha-bathroom-lights.nix — edit there, not in the UI.";
+
+  lightOn = { condition = "state"; entity_id = light; state = "on"; };
+  doorOpen = { condition = "state"; entity_id = door; state = "on"; };
+  doorClosed = { condition = "state"; entity_id = door; state = "off"; };
+
+  lightOnFor = d: lightOn // { "for" = d; };
+  doorOpenFor = d: doorOpen // { "for" = d; };
 
   turnOff = {
     action = "light.turn_off";
     target.entity_id = light;
+  };
+
+  onStart = [{ trigger = "homeassistant"; event = "start"; id = "ha_start"; }];
+
+  # On a start run, wait the rule's own duration before the conditions below
+  # re-check it. Any other trigger falls straight through.
+  ifStartedWait = d: {
+    "if" = [{ condition = "trigger"; id = "ha_start"; }];
+    "then" = [{ delay = d; }];
   };
 in
 {
   services.home-assistant.config.homeassistant.packages.boys_bathroom_lights = {
     automation = [
       {
-        id = "boys_bathroom_lights_auto_off";
-        alias = "Boys Bathroom: lights off after 15 minutes";
-        description = "Declared in modules/ha-bathroom-lights.nix — edit there, not in the UI.";
-        mode = "parallel";
-        triggers = [
-          {
-            trigger = "state";
-            entity_id = light;
-            to = "on";
-            "for" = onFor;
-            id = "on_for_15";
-          }
-          {
-            trigger = "homeassistant";
-            event = "start";
-            id = "ha_start";
-          }
-          {
-            trigger = "time";
-            at = showerEnd;
-            id = "shower_window_end";
-          }
-        ];
+        id = "boys_bathroom_lights_door_opened";
+        alias = "Boys Bathroom: lights off 30s after the door opens";
+        inherit description;
+        # A close/re-open inside the grace period restarts it.
+        mode = "restart";
+        triggers = [{
+          trigger = "state";
+          entity_id = door;
+          from = "off";
+          to = "on";
+          id = "opened";
+        }];
         actions = [
-          {
-            "if" = [{ condition = "trigger"; id = "ha_start"; }];
-            "then" = [
-              { delay = onFor; }
-              { condition = "state"; entity_id = light; state = "on"; "for" = onFor; }
-            ];
-          }
-          {
-            "if" = [{ condition = "trigger"; id = "shower_window_end"; }];
-            "then" = [
-              { condition = "state"; entity_id = light; state = "on"; "for" = onFor; }
-            ];
-          }
-          # Outside the shower window only.
-          { condition = "time"; after = showerEnd; before = showerStart; }
+          # The light must have been on AS the door opened — see the header.
+          lightOn
+          { delay = openGrace; }
+          doorOpen
+          lightOn
           turnOff
         ];
+      }
+
+      {
+        id = "boys_bathroom_lights_open_timeout";
+        alias = "Boys Bathroom: lights off after 5 min open with the light on";
+        inherit description;
+        # parallel, not queued: the start run sits in a delay of this rule's own
+        # length, and must never block or cancel a real trigger behind it. A
+        # second turn_off on an already-off light is harmless.
+        mode = "parallel";
+        triggers = [
+          { trigger = "state"; entity_id = light; to = "on"; "for" = openTimeout; id = "light_on"; }
+          { trigger = "state"; entity_id = door; to = "on"; "for" = openTimeout; id = "door_open"; }
+        ] ++ onStart;
+        actions = [
+          (ifStartedWait openTimeout)
+          # Both, so the clock runs from whichever happened last.
+          (lightOnFor openTimeout)
+          (doorOpenFor openTimeout)
+          turnOff
+        ];
+      }
+
+      {
+        id = "boys_bathroom_lights_closed_backstop";
+        alias = "Boys Bathroom: lights off after 60 min behind a closed door";
+        inherit description;
+        # parallel, not queued: the start run sits in a delay of this rule's own
+        # length, and must never block or cancel a real trigger behind it. A
+        # second turn_off on an already-off light is harmless.
+        mode = "parallel";
+        triggers = [
+          { trigger = "state"; entity_id = light; to = "on"; "for" = closedBackstop; id = "light_on_long"; }
+          # The light may already have been on 60 min when the door closes.
+          { trigger = "state"; entity_id = door; to = "off"; id = "closed"; }
+        ] ++ onStart;
+        actions = [
+          (ifStartedWait closedBackstop)
+          (lightOnFor closedBackstop)
+          doorClosed
+          turnOff
+        ];
+      }
+
+      {
+        id = "boys_bathroom_door_sensor_unavailable";
+        alias = "Boys Bathroom: door sensor unavailable";
+        inherit description;
+        mode = "parallel";
+        triggers = [{
+          trigger = "state";
+          entity_id = door;
+          to = [ "unavailable" "unknown" ];
+          "for" = unavailableFor;
+        }];
+        actions = [{
+          action = "notify.send_message";
+          target.entity_id = infraNotify;
+          data = {
+            title = "Boys Bathroom door sensor is down";
+            message = "${door} has been unavailable for ${toString unavailableFor.minutes} min. The bathroom lights will not auto-off until it reports again. Check its battery and Thread link.";
+          };
+        }];
       }
     ];
   };
