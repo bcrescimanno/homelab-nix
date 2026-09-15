@@ -454,6 +454,46 @@ let
               description = "vpn-leak-check on pirateship has not published a result in over 30m (it runs every 5m). The VPN kill switch is unmonitored — the other vpn alerts are silent because nothing is looking, not because nothing is wrong. Check `systemctl status vpn-leak-check.timer`.";
             };
           }
+          {
+            # The outside-in check none of the other vpn alerts perform. 45m is
+            # deliberately longer than the module's own 30m strike window plus
+            # one heal cycle, so the self-heal gets to try before a human is
+            # told. `unknown == 0` keeps it quiet for the cases the module
+            # explicitly hands to gluetun-watchdog / VpnTunnelDown / port-sync.
+            alert = "VpnPortUnreachable";
+            expr = ''vpn_port_reachable == 0 and vpn_port_reachability_unknown == 0'';
+            "for" = "45m";
+            labels.severity = "warning";
+            annotations = {
+              summary = "gluetun forwarded port is unreachable from the internet";
+              description = "The forwarded port does not answer a TCP connect to the netns egress address, so private trackers will report this client as unconnectable. Inbound BitTorrent may still look fine from the inside — that is the point of this check. vpn-port-reachability should have restarted gluetun already; see `journalctl -u vpn-port-reachability`.";
+            };
+          }
+          {
+            # Critical because automatic remediation has stopped. Three Proton
+            # servers failing in a row is not the usual exit-IP mismatch.
+            alert = "VpnPortHealExhausted";
+            expr = ''vpn_port_heal_exhausted == 1'';
+            "for" = "0m";
+            labels.severity = "critical";
+            annotations = {
+              summary = "VPN port forwarding could not be healed automatically";
+              description = "vpn-port-reachability restarted gluetun its maximum times in 24h and the forwarded port is still unreachable. Self-healing has STOPPED to avoid bouncing the media stack indefinitely. Check that ProtonVPN port forwarding is still enabled on the account and that the endpoint supports it.";
+            };
+          }
+          {
+            # Dead-man's switch on the prober, same reasoning as
+            # VpnLeakCheckStale: a prober that died looks exactly like a port
+            # that is fine. Runs every 10m, so 45m is three missed runs.
+            alert = "VpnPortCheckStale";
+            expr = ''absent(vpn_port_check_timestamp_seconds) or (time() - vpn_port_check_timestamp_seconds > 2700)'';
+            "for" = "10m";
+            labels.severity = "warning";
+            annotations = {
+              summary = "VPN port reachability prober has stopped reporting";
+              description = "vpn-port-reachability on pirateship has not published a result in over 45m (it runs every 10m). Port-forward reachability is unmonitored and will not self-heal. Check `systemctl status vpn-port-reachability.timer`.";
+            };
+          }
         ];
       }
       {

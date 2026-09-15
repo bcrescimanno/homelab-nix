@@ -189,6 +189,7 @@
           ./modules/navidrome.nix
           ./modules/qbittorrent-seed-policy.nix
           ./modules/vpn-killswitch.nix
+          ./modules/vpn-port-reachability.nix
         ];
         specialArgs = { inherit inputs nixos-raspberrypi r2AccountId brianSshKey; };
       };
