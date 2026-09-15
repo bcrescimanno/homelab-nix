@@ -9,6 +9,17 @@
 #      paused → the pause is abandoned. Nothing is restored on close; the next
 #      open-for-60s starts a fresh cycle.
 #   4. An opening sensor unavailable for 30 min → one infra alert.
+#   5. Outdoor temperature outside 40–72°F (or unknown) and any opening open
+#      30+ min → push "close it" to the household, naming what is open.
+#      Repeats every 30 min while both hold. Independent of the thermostat:
+#      it fires whether or not the HVAC is paused or was overridden by hand.
+#
+# Rules 1–3 are unchanged by adding sensors: "any" and "all" are over the whole
+# `openings` set, and a manual override is only undone by a NEW opening
+# reaching 60s — one that is already open never re-pauses.
+#
+# The reminder measures "open 30 min" from last_changed, which HA resets at
+# startup, so a restart restarts that clock (at worst a 30-min-late alert).
 #
 # Only an active mode (heat, cool, heat_cool) is paused. A thermostat that is
 # already off is left alone, and because nothing is saved it is never turned
@@ -86,15 +97,17 @@
 # Expansion plan
 # ---------------------------------------------------------------------------
 #
-# Today there is one sensor: the ecobee SmartSensor on the kitchen door, via
-# homekit_controller. As window sensors are added:
+# Today there are two sensors: the ecobee SmartSensor on the kitchen door (via
+# homekit_controller) and an Eve Door & Window on the office door (Matter). As
+# window sensors are added:
 #
-#   - Adding a sensor is adding its entity ID to `openings`. The notification,
-#     the any-open/all-closed logic, and the unavailable alert all follow the
-#     list; nothing else changes.
+#   - Adding a sensor is adding `entity = "Label";` to `openings`. The pause
+#     and reminder notifications, the any-open/all-closed logic, and the
+#     unavailable alert all follow it; nothing else changes.
 #   - Windows are not "opened briefly" the way a door is, so they may want a
-#     shorter delay. Make `openings` an attrset of entity → duration and emit
-#     one pause trigger per distinct duration.
+#     shorter delay. Make each `openings` value { label; openFor; } and emit
+#     one pause trigger per distinct duration. (Decided 2026-09-15: one 60s
+#     delay for all for now.)
 #   - A second thermostat/zone: map each opening to the climate entity it
 #     affects and keep one saved-mode helper per thermostat.
 #   - With many sensors, one dead sensor blocks every resume (see above). If
@@ -116,7 +129,14 @@ let
   # binary_sensor.front_door_contact is deliberately NOT here. The front door
   # isn't kept open when the house is opened up for cooling, so it must not
   # pause the HVAC. Not an omission — don't add it.
-  openings = [ "binary_sensor.kitchen_door_contact" ];
+  #
+  # entity → the name used in notifications. Labels live here rather than
+  # coming from friendly_name, which Matter builds from device + room + entity
+  # (hence entity IDs like office_office_door_door).
+  openings = {
+    "binary_sensor.kitchen_door_contact" = "Kitchen door";
+    "binary_sensor.office_office_door_door" = "Office door";
+  };
 
   thermostat = "climate.main_floor";
 
@@ -125,6 +145,16 @@ let
 
   # How long a sensor may be unavailable before the infra alert fires.
   unavailableFor = { minutes = 30; };
+
+  # "Should be closed" reminder: outdoor temperature outside [comfortLowF,
+  # comfortHighF] (inclusive) and an opening open for closeAfter. Repeats every
+  # remindEvery while both stay true. Deliberately NOT tied to the window prompts'
+  # 66/72 in ha-window-notifications.nix — different question, different numbers.
+  outdoorTemp = "sensor.outdoor_temperature";
+  comfortLowF = 40;
+  comfortHighF = 72;
+  closeAfter = { minutes = 30; };
+  remindEvery = { minutes = 30; };
 
   # Household phones. Same targets as modules/ha-window-notifications.nix; read
   # the husk-registration comment there before re-pointing either.
@@ -136,8 +166,31 @@ let
   activeModes = [ "heat" "cool" "heat_cool" ];
   savedMode = "input_text.hvac_openings_saved_mode";
 
-  # A JSON list is also a valid Jinja list literal.
+  # A JSON list/object is also a valid Jinja list/dict literal.
   jinja = builtins.toJSON;
+
+  openingIds = builtins.attrNames openings;
+
+  seconds = d: (d.minutes or 0) * 60 + (d.seconds or 0);
+
+  # Jinja prelude: ns.out = labels of openings that are `on` and have been for
+  # at least `minSeconds`. Followed by one of the two renderers below.
+  collectOpen = minSeconds: ''
+    {%- set labels = ${jinja openings} -%}
+    {%- set ns = namespace(out=[]) -%}
+    {%- for s in expand(${jinja openingIds}) -%}
+      {%- if s.state == 'on' and (now() - s.last_changed).total_seconds() >= ${toString minSeconds} -%}
+        {%- set ns.out = ns.out + [labels[s.entity_id]] -%}
+      {%- endif -%}
+    {%- endfor -%}'';
+  openLabels = minSeconds: collectOpen minSeconds + "{{ ns.out | join(', ') }}";
+  anyOpenFor = minSeconds: collectOpen minSeconds + "{{ ns.out | length > 0 }}";
+
+  # Jinja: true when the outdoor temperature is outside the comfort range OR
+  # unknown — an unavailable sensor must not silence the reminder.
+  outOfRange = ''
+    {%- set t = states('${outdoorTemp}') | float(none) -%}
+    {{ t is none or t < ${toString comfortLowF} or t > ${toString comfortHighF} }}'';
 
   onStart = [{ trigger = "homeassistant"; event = "start"; id = "ha_start"; }];
   ifStartedWaitThen = extra: {
@@ -152,18 +205,18 @@ let
 
   anyOpen = {
     condition = "or";
-    conditions = map (e: { condition = "state"; entity_id = e; state = "on"; }) openings;
+    conditions = map (e: { condition = "state"; entity_id = e; state = "on"; }) openingIds;
   };
 
   anyOpenSinceBoot = {
     condition = "or";
     conditions = map (e: {
       condition = "state"; entity_id = e; state = "on"; "for" = openFor;
-    }) openings;
+    }) openingIds;
   };
 
   # A state condition over a list passes only if EVERY entity matches.
-  allClosed = { condition = "state"; entity_id = openings; state = "off"; };
+  allClosed = { condition = "state"; entity_id = openingIds; state = "off"; };
 
   thermostatActive = { condition = "state"; entity_id = thermostat; state = activeModes; };
   thermostatOff = { condition = "state"; entity_id = thermostat; state = "off"; };
@@ -201,7 +254,7 @@ let
         mode = "queued";
         triggers = [{
           trigger = "state";
-          entity_id = openings;
+          entity_id = openingIds;
           to = "on";
           "for" = openFor;
           id = "opened";
@@ -223,7 +276,7 @@ let
           }
           (setSavedMode "{{ previous_mode }}")
         ] ++ notify "HVAC paused"
-          "{{ expand(${jinja openings}) | selectattr('state', 'eq', 'on') | map(attribute='name') | join(', ') }} open — thermostat turned off (was {{ previous_mode }}). It resumes when everything is closed.";
+          "${openLabels 0} open — thermostat turned off (was {{ previous_mode }}). It resumes when everything is closed.";
       }
 
       {
@@ -232,7 +285,7 @@ let
         inherit description;
         mode = "queued";
         triggers = [
-          { trigger = "state"; entity_id = openings; to = "off"; id = "closed"; }
+          { trigger = "state"; entity_id = openingIds; to = "off"; id = "closed"; }
           # Unreachable at the moment everything closed: retry when it's back.
           { trigger = "state"; entity_id = thermostat; from = "unavailable"; to = "off"; id = "thermostat_back"; }
         ] ++ onStart;
@@ -270,13 +323,48 @@ let
       }
 
       {
+        id = "hvac_openings_close_reminder";
+        alias = "HVAC: remind to close a door or window left open";
+        inherit description;
+        mode = "queued";
+        triggers = [
+          # A sensor has just reached closeAfter while the temp is out of range.
+          { trigger = "state"; entity_id = openingIds; to = "on"; "for" = closeAfter; id = "opened_long"; }
+          # The temp has just left the range with something already open long.
+          { trigger = "numeric_state"; entity_id = outdoorTemp; below = comfortLowF; id = "temp_out"; }
+          { trigger = "numeric_state"; entity_id = outdoorTemp; above = comfortHighF; id = "temp_out"; }
+          # Reminders, the temp going unavailable, and anything missed across a
+          # restart. The rate limit below keeps this to one alert per remindEvery.
+          { trigger = "time_pattern"; minutes = "/5"; id = "tick"; }
+        ];
+        conditions = [
+          { condition = "template"; value_template = anyOpenFor (seconds closeAfter); }
+          { condition = "template"; value_template = outOfRange; }
+          # A sensor newly crossing closeAfter is news and always alerts. Temp
+          # crossings and ticks wait remindEvery since the last alert, so a temp
+          # hovering at the threshold can't spam. last_triggered only advances
+          # when these conditions pass, i.e. when an alert is actually sent; the
+          # 60s slack absorbs tick jitter.
+          {
+            condition = "template";
+            value_template = ''
+              {%- set lt = this.attributes.last_triggered -%}
+              {{ trigger.id == 'opened_long' or lt is none
+                 or (now() - as_datetime(lt | string)).total_seconds() >= ${toString (seconds remindEvery - 60)} }}'';
+          }
+        ];
+        actions = notify "Close up the house"
+          "{%- set t = states('${outdoorTemp}') | float(none) -%}${openLabels (seconds closeAfter)} open for ${toString closeAfter.minutes}+ min, and it's {{ (t | round(0) | int ~ '°F') if t is not none else 'unknown (outdoor sensor unavailable)' }} outside. Please close it.";
+      }
+
+      {
         id = "hvac_openings_sensor_unavailable";
         alias = "HVAC: door/window sensor unavailable";
         inherit description;
         mode = "parallel";
         triggers = [{
           trigger = "state";
-          entity_id = openings;
+          entity_id = openingIds;
           to = [ "unavailable" "unknown" ];
           "for" = unavailableFor;
         }];
