@@ -24,6 +24,27 @@ import urllib.request
 SPEC = sys.argv[1]
 JELLYFIN_KEY_FILE = sys.argv[2]
 
+# Literal IP, not `rivendell`: a push that says "your media wiring is broken"
+# should not itself depend on name resolution. Same address the other modules use.
+NTFY_URL = "http://10.0.1.9:2586/homelab"
+
+
+def jf_auth(key):
+    """Auth header for Jellyfin's own API.
+
+    Jellyfin 12.0 set EnableLegacyAuthorization=false, which removed
+    X-Emby-Token, X-MediaBrowser-Token and ?api_key=. This script used
+    X-Emby-Token, so every call started returning 401 the morning orthanc
+    upgraded to 12.0.0 (2026-09-15 04:02) — with a key that was never invalid.
+    Verified against the live server: the same key returns 401 with
+    X-Emby-Token and 200 with the header below, on every endpoint tried.
+
+    `Authorization: MediaBrowser Token="..."` is not new in 12.0 — it is the
+    long-standing form for a static API key and works on older servers too, so
+    this needs no version branching.
+    """
+    return {"Authorization": 'MediaBrowser Token="%s"' % key}
+
 with open(SPEC) as fh:
     spec = json.load(fh)
 with open(JELLYFIN_KEY_FILE) as fh:
@@ -45,15 +66,67 @@ def wait_for(url, headers, label, attempts=60):
     for _ in range(attempts):
         try:
             http(url, headers=headers, timeout=10)
-            return
+            return True
         except (urllib.error.URLError, TimeoutError, ConnectionError, OSError):
             time.sleep(2)
-    sys.exit("%s did not become reachable" % label)
+    return False
+
+
+def notify(title, body, priority="4", tags="warning"):
+    try:
+        req = urllib.request.Request(
+            NTFY_URL, data=body.encode(),
+            headers={"Title": title, "Priority": priority, "Tags": tags})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            r.read()
+    except Exception:
+        pass
+
+
+def degrade(reason):
+    """Report a Jellyfin-side failure and exit SUCCESSFULLY.
+
+    This script reconciles configuration inside OTHER applications. Whether
+    Jellyfin — on a different host, upgraded on its own schedule — is answering
+    right now must not decide whether a NixOS activation succeeds.
+
+    It used to. `switch-to-configuration` exits non-zero if any unit fails to
+    start, so a 401 from Jellyfin failed the whole switch: deploy-rs rolled the
+    host back, and the nightly upgrade reported FAILED. On 2026-09-15 an
+    unattended Jellyfin 12.0 upgrade on orthanc did exactly that to pirateship.
+    The same shape hit music-library-audit on Sep 9-10 (see #676).
+
+    Exiting 0 here is deliberate and is NOT silent: the reason goes to the
+    journal and to ntfy, so a skipped reconcile is visible without being able to
+    take the host down with it. The timer retries hourly, so a transient
+    Jellyfin outage heals itself with no deploy involved.
+    """
+    sys.stderr.write("jellyfin unavailable, skipping reconcile: %s\n" % reason)
+    notify(
+        "Jellyfin notify sync skipped",
+        "pirateship: could not reconcile Jellyfin library-update notifications.\n\n"
+        "%s\n\n"
+        "Radarr/Sonarr/Bazarr were left as they are. Library updates may not be\n"
+        "pushed to Jellyfin until this is resolved. Retrying hourly.\n\n"
+        "  journalctl -u jellyfin-notify-sync -n 50" % reason)
+    sys.exit(0)
 
 
 # ---------------------------------------------------------------- jellyfin
-wait_for(JF_BASE + "/System/Info/Public", {}, "jellyfin")
-folders = http(JF_BASE + "/Library/VirtualFolders", headers={"X-Emby-Token": JF_KEY})
+if not wait_for(JF_BASE + "/System/Info/Public", {}, "jellyfin"):
+    degrade("%s did not become reachable" % JF_BASE)
+
+try:
+    folders = http(JF_BASE + "/Library/VirtualFolders", headers=jf_auth(JF_KEY))
+except urllib.error.HTTPError as e:
+    if e.code in (401, 403):
+        degrade("Jellyfin rejected the API key (HTTP %d). Jellyfin 12.0 removed "
+                "the legacy X-Emby-Token/?api_key= auth; if this appeared after a "
+                "Jellyfin upgrade, check the key in sops is still valid." % e.code)
+    degrade("Jellyfin returned HTTP %d for /Library/VirtualFolders" % e.code)
+except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as e:
+    degrade("Jellyfin unreachable during library discovery: %s" % e)
+
 libs = {}
 for v in folders:
     ct = v.get("CollectionType")
@@ -61,8 +134,8 @@ for v in folders:
         libs[ct] = {"id": v.get("ItemId"), "name": v.get("Name")}
 for want in ("movies", "tvshows"):
     if want not in libs:
-        sys.exit("jellyfin has no %r library; found %s"
-                 % (want, [v.get("CollectionType") for v in folders]))
+        degrade("jellyfin has no %r library; found %s"
+                % (want, [v.get("CollectionType") for v in folders]))
 
 
 # ------------------------------------------------------------ radarr/sonarr

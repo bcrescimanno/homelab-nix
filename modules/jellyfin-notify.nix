@@ -81,29 +81,45 @@ let
   });
 in
 {
+  # Timer-driven, NOT activation-driven. This unit reconciles configuration in
+  # other applications by talking to Jellyfin on another host over HTTP, and it
+  # used to run from multi-user.target with Restart=on-failure, which meant a
+  # remote service's availability decided whether a NixOS activation succeeded.
+  #
+  # It did exactly that on 2026-09-15: orthanc upgraded itself to Jellyfin 12.0,
+  # whose EnableLegacyAuthorization=false removed the X-Emby-Token header this
+  # script used. Every call 401'd, the unit failed, switch-to-configuration
+  # exited 4, and pirateship's nightly upgrade reported FAILED — for a media
+  # library integration, with a key that was never invalid. The identical shape
+  # hit music-library-audit on Sep 9-10 and was fixed there by #676.
+  #
+  # So: the timer is the only legitimate trigger, X-OnlyManualStart keeps
+  # switch-to-configuration from starting it mid-activation (restartIfChanged
+  # alone does not — it only covers ACTIVE units, and a timer oneshot is
+  # inactive), and Jellyfin-side failures exit 0 with an ntfy rather than
+  # failing the unit. See the `degrade` docstring in jellyfin-notify-sync.py.
   systemd.services.jellyfin-notify-sync = {
     description = "Sync Jellyfin library-update notifications into Radarr/Sonarr/Bazarr";
+    restartIfChanged = false;
+    unitConfig.X-OnlyManualStart = true;
     after = [
       "podman-gluetun.service" "podman-radarr.service" "podman-sonarr.service"
       "bazarr.service" "network-online.target"
     ];
     wants = [ "network-online.target" ];
-    wantedBy = [ "multi-user.target" ];
 
     serviceConfig = {
       Type = "oneshot";
-      RemainAfterExit = true;
-      # Retry rather than latch: after a gluetun restart the netns takes a
-      # while to settle before radarr/sonarr answer.
-      #
       # Note the arr connection test is weaker than it looks — POST
       # /notification/test returns 200 even with a deliberately wrong API key,
       # since the arr does not inspect Jellyfin's response. Real end-to-end
       # proof is a "will be refreshed" line in Jellyfin's log on orthanc
       # (/var/lib/jellyfin/log/log_*.log) after an import, with no accompanying
       # "Invalid token".
-      Restart = "on-failure";
-      RestartSec = "60s";
+      #
+      # No Restart=: the hourly timer IS the retry, and after a gluetun restart
+      # the next tick finds the netns settled. RemainAfterExit is gone with it —
+      # a reconciler that has finished is not a thing that stays "active".
       ExecStart = lib.concatStringsSep " " [
         "${pkgs.python3}/bin/python3"
         "${./jellyfin-notify-sync.py}"
@@ -113,5 +129,18 @@ in
     };
   };
 
-  homelab.postUpgradeCheck.services = [ "jellyfin-notify-sync" ];
+  systemd.timers.jellyfin-notify-sync = {
+    wantedBy = [ "timers.target" ];
+    timerConfig = {
+      # Well after boot so the arr containers and bazarr are up and answering.
+      OnBootSec = "10min";
+      OnUnitActiveSec = "1h";
+      AccuracySec = "1min";
+    };
+  };
+
+  # Deliberately NOT in homelab.postUpgradeCheck.services. That check asserts
+  # `systemctl is-active`, which a completed oneshot never satisfies, and its
+  # failure path is an automatic ROLLBACK of the whole host — so leaving this
+  # here would let a Jellyfin upgrade on orthanc revert pirateship's OS.
 }
