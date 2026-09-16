@@ -129,7 +129,9 @@ in
     after = [ "podman-gluetun.service" "network-online.target" ];
     wants = [ "network-online.target" ];
 
-    path = with pkgs; [ podman curl coreutils gnugrep gawk systemd netcat-gnu ];
+    # No netcat: the probe uses bash's /dev/tcp builtin instead. See the long
+    # comment at the probe for the measurement that drove that out.
+    path = with pkgs; [ podman curl coreutils gnugrep gawk systemd bash ];
 
     serviceConfig = {
       Type = "oneshot";
@@ -244,9 +246,27 @@ in
 
       # ---- the probe: from the HOST, outside the tunnel ---------------------
       # Three quick attempts so a single dropped SYN is not a strike on its own.
+      #
+      # bash's /dev/tcp rather than netcat, and that is NOT a style choice.
+      # The first version of this module used `nc -z -w 8` with pkgs.netcat-gnu
+      # on PATH, and netcat-gnu 0.7.1's -z does not do a plain connect test:
+      # it returned exit 1 against a port that was demonstrably open, 3 times
+      # out of 3, while libressl's nc returned 0 on the same host/port 3 times
+      # out of 3. Measured on pirateship 2026-09-15 against 146.70.48.11:63983.
+      #
+      # That is the worst possible failure for this module: every probe fails,
+      # every run scores a strike, and it restarts gluetun on a loop until the
+      # 24h budget gives up — remediation firing continuously at a system that
+      # was never broken. It was caught in production 20 minutes after deploy,
+      # by which point it had already reached strike 2 of 3.
+      #
+      # /dev/tcp is a bash builtin, so there is no nc implementation to get
+      # wrong and no package whose default could change under us. Verified
+      # 15/15 against the open port and 0/3 against a closed one. `timeout`
+      # is required: a bare /dev/tcp connect waits for the kernel default.
       REACHABLE=0
       for attempt in 1 2 3; do
-        if nc -z -w 8 "$EGRESS" "$PORT" 2>/dev/null; then
+        if timeout 8 bash -c "exec 3<>/dev/tcp/$EGRESS/$PORT" 2>/dev/null; then
           REACHABLE=1
           break
         fi
