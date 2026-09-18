@@ -13,7 +13,7 @@ let
   }.${config.networking.hostName} or "04:00";
 in
 {
-  imports = [ ./attic-push.nix ./post-upgrade-check.nix ];
+  imports = [ ./attic-push.nix ./post-upgrade-check.nix ./reboot-policy.nix ];
 
   # ---------------------------------------------------------------------------
   # Users
