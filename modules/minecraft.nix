@@ -56,6 +56,10 @@ let
     prominence = {
       cfSlug = "prominence-2-hasturian-era";
       cfFileId = null;
+      # v4.1.0 (2026-09-18) ships Simply Tooltips, which CurseForge tags
+      # Client-only, so the image skips it -- but Simply Swords and Simply Bows
+      # declare it a hard dependency and Fabric refuses to start without it.
+      forceInclude = [ "simply-tooltips" ];
       port = 25565;
       # Keep the existing data path so the live world is not orphaned.
       dataDir = "/var/lib/minecraft";
@@ -66,6 +70,7 @@ let
     abyssal-ascent = {
       cfSlug = "abyssal-ascent";
       cfFileId = null;
+      forceInclude = [ ];
       port = 25566;
       dataDir = "/var/lib/minecraft-abyssal-ascent";
       # Pack author recommends ~4G; 8G+ is documented to cause instability.
@@ -95,6 +100,10 @@ let
       ONLINE_MODE = "TRUE";
       MOTD = srv.motd;
       ALLOW_FLIGHT = "TRUE"; # Many modpacks require this (jetpacks, mounts, etc.)
+    } // lib.optionalAttrs (srv.forceInclude != [ ]) {
+      # Install mods the image would skip as client-only. Needed when a pack
+      # marks a mod Client on CurseForge that server-side mods still require.
+      CF_FORCE_INCLUDE_MODS = lib.concatStringsSep "," srv.forceInclude;
     } // lib.optionalAttrs (srv.cfFileId != null) {
       # Pin to a specific modpack file to prevent auto-updates mid-session.
       CF_FILE_ID = srv.cfFileId;
