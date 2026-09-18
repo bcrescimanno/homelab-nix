@@ -178,6 +178,8 @@ Secrets use `sops-nix` with age encryption. Rendered at runtime to `/run/secrets
 
 All hosts pull and apply updates from `github:bcrescimanno/homelab-nix` daily at 4am. ntfy notifications are sent on success or failure (`http://rivendell:2586/homelab`).
 
+**Reboots** (`modules/reboot-policy.nix`): after a clean upgrade (post-upgrade check passed), `homelab-reboot-check` compares the booted kernel with the installed one — **kernel only**; initrd/kernel-modules drift daily on the Pis without the kernel moving. `homelab.reboot.auto = true` (orthanc only) reboots inside 03:00–07:00 and never twice for the same kernel; everywhere else it pushes a nightly **"Reboot pending"** ntfy until someone reboots by hand. `homelab-reboot-report` confirms the host came back healthy. rivendell/mirkwood set `dnsPeer` to each other so enabling `auto` there can never take both resolvers down; pirateship needs its kill-switch latch and NFS verified after boot before it gets `auto`.
+
 ### Media Storage
 
 Media lives on a single erebor NFS share, mounted on pirateship via `fileSystems` in `pirateship.nix`:

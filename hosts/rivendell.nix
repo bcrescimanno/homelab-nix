@@ -154,6 +154,10 @@
   # ---------------------------------------------------------------------------
   # Backup
   # ---------------------------------------------------------------------------
+  # Notify-only (Pis stay manual — see modules/reboot-policy.nix). dnsPeer is
+  # set now so enabling `auto` later can never take both resolvers down.
+  homelab.reboot.dnsPeer = "10.0.1.8";  # mirkwood
+
   homelab.backup.paths = [
     "/var/lib/homeassistant/config"
 

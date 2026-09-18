@@ -107,6 +107,10 @@
   # ---------------------------------------------------------------------------
   # Backup
   # ---------------------------------------------------------------------------
+  # Notify-only (Pis stay manual — see modules/reboot-policy.nix). dnsPeer is
+  # set now so enabling `auto` later can never take both resolvers down.
+  homelab.reboot.dnsPeer = "10.0.1.9";  # rivendell
+
   homelab.backup.paths = [
     "/var/lib/grafana"
   ];

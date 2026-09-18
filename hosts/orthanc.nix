@@ -215,6 +215,11 @@
   # Backup
   # ---------------------------------------------------------------------------
 
+  # Reboot automatically when a nightly upgrade installs a new kernel (inside
+  # 03:00–07:00, after the post-upgrade check passes). See
+  # modules/reboot-policy.nix.
+  homelab.reboot.auto = true;
+
   homelab.backup.paths = [
     "/var/lib/minecraft"                  # Prominence II world + server files
     "/var/lib/minecraft-abyssal-ascent"   # Abyssal Ascent world + server files
