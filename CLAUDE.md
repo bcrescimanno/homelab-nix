@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-NixOS flake for a Raspberry Pi 5 homelab. Manages three hosts: `pirateship` (media stack), `rivendell` (Home Assistant, Caddy reverse proxy, secondary DNS, UPS monitoring, Vaultwarden), and `mirkwood` (primary DNS, Homepage, Grafana). Media storage is on `erebor` (UniFi UNAS Pro 4 NAS) via NFS mounts on pirateship.
+NixOS flake for a homelab of three Raspberry Pi 5s and one x86_64 tower. Manages four hosts: `pirateship` (media stack), `rivendell` (Home Assistant, Caddy reverse proxy, secondary DNS, UPS monitoring, Vaultwarden, Music Assistant), `mirkwood` (primary DNS, Homepage, Prometheus/Grafana), and `orthanc` (Jellyfin, Minecraft, attic binary cache, Invidious, x86_64 CI runner). Media storage is on `erebor` (UniFi UNAS Pro 4 NAS) via NFS mounts on pirateship and orthanc.
 
 Uses `nixos-raspberrypi` for Pi-specific hardware support, `disko` for declarative disk partitioning, `sops-nix` for secrets management, `deploy-rs` for deployments with magic rollback, and `home-manager` (via the dotfiles flake) for user environment configuration.
 
@@ -27,11 +27,14 @@ nix flake check --no-build
 # Update flake inputs (nixpkgs, etc.)
 nix flake update
 
-# Deploy to a Pi via deploy-rs (magic rollback + auto rollback, builds on Pi)
+# Deploy via deploy-rs (magic rollback + auto rollback; Pis build on the Pi,
+# orthanc builds locally — same arch as the deploy machine)
 deploy pirateship
 deploy rivendell
 deploy mirkwood
-deploy              # all hosts
+deploy orthanc
+deploy              # all hosts, in a safe order: orthanc (warms the cache),
+                    # then mirkwood, then rivendell + pirateship in parallel
 
 # Fallback raw form if deploy-rs is unavailable:
 nixos-rebuild switch --flake .#<host> --target-host brian@<host> --build-host brian@<host> --sudo
@@ -43,34 +46,42 @@ nix run github:nix-community/nixos-anywhere -- --flake .#pirateship root@<ip>
 SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops secrets/pirateship.yaml
 SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops secrets/rivendell.yaml
 SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops secrets/mirkwood.yaml
+SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops secrets/orthanc.yaml
 ```
 
 ## Hosts
 
 | Host | Hardware | Role |
 |---|---|---|
-| `pirateship` | Raspberry Pi 5 | Media stack (arr apps, Jellyfin, SABnzbd, Navidrome, gluetun VPN), Glances |
-| `rivendell` | Raspberry Pi 5, 8GB | Home Assistant, Matter Server, Caddy (reverse proxy + TLS), Blocky+Unbound DNS (secondary), NUT (UPS), ntfy, Gatus, Vaultwarden, Glances |
+| `pirateship` | Raspberry Pi 5, 4GB | Media stack (arr apps, SABnzbd, gluetun VPN), Bazarr, Navidrome, Glances |
+| `rivendell` | Raspberry Pi 5, 8GB | Home Assistant, Matter Server, OTBR (Thread), Caddy (reverse proxy + TLS), Blocky+Unbound DNS (secondary), NUT (UPS), ntfy, Gatus, Vaultwarden, Music Assistant, aarch64 CI runner, Glances |
 | `mirkwood` | Raspberry Pi 5, 4GB | Blocky+Unbound DNS (primary), Homepage, Prometheus, Grafana, Glances |
-| `erebor` | UniFi UNAS Pro 4 | NAS — 4×12TB RAID 6 (~24TB usable); NFS shares for pirateship media + restic backups |
+| `orthanc` | x86_64 tower — Ryzen 9 5950X, 32GB, RX 550, NVMe | Jellyfin (VAAPI transcoding), Minecraft servers, attic binary cache, Invidious + companion, Cloudflare Tunnel, x86_64 CI runner / remote builder, Glances |
+| `erebor` | UniFi UNAS Pro 4 | NAS — 4×12TB RAID 6 (~24TB usable); NFS shares for media + restic backups |
+
+**orthanc is the only x86_64 host**, and the only one with `homelab.reboot.auto = true`. It builds its own closure locally on deploy (`remoteBuild = false`) and serves as the remote builder for the Pis.
 
 ## Architecture
 
 ### Module Structure
 
-- `flake.nix` — entry point; defines NixOS configurations and deploy-rs nodes for all three hosts
-- `hosts/{pirateship,rivendell,mirkwood}.nix` — machine-specific config: hostname, disk layout (disko), networking, SOPS secret declarations, home-manager user config, backup paths
-- `modules/base.nix` — shared config for all devices: user accounts, SSH, firewall, Podman, auto-upgrade, ntfy upgrade notifications, common packages
-- `modules/arr-stack.nix` — pirateship media stack containers (gluetun VPN kill switch, qbittorrent, radarr, sonarr, prowlarr, lidarr, recyclarr, sabnzbd, jellyfin); `qbittorrent-port-sync` systemd service syncs the gluetun forwarded port to qBittorrent
+- `flake.nix` — entry point; defines NixOS configurations and deploy-rs nodes for all four hosts, plus the `orthanc-installer` ISO and the `overlayWorkarounds` data consumed by `scripts/check-overlays`. The Pis are built via `nixos-raspberrypi.lib.nixosSystem` and share `piModules`; orthanc uses plain `nixpkgs.lib.nixosSystem`
+- `hosts/{pirateship,rivendell,mirkwood,orthanc}.nix` — machine-specific config: hostname, disk layout (disko), networking, SOPS secret declarations, home-manager user config, backup paths
+- `lib/homelab.nix` — one helper: `(import ../lib/homelab.nix "name")` declares a static user+group for a `DynamicUser = true` service, because sops-nix resolves secret ownership at eval time and a DynamicUser service exposes no group to resolve against
+- `modules/base.nix` — shared config for all devices: user accounts, SSH, firewall, Podman, auto-upgrade, ntfy upgrade notifications, common packages. Imports `attic-push.nix`, `post-upgrade-check.nix` and `reboot-policy.nix`, so every host gets those three
+- `modules/arr-stack.nix` — pirateship media stack containers (gluetun VPN kill switch, qbittorrent, radarr, sonarr, prowlarr, lidarr, sabnzbd) plus the native recyclarr service; `qbittorrent-port-sync` systemd service syncs the gluetun forwarded port to qBittorrent. **Jellyfin is not here** — it runs natively on orthanc (`modules/jellyfin.nix`)
+- `modules/bazarr.nix` — Bazarr subtitle manager on pirateship (port 6767, `subtitles.theshire.io`), running as `brian` (uid 1000) to match the arr containers' PUID on the erebor NFS mount. Bazarr rewrites its own `config.yaml` + SQLite at runtime, so **none of its config can be expressed in Nix** — the module header documents the settings that matter so they are recoverable
+- `modules/jellyfin.nix` — Jellyfin on **orthanc** (native service, port 8096, `jellyfin.theshire.io`/`media.theshire.io`). VAAPI H.264/HEVC transcoding via radeonsi on the RX 550; HDR→SDR tone mapping falls back to CPU (ROCm dropped GFX8). Hardware acceleration is switched on in the Jellyfin UI, not in Nix — see the module header for the one-time setup and the Infuse direct-play settings
+- `modules/jellyfin-notify.nix` — pushes targeted library updates into Jellyfin on import, reconciled over each app's API (same pattern as `lidarr-formats.nix`). Exists because **inotify does not deliver events across NFS clients**: the arr apps on pirateship write the files, Jellyfin watches them from orthanc, and `EnableRealtimeMonitor` therefore never fires — 42 stale entries had accumulated when it was written
 - `modules/lidarr-formats.nix` — declarative Lidarr custom formats + profile scores, synced to the API by the `lidarr-format-sync` oneshot (`modules/lidarr-format-sync.py`). Lidarr has **no TRaSH guide and no Recyclarr support**, so this is the stand-in; scoring is tuned to Redacted's release-title format. See the comment block in the module before changing scores.
-- `modules/navidrome.nix` — Navidrome music streaming server on pirateship (native NixOS service, port 4533); Subsonic-compatible API for WiiM/Symfonium clients; music library at `/var/lib/media/music`
+- `modules/navidrome.nix` — Navidrome music streaming server on pirateship (native NixOS service, port 4533); music library at `/var/lib/media/music`. **Remote/mobile listening only** — OpenSubsonic API, iOS client is Amperfy, reached publicly at `stream.theshire.io` through orthanc's tunnel. Local whole-home playback is Music Assistant's job, and WiiM devices do not use Navidrome
 - `modules/backup.nix` — restic backups to erebor NFS (local) and Cloudflare R2 (offsite); paths declared per-host via `homelab.backup.paths`
 - `pkgs/materialious.nix` / `pkgs/caddy-cloudflare.nix` — the two pins no Renovate manager can see (a `fetchFromGitHub` tag and an FOD hash over the Go module graph). Exposed as flake outputs (`.#materialious`, `.#caddy-cloudflare`) so `scripts/refresh-pins` can update them with `nix-update` and a `lib.fakeHash` rebuild; `.github/workflows/refresh-pins.yml` runs it weekly and opens a PR. Read `pkgs/materialious.nix`'s header before merging a version bump — its build workarounds are upstream-behaviour-dependent.
 - `modules/caddy.nix` — Caddy reverse proxy on rivendell; wildcard TLS via Cloudflare DNS-01; proxies all `*.theshire.io` vhosts
 - `modules/dns.nix` — Blocky (port 53 + port 4000 DoH/metrics) + Unbound (port 5335, localhost) on both rivendell and mirkwood; fully declarative, replaces Technitium
 - `modules/flake-freshness.nix` — daily on rivendell (09:00): alerts when the inputs **this system was built from** fall >10 days behind upstream. Revisions are read from `flake.lock` at eval time and baked in, so it measures what is RUNNING, not what is on main. Only alarms when the locked rev *differs* from upstream's head — `disko` sat 77 days old and perfectly current. A fetch failure is reported, never treated as an all-clear.
-- `modules/gatus.nix` — Gatus service health monitor on rivendell (native NixOS service, port 8080); all monitors declared in Nix, alerts via ntfy
-- `modules/grafana.nix` — Prometheus (port 9090) + Grafana (port 3001) on mirkwood; scrapes Blocky metrics from both DNS hosts
+- `modules/gatus.nix` — Gatus service health monitor on rivendell (native NixOS service, port 8080); all monitors declared in Nix, alerts via ntfy. The `Gaming` group is **deliberately empty**: probing the Minecraft ports would defeat autopause (see `modules/minecraft.nix`). Gatus cannot check anything that needs a Prometheus query either, since 9090 is closed to the LAN — those checks belong in `grafana.nix` as alert rules
+- `modules/grafana.nix` — Prometheus (port 9090) + Alertmanager + Grafana (port 3001) on mirkwood. Scrape jobs: `blocky` (both DNS hosts), `node`, `systemd` and `smartctl` (all four hosts), `nut` (rivendell). **Prometheus itself is deliberately not exposed to the LAN** — only Grafana's 3001 is open, so nothing off-host can query 9090. All alert rules live here and route to the existing ntfy topic through alertmanager-ntfy, so there is one notification channel. Grafana dashboards are JSON-only
 - `modules/homeassistant.nix` — Home Assistant (native `services.home-assistant`), Matter Server (container) and OTBR (native `services.openthread-border-router`) on rivendell. HA reuses the container-era config dir via `configDir = /var/lib/homeassistant/config`, so `.storage` — every UI-created integration, device and dashboard — carries over untouched and the UI stays fully usable; only `configuration.yaml` becomes a read-only store symlink. **`extraComponents` is load-bearing**: integrations added through the UI live in `.storage`, which the module cannot see, so each one's domain must be listed or its Python deps are missing at runtime. Regenerate with the jq command in the module header. Matter Server is deliberately still a container — see the comment block before retrying `services.matter-server`. **HomeKit Bridge is declared here, one bridge per room**, because HAP has no room attribute and accessories land in the bridge's room. YAML overwrites the matching config entry (by name OR port) on every start, so UI filter edits are reverted; keep port+name stable or the pairing is orphaned. Matching **only sees `source: import` entries** — a UI-created bridge on the same port is silently skipped, so never add a bridge through the UI
 - `modules/ha-window-notifications.nix` — passive-cooling window prompts on rivendell (close above 66°F in the morning, open below 72°F in the evening, both suppressed by a sub-75°F forecast high in favour of one 08:00 "windows open day" message). The close threshold is 66 rather than 68 as **margin for the met.no fallback, which publishes whole degrees hourly** — a strict `above: 68` silently fired nothing on a 96°F day because the sensor read exactly 68.0. Raise it back toward 68 once the Eve Weather is paired. Declared as a **Home Assistant package** under `services.home-assistant.config.homeassistant.packages.windows`, which merges additively with the UI-authored `automations.yaml` — a package is used rather than a bare automation include because it can also declare the two `template:` sensors. The automations read `sensor.outdoor_temperature`, never the hardware entity, so swapping the source is a one-line change. See the comment block in the module before touching the thresholds or the fallback behaviour.
 - `modules/ha-dashboard.nix` — the **Home** Lovelace dashboard, declared via `services.home-assistant.lovelaceConfig` (YAML mode, dashboard `nixos-lovelace`, **read-only in the HA UI** — edit the Nix). Stock cards only, sections views (Home glance, Upstairs, Downstairs; one section per room). It is also forced to be the **system default dashboard**: an HA `preStart` snippet writes `core.default_panel` into `.storage/frontend.system_data`, so "Set as default" in the UI is reverted on restart. A per-user default (profile page) still wins over it. Entity choices are verified against the recorder — read the header before swapping an `_2` entity for its unsuffixed twin. **TVs are deliberately disabled in Music Assistant** and controlled via their native HA integrations.
@@ -79,24 +90,39 @@ SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops secrets/mirkwood.yaml
 - `modules/ha-hvac-openings.nix` — pauses `climate.main_floor` while the house is open (HA package `hvac_openings`, read-only in the UI). **Any** sensor in `openings` open for 60s → save the mode to `input_text.hvac_openings_saved_mode`, set `off`, push to both phones. **All** sensors reporting `off` → restore immediately, silently. `unavailable` is not closed: a dark sensor never pauses and blocks resume (infra alert after 30 min). A manual change to heat/cool/heat_cool while paused abandons the pause. A fifth automation pushes **"close it"** to both phones when the outdoor temperature is outside 40–72°F (or unavailable) and anything has been open 30+ min, naming what is open and repeating every 30 min; it is independent of the thermostat's state. Kitchen and office doors today — **adding window sensors is adding `entity = "Label";` to `openings`**; the header holds the expansion plan (per-sensor delays, multi-zone, dead-sensor escape hatch).
 - `scripts/check-overlays` / `.github/workflows/check-overlays.yml` — weekly probe asking whether each temporary overlay in `flake.nix` can be deleted, by building the package **unpatched** against the current lock. The list lives in `flake.nix` as `overlayWorkarounds` — **add an entry whenever you add an overlay**, with both `arch` and `flaky` set explicitly (a missing field is an error, never a default). `flaky = true` marks a **timing-dependent** failure: those must build clean on several forced rebuilds before the probe calls them droppable, because one green run of a race proves only that the race was won once. Runs on rivendell because three of the four failures only reproduce on aarch64. Replaced `modules/nixpkgs-watch.nix`, which never worked: it fetched a 302 URL with `curl -sf` and no `-L`, got an empty body, and its own `[ -z "$REV" ] && exit 0` guard swallowed it while the unit reported success.
 - `modules/homepage.nix` — Homepage dashboard as native NixOS service via `services.homepage-dashboard` (mirkwood, port 3000)
-- `modules/monitoring.nix` — Glances system monitor as native NixOS service (all three hosts, port 61208)
+- `modules/monitoring.nix` — Glances (port 61208) plus the Prometheus node (9100), systemd (9558) and smartctl (9633) exporters, on **all four hosts**. node_exporter's textfile collector reads `/var/lib/prometheus-textfiles`, which is how `attic-push` and other scripts publish counters
+- `modules/attic.nix` — atticd self-hosted Nix binary cache on orthanc (port 8080), served as `cache.theshire.io` through Caddy on rivendell. SQLite + NAR storage on orthanc's NVMe; GC retains entries used in the last 6 weeks. `attic_env` holds the JWT RS256 signing key — see the module header for the generation recipe
+- `modules/attic-push.nix` — Nix post-build hook pushing store paths to attic, imported by `base.nix` for every host. Reads `/run/secrets/attic_push_token` and exits gracefully when the token is absent, so a host without one still builds
+- `modules/minecraft.nix` — two modded Minecraft servers on orthanc as itzg containers (Prominence II on 25565, Abyssal Ascent on 25566); kept as containers because the `AUTO_CURSEFORGE` modpack automation is the whole value. Both **autopause**: the JVM is SIGSTOPped after 20 idle minutes and knockd resumes it on connect. Two things follow from that and are easy to undo by accident — the containers need `--cap-add=NET_RAW` (knockd carries `cap_net_raw=ep`, and without it in the bounding set the *exec* fails with EPERM), and **nothing may probe 25565/25566**, because any TCP connect is the knock. Liveness is the `MinecraftServerDown` Prometheus alert, not a Gatus check
+- `modules/invidious.nix` — Invidious on orthanc (`invidious.theshire.io`): native invidious + native PostgreSQL + an **invidious-companion container** (not in nixpkgs). Promoted 2026-08-25 when Piped was retired; the stock Invidious UI is deliberately kept as the diagnostic control for Materialious
+- `modules/materialious.nix` — Materialious at `yt.theshire.io`, the YouTube frontend actually used. A **client-side SvelteKit SPA**, Nix-built and served as a static site by Caddy on rivendell — no container, no server. It talks to the Invidious API from the browser, so `invidious.nix` is unaffected by it
+- `modules/music-assistant.nix` — Music Assistant on rivendell (port 8095, `listen.theshire.io`), reading `/var/lib/media/music` over NFS. **Does not replace Navidrome** (the module header's claim is stale): Music Assistant drives local multi-room playback to WiiM/HomePods, Navidrome serves remote/mobile over Subsonic. The NixOS module uses `DynamicUser`, so the export must allow reads from an ephemeral UID
+- `modules/post-upgrade-check.nix` — runs after `homelab-upgrade.service` succeeds, verifies every unit named in `homelab.postUpgradeCheck.services` is active, and **rolls the host back to the exact prior system** if any is not. Modules opt in by appending to that list; entries from all imported modules merge. The unattended path is `nixos-rebuild switch`, not deploy-rs, so it has none of deploy-rs's rollback safety — this is the replacement
+- `modules/reboot-policy.nix` — reboots after an upgrade that changed the **kernel**; see the Auto-Upgrade section below
+- `modules/pr-automerge-watch.nix` — alerts on rivendell when a Renovate PR with automerge armed is wedged rather than in flight. Every dependency PR here opens with automerge on, so an open one is ambiguous; before this, a blocked lock PR sat unnoticed while the nightly upgrade deployed the old lock on all four hosts
+- `modules/vpn-killswitch.nix` — leak detector and hard latch for the arr stack. gluetun already *is* the kill switch (OUTPUT policy DROP); what was missing was **detection** — every pre-existing check was blind to the tunnel, including Gatus's `pirateship:8000` probe, which stays green with tun0 completely down
+- `modules/vpn-port-reachability.nix` — detects and heals a forwarded port that exists but is unreachable from the internet. Fills the gap where three separate checks all stayed green through a full day of the tracker being unable to connect: the port file was present and non-zero, qBittorrent's `listen_port` matched it, and nothing was escaping the tunnel
 - `modules/music-sync.nix` — keeps Lidarr, Navidrome and Music Assistant in step with `/var/lib/media/music`. **Every filesystem watcher on that share is inert** (NFS + a remote writer, same root cause as Jellyfin/Bazarr), so `music-sync.timer` polls the ~278 *directory* mtimes every 2 min (0.2–1s), debounces one interval so a half-copied album is never scanned, then issues a targeted `RefreshArtist` per changed artist plus `music/sync` to Music Assistant. `music-library-audit.timer` runs daily: it repoints Lidarr artists whose folder drifted from disk and ntfy's about folders needing a manual Library Import. Runs on the pirateship **host**, not in gluetun's netns — see the module comment.
 - `modules/qbittorrent-seed-policy.nix` — seeding policy on pirateship, reconciled every 5 min by `modules/qbittorrent-seed-policy.py`. Keyed on each torrent's **`private` flag**, never the tracker hostname (the `tracker` field reports whichever tracker last answered and rotates). Private → ratio `-1`, action `Stop`, upload uncapped (seed forever). Public → ratio `1.0`, action `RemoveWithContent`, upload capped. Global ratio limit stays **off** and the global action stays **Stop**, so anything unclassified defaults to seeding forever rather than being deleted. See the module comment before changing any of it.
 - `modules/vaultwarden.nix` — Vaultwarden (native `services.vaultwarden`, port 8222, `vault.theshire.io`) on rivendell, replacing 1Password; clients are the official Bitwarden apps. Single user; **signups closed** (no SMTP, so nothing can register) and **no admin page on purpose** — `ADMIN_TOKEN` is unset, because `/admin` writes `config.json`, which overrides the Nix-generated env. The vault vhost in `caddy.nix` sets `X-Real-IP` (from `CF-Connecting-IP` for traffic arriving from orthanc's tunnel, the peer address otherwise) and Vaultwarden keys its login rate limit on it — never switch it to `X-Forwarded-For`, whose leftmost entry is client-supplied through Cloudflare. iOS push goes through Bitwarden's relay (`vaultwarden_env` secret); a phone logged in before push was enabled must log out/in once. SSH keys/agent and iOS CXP import are gated behind `EXPERIMENTAL_CLIENT_FEATURE_FLAGS`. restic backs up the `backup-vaultwarden` SQLite snapshot in `/var/backup/vaultwarden` (02:30, ahead of restic's 03:00), never the live DB.
-- `modules/ntfy.nix` — ntfy push notification server container on rivendell (port 2586 LAN, proxied via Caddy)
+- `modules/ntfy.nix` — ntfy push notification server on rivendell via native `services.ntfy-sh` (port 2586 on the LAN, proxied via Caddy). `upstream-base-url` is what makes iOS background push work. Every other host publishes to `http://rivendell:2586/homelab`
 - `modules/nut.nix` — Network UPS Tools monitoring Tripp Lite SMC15002URM via USB (rivendell); exposes port 3493 for Home Assistant
 
 ### Deploy (deploy-rs)
 
-`deploy-rs` is configured in `flake.nix` under `deploy.nodes`. The `deploy` shell function in dotfiles (`home/common.nix`) wraps it. All profiles use:
-- `remoteBuild = true` — builds on the Pi (avoids x86_64 → aarch64 cross-compilation)
+`deploy-rs` is configured in `flake.nix` under `deploy.nodes`. `scripts/deploy` wraps it (the `deploy` command on PATH comes from dotfiles, `home/common.nix`). All profiles use:
 - `sshUser = "brian"`, `user = "root"`
 - `magicRollback = true` — rolls back if SSH is lost during activation
 - `autoRollback = true` — rolls back if the activation script exits non-zero
+- `remoteBuild = true` on the three Pis — builds on the Pi, avoiding x86_64 → aarch64 cross-compilation. **orthanc sets `remoteBuild = false`**: it is the same architecture as the deploy machine, so it builds locally and pushes the result
+
+`deploy` with no argument deploys everything in a deliberate order — orthanc first (it is the x86_64 builder and warms attic), then mirkwood (whose closure primes the cache for the other Pis), then rivendell and pirateship in parallel. mirkwood finishing before rivendell starts is what preserves DNS redundancy. **For DNS changes the script's order is wrong** — deploy rivendell before mirkwood by hand.
+
+Note deploy-rs exits 0 even when activation fails, so `scripts/deploy` greps its output for `[ERROR]` and fails the run itself.
 
 ### Home Manager
 
-User dotfiles are managed via the `home-manager` NixOS module, pulling from the `github:bcrescimanno/dotfiles` flake. Each host imports its machine config (`machines/{pirateship,rivendell,mirkwood}.nix`). Home Manager runs automatically as part of deployment — no separate `hm` invocation needed.
+User dotfiles are managed via the `home-manager` NixOS module, pulling from the `github:bcrescimanno/dotfiles` flake. Each host imports its machine config (`machines/{pirateship,rivendell,mirkwood,orthanc}.nix`). Home Manager runs automatically as part of deployment — no separate `hm` invocation needed.
 
 ### Container Stack (arr-stack.nix)
 
@@ -107,8 +133,10 @@ All arr containers share gluetun's network namespace (`--network=container:gluet
 - **sabnzbd**: Usenet client (port 8080 via gluetun)
 - **radarr/sonarr/prowlarr/lidarr**: media managers (ports 7878/8989/9696/8686 via gluetun)
 - **recyclarr**: native NixOS service (not a container), daily, syncs TRaSH quality profiles + custom formats to radarr/sonarr; API keys via sops secrets `recyclarr_radarr_api_key`/`recyclarr_sonarr_api_key`. Exactly **one guide "(Combined)" profile per app** — Radarr `Remux 2160p (Combined)`, Sonarr `WEB-2160p (Combined)`. See the comment block in `arr-stack.nix` for why single-resolution profiles were dropped.
-- **jellyfin**: media server (port 8096, direct — not through VPN)
-- **navidrome**: music streaming server (port 4533, native NixOS service — not a container, not through VPN); declared in `modules/navidrome.nix`
+- **navidrome**: music streaming server (port 4533, native NixOS service — not a container, not through VPN); declared in `modules/navidrome.nix`. Public at `stream.theshire.io` via orthanc's Cloudflare Tunnel
+- **bazarr**: subtitles (port 6767, native, not through VPN); declared in `modules/bazarr.nix`
+
+Jellyfin used to run here as a container and **now runs natively on orthanc** (`modules/jellyfin.nix`), which has a GPU for transcoding. It reads the same erebor NFS share.
 
 #### qBittorrent + gluetun: how it works
 
@@ -149,14 +177,24 @@ Blocky handles ad blocking, conditional forwarding (`.theshire.io` → UDM Pro a
 
 ### Reverse Proxy (caddy.nix)
 
-Caddy runs on rivendell with the Cloudflare DNS plugin for DNS-01 ACME. All `*.theshire.io` services are proxied with automatic TLS. Key vhosts:
-- Local backends (`127.0.0.1`): ha, ntfy, monitor, doh, vault, rivendell-stats
+Caddy runs on rivendell with the Cloudflare DNS plugin for DNS-01 ACME (built from `pkgs/caddy-cloudflare.nix`). All `*.theshire.io` services are proxied with automatic TLS. Key vhosts:
+- Local backends (`127.0.0.1`): ha, ntfy, monitor, doh, vault, listen, rivendell-stats — plus `yt` (Materialious, served as static files by Caddy itself)
 - mirkwood backends: homepage, grafana, mirkwood-stats
-- pirateship backends: jellyfin, dl, nzb, movies, tv, prowlarr, music, listen, pirateship-stats
+- pirateship backends: dl, nzb, movies/radar, tv/sonarr, prowlarr/trackers, music/lidarr, subtitles, stream, pirateship-stats
+- orthanc backends: jellyfin/media, cache (attic), invidious
+
+Several services answer on two names (`movies`/`radar`, `tv`/`sonarr`, `music`/`lidarr`, `prowlarr`/`trackers`, `jellyfin`/`media`).
+
+External access does **not** go through Caddy's ports: `stream` and `vault` are published by the Cloudflare Tunnel on orthanc (`services.cloudflared` in `hosts/orthanc.nix`), with `vault` routed back through Caddy so the real client IP becomes `X-Real-IP`. The tunnel is still attribute-named `piped-api` and **that name is load-bearing** — nixpkgs writes it into `cloudflared.yml` and cloudflared matches it against the tunnel's real name in Cloudflare.
 
 ### Secrets
 
 Secrets use `sops-nix` with age encryption. Rendered at runtime to `/run/secrets/`.
+
+**Every host** (declared by `backup.nix` and `base.nix`, one copy per host's own yaml):
+- `restic_password` — restic repository password (shared value across hosts)
+- `restic_r2_env` — Cloudflare R2 credentials for the offsite repo
+- `attic_push_token` — JWT push token for the attic post-build hook
 
 **pirateship** (`secrets/pirateship.yaml`):
 - `vpn_env` — WireGuard credentials for gluetun
@@ -176,6 +214,13 @@ Secrets use `sops-nix` with age encryption. Rendered at runtime to `/run/secrets
 **mirkwood** (`secrets/mirkwood.yaml`):
 - `grafana_env` — `GF_SECURITY_ADMIN_PASSWORD`
 
+**orthanc** (`secrets/orthanc.yaml`):
+- `attic_env` — `ATTIC_SERVER_TOKEN_RS256_SECRET_BASE64`, atticd's JWT signing key
+- `cloudflared_piped_credentials` — Cloudflare Tunnel credentials JSON (the tunnel's name is historical; see the Reverse Proxy section)
+- `github_runner_token` — registration credential for the x86_64 CI runner
+- `minecraft_env` — `CF_API_KEY`, the CurseForge key shared by both server instances
+- `invidious_companion_key` — shared key between invidious and its companion container
+
 ### Auto-Upgrade
 
 All hosts pull and apply updates from `github:bcrescimanno/homelab-nix` daily at 4am. ntfy notifications are sent on success or failure (`http://rivendell:2586/homelab`).
@@ -184,7 +229,7 @@ All hosts pull and apply updates from `github:bcrescimanno/homelab-nix` daily at
 
 ### Media Storage
 
-Media lives on a single erebor NFS share, mounted on pirateship via `fileSystems` in `pirateship.nix`:
+Media lives on a single erebor NFS share, mounted via `fileSystems` on both pirateship (`pirateship.nix`, where the arr apps write it) and orthanc (`orthanc.nix`, where Jellyfin reads it, with `x-systemd.automount` so boot does not hang if erebor is away):
 - `/var/lib/media` — single NFS mount from erebor (`/var/nfs/shared/media`); contains subdirectories `movies/`, `tv/`, `music/`, `torrents/`, `usenet/`
 - `/var/lib/<service>/config` — per-service config directories (local, declared via `systemd.tmpfiles.rules`)
 
