@@ -69,6 +69,24 @@ Shell function in dotfiles `home/common.nix`. deploy-rs config in `flake.nix` un
 
 ### Power / Battery Resilience
 
+**DECIDED 2026-09-19: NUT secondaries are a definite yes — do them first, on their
+own.** The full load-shedding tier design below is a bigger argument that does not
+need to be settled to get the main benefit. Today three of four hosts take an
+unclean power cut on every outage, and the software is already in the repo. The
+contained first step is:
+
+- [ ] **NUT secondaries on mirkwood, pirateship and orthanc.** Add `upsmon` with
+  `type = "secondary"` pointed at `rivendell:3493` (credentials via the existing
+  `nut_upsmon_password` pattern, one sops secret per host), so every host learns
+  about `ONBATT`/`LOWBATT` instead of running flat out until the battery dies.
+  Then set graceful shutdown ordering: pirateship and orthanc power off well
+  before `battery.charge.low`, leaving the DNS pair last. **Do not enable the
+  reboot/shutdown coupling on both DNS hosts in a way that can take them down
+  together** — the same constraint `reboot-policy.nix` already encodes via
+  `dnsPeer`. Verify by actually pulling the plug, not with `upsmon -c fsd`.
+  Prerequisite, physical: orthanc's BIOS still needs *Restore on AC Power Loss*
+  or it will never come back on its own regardless of what NUT does.
+
 - [ ] **Low power mode — shed load while running on battery**. Prompted by the 2026-08-09 outage (~19:57, all hosts hard-cut). Design only, not yet implemented.
 
   **What today actually does.** Nothing coordinated. `modules/nut.nix` runs NUT on rivendell *only*, as `upsmon` `type = "primary"`, and no other host runs a secondary. So rivendell sees `ONBATT`/`LOWBATT` and can shut itself down, while **mirkwood, pirateship and orthanc have no idea the power is out** — they run flat out until the battery dies and then take an unclean power cut. There is no graceful shutdown ordering and no load shedding anywhere in the repo.
@@ -90,6 +108,51 @@ Shell function in dotfiles `home/common.nix`. deploy-rs config in `flake.nix` un
   - Recovery ordering on power return, which is the *other* half of this and is already known-broken: the 2026-08-09 restart raced DNS against NFS (`var-lib-media-music.mount` on rivendell and `navidrome` on pirateship both failed because `erebor.theshire.io` could not resolve yet). Fix the ordering as part of this work.
   - Test plan must include **actually pulling the plug**, not just simulating with `upsmon -c fsd`. Per the standing verification note, a simulation that skips the constraint that matters proves nothing.
 
+### Remote access consolidation
+
+Referenced from the Tailscale entry under Future Services. Reviewed 2026-09-19.
+
+There are three distinct mechanisms today and they are frequently conflated:
+
+| mechanism | where | job | managed by Nix |
+|---|---|---|---|
+| Cloudflare Tunnel (`piped-api`) | orthanc, `services.cloudflared` | **public ingress** for `stream`, `vault`, Invidious/Materialious | yes |
+| UDM Pro WireGuard VPN server | UDM Pro | **remote access** to the LAN for Brian's devices | **no — outside this repo** |
+| gluetun ProtonVPN WireGuard | pirateship, in `arr-stack.nix` | **outbound egress** + kill switch for the torrent stack | yes |
+
+The third is unrelated to remote access and must not be folded into this
+discussion; it exists to hide torrent traffic, and the kill-switch behaviour
+depends on its netns.
+
+The real question is **Cloudflare Tunnel vs UDM Pro WireGuard vs Tailscale**, and
+the answer is not "pick one" — they solve different problems:
+
+- The **tunnel publishes to people who are not Brian** (family on cellular using
+  Amperfy, the Bitwarden apps). Those clients cannot be asked to join a VPN.
+  The tunnel stays.
+- **UDM Pro WireGuard and Tailscale overlap almost completely.** Both give Brian's
+  own devices the LAN. The honest comparison:
+  - *UDM Pro WireGuard*: no extra dependency, no SaaS, already working — but it
+    is **imperative config in the UniFi UI**, invisible to this repo, needs an
+    inbound port on the router, and gives a single flat "you are on the LAN"
+    with no per-service policy.
+  - *Tailscale*: declarative (`services.tailscale` + `authKeyFile` from sops),
+    no inbound port, works from networks that block WireGuard, per-device ACLs,
+    and Tailscale DNS can point at Blocky so **ad-blocking follows the phone
+    off-network**. Cost: a **SaaS control plane** — an external dependency on the
+    path to your own infrastructure.
+
+  Headscale is the declarative escape hatch and should **not** be chased: a
+  self-hosted control plane running on the lab it grants access to is
+  chicken-and-egg during exactly the outage you need it for.
+
+**Decision to make before deploying anything:** does Tailscale *replace* the UDM
+Pro WireGuard server, or sit beside it? Replacing it is the only outcome that
+actually simplifies — adding Tailscale while keeping UDM WireGuard means four
+mechanisms, not three. Keeping UDM WireGuard as a break-glass fallback for when
+Tailscale's control plane is unreachable is a defensible exception, but it should
+be a deliberate, documented fallback rather than drift.
+
 ### NAS (erebor) — Remaining Work
 
 erebor is online (10G SFP+ at 10.0.1.22, 1G ethernet at 10.0.1.21 for management).
@@ -99,12 +162,68 @@ erebor is online (10G SFP+ at 10.0.1.22, 1G ethernet at 10.0.1.21 for management
 
 ### DNS / Monitoring
 
-- [ ] **Grafana DNS dashboard (Pi-hole-style panels)**: `blocky_query_total` has only `client` and `type` (DNS record type) labels — no per-client blocked-domain breakdown. Option A (Prometheus-only) cannot deliver this. **Option B (Loki)** is required for top blocked domains + per-client breakdowns:
-  - Loki on rivendell (8GB RAM), 7-day retention
-  - Promtail on both rivendell + mirkwood shipping `/var/log/blocky/*.csv` to `rivendell.local:3100`
-  - `services.loki` + `services.promtail` NixOS modules
-  - Add Loki datasource to Grafana on mirkwood
-  - Build LogQL panels for top clients, top blocked domains, per-client breakdown
+#### Observability gaps (reviewed 2026-09-19)
+
+- [ ] **External dead man's switch — every alert path terminates at rivendell.**
+  Traced 2026-09-19. Prometheus and Alertmanager run on **mirkwood**, but
+  Alertmanager's only receiver posts to `http://10.0.1.9:2586` — rivendell's
+  ntfy (`modules/grafana.nix`). Gatus runs on rivendell. ntfy *is* on rivendell.
+  The reboot-policy and post-upgrade pushes go to `rivendell:2586`. Every bespoke
+  `OnFailure` script pushes there too.
+
+  **So if rivendell is down, or just its ntfy is broken, the lab goes silent —
+  including the alert that would say rivendell is down.** Gatus has a `mkTcp`
+  check for rivendell, but Gatus cannot report the death of its own host. This
+  is the structural version of every silent failure in the memory index.
+
+  Fix, cheapest first:
+  1. **External dead man's switch** (healthchecks.io free tier or equivalent): a
+     timer on **mirkwood and orthanc** pings an outside endpoint on a schedule;
+     the outside service alerts *Brian* when the pings stop. This is the only
+     option that survives the whole house being down, and it is the one to do
+     first.
+  2. **Second notification channel**: point the most critical alerts at
+     `ntfy.sh` (public) as well as self-hosted ntfy, so a rivendell outage does
+     not mute them. Cheap; note it moves alert content off-premises, so keep it
+     to "host X is down", not diagnostics.
+  3. **Cross-monitoring**: a second Gatus (on mirkwood or orthanc) whose only
+     job is watching rivendell and the ntfy endpoint itself.
+
+  Test it by actually stopping ntfy on rivendell and confirming an alert still
+  arrives — per the standing verification note, simulating around the constraint
+  that matters proves nothing. Also test the *resolve* path separately.
+
+- [ ] **Loki + Alloy — centralized logs. Supersedes the Promtail sketch below.**
+  Originally scoped only as a prerequisite for the Pi-hole-style DNS dashboard.
+  That undersells it: this lab's characteristic failure mode is **silent**, and
+  every instance in the memory index was found by SSHing to a host and grepping
+  a journal — empty backups green for four months (#569), the timer oneshot
+  reporting success, `systemctl show` returning success for an unknown unit, the
+  restart loop that looked healthy, nixpkgs-watch swallowing its own error.
+  Centralized logs with retention turn that into one query, and let log-based
+  alerts ride the Alertmanager → ntfy path that already exists.
+
+  - **Use `services.alloy`, NOT Promtail** — Promtail hit EOL 2026-03-02.
+  - **Host Loki on orthanc**, not rivendell as previously sketched: four hosts of
+    journals plus retention wants RAM and disk, and orthanc has ~16GB free and
+    1.7TB free NVMe versus rivendell's 8GB shared with HA. Grafana stays on
+    mirkwood and gains a Loki datasource pointing at orthanc.
+  - Ship **both** the systemd journal (all four hosts) and Blocky's query log
+    (`/var/log/blocky/*` on rivendell + mirkwood).
+  - Retention: start at 7–14 days. Watch disk before raising it.
+  - Then build the LogQL panels the DNS dashboard needed all along: top clients,
+    top blocked domains, per-client breakdown.
+
+  Open question to settle at implementation time: orthanc is the one host that
+  might get rebooted for a game or a build, so log history has a gap exactly
+  when orthanc is the thing that broke. Accept it, or keep a small local buffer
+  on each host via Alloy's WAL.
+
+- [ ] **Grafana DNS dashboard (Pi-hole-style panels)** — blocked on Loki above.
+  `blocky_query_total` has only `client` and `type` (DNS record type) labels, so
+  there is no per-client blocked-domain breakdown; a Prometheus-only approach
+  cannot deliver this panel set. Once Loki is up, build top blocked domains and
+  per-client breakdowns in LogQL.
 
 ### Home Assistant / IoT
 
@@ -155,12 +274,99 @@ erebor is online (10G SFP+ at 10.0.1.22, 1G ethernet at 10.0.1.21 for management
 
 ### Future Services
 
-- [ ] **Immich** — self-hosted photo library (Google Photos replacement). Mobile backup app, face recognition, albums, map. Host on pirateship; storage on erebor NFS. High value.
-- [ ] **Tailscale** — mesh VPN for remote homelab access without port forwarding. Add `modules/tailscale.nix` or extend `base.nix` for all hosts. Consider Headscale (self-hosted control plane) once comfortable.
-- [ ] **Paperless-ngx** — document management with OCR. Tax docs, warranties, receipts. Host on pirateship.
-- [ ] **SSO (Authelia)** — plan complete, implementation deferred. See `memory/sso-plan.md`.
-- [ ] **Node-RED** — visual flow editor for HA automations. More powerful than HA's built-in engine for complex logic. Container on rivendell alongside HA.
-- [ ] **HomeKit migration** — inventory all HomeKit-only devices; migrate to HomeKit-through-HA (HA as HomeKit bridge). Goal: single automation pane in HA while keeping Siri usable.
+Reviewed 2026-09-19 against the live lab. Verdicts below; rejected ideas moved to
+"Decided Against" so they stop resurfacing.
+
+- [ ] **Tailscale — HIGH PRIORITY, design first.** The lab has three overlapping
+  remote-access mechanisms and no single story for "reach the homelab from
+  outside": the Cloudflare Tunnel on orthanc (public ingress for
+  `stream`/`vault`/Invidious), the UDM Pro's own WireGuard VPN server (outside
+  this repo, unmanaged by Nix), and gluetun's ProtonVPN WireGuard (**unrelated**
+  — that is outbound egress for the torrent stack and is not remote access).
+  Tailscale's job is the private half: SSH plus the LAN-only dashboards
+  (Homepage, Grafana, the three unauthenticated `*-stats` Glances vhosts) with
+  no inbound port and no public exposure.
+
+  `services.tailscale` is native, with `authKeyFile` for the sops key, so this
+  is declarative. **The goal is consolidation, not a fourth mechanism** — decide
+  what retires before deploying. Full comparison and the open decision are in
+  "Remote access consolidation" above.
+
+- [ ] **Dead man's switch — external, out-of-band.** See "Observability gaps".
+- [ ] **Loki + Alloy — centralized logs.** See "Observability gaps" above; the
+  old Promtail sketch there has been replaced.
+- [~] **HomeKit migration — IN PROGRESS.** Done: four room bridges declared in
+  `modules/homeassistant.nix` (Office, Kitchen, Hall, Boys Bathroom), covering
+  all 3 `light.*` entities, `climate.main_floor`, and the 2 kitchen switches;
+  the ecobee moved off its cloud integration to `homekit_controller` (2026-09-13).
+  Remaining is the part HA cannot answer for itself: **inventory the devices
+  still paired directly to Apple Home** and decide which should instead come
+  through HA. HA has 477 enabled entities but only 3 lights / 1 climate, so the
+  gap is devices HA never sees. Audit from the Home app, not from HA.
+- [ ] **SSO (Authelia) — TABLED PENDING DISCUSSION. Do not implement yet.**
+  `memory/sso-plan.md` is stale in two ways and must be rewritten before any
+  work starts: (a) it specifies an OCI **container**, but nixpkgs has
+  `services.authelia.instances.<name>` natively — the container version would
+  contradict the declarative principle in CLAUDE.md; (b) its vhost table still
+  routes `jellyfin.theshire.io` to pirateship, which moved to orthanc.
+  Separately, the *value* has dropped since it was written: nothing is public
+  except `vault` and the Invidious set, so Authelia would mostly add a login
+  wall between Brian and his own LAN dashboards. Brian wants to discuss scope
+  before this is picked up.
+
+### Future Ideas — may or may not happen
+
+Not committed to. Parked here deliberately so they are not mistaken for planned
+work.
+
+- [ ] **Paperless-ngx** — document management with OCR (tax docs, warranties,
+  receipts). `services.paperless` is native, and the Brother printer is already
+  in HA via `ipp`/mDNS so the scan-to-ingest path exists. Host on orthanc, not
+  pirateship. The reason this is an idea and not a plan: its entire value
+  depends on sustaining a **scanning habit**, and it would add another
+  irreplaceable-data path to back up. Revisit if the paper actually piles up.
+- [ ] **Audiobookshelf** — native module; fills a real catalogue gap (Jellyfin
+  is video, Navidrome is music, nothing serves audiobooks or podcasts). Only
+  worth it if audiobooks are actually consumed.
+- [ ] **Homebox** — native; home inventory, pairs with Paperless for warranties.
+- [ ] **Actual Budget** / **Karakeep** / **Komga** — native modules, pure
+  interest-driven. No gap in the lab argues for them.
+
+### Decided Against — do not revisit without a stated change
+
+- **Immich — REJECTED 2026-09-19.** The whole household is on the Apple photo
+  ecosystem (iCloud Photos), which already does the job Immich would do:
+  library, sharing, faces, and off-device backup, for everyone, with zero
+  operational burden. Self-hosting photos would mean **competing with a working
+  system and losing** — every family member would have to change apps and
+  trust a single Pi-adjacent box with irreplaceable data. This is the one place
+  the "no Apple ecosystem coupling" principle does not apply: photos are a
+  client-side convenience, not load-bearing homelab infrastructure, and there
+  is no automation or integration the lab needs from them.
+  *Reopen only if* the household leaves iCloud Photos, or Apple's pricing or
+  sharing model changes enough to force the question.
+
+- **Node-RED — REJECTED 2026-09-19.** Contradicts the guiding principle head-on:
+  flows live in `flows.json`, authored through a web UI, with no config-file
+  equivalent — the exact failure mode that got Uptime Kuma replaced by Gatus.
+  And the problem is already solved *better*: five HA-packages-in-Nix modules
+  (`ha-bathroom-lights`, `ha-hvac-openings`, `ha-hood-light`,
+  `ha-window-notifications`, `ha-dashboard`) put automation logic in the flake
+  where it is reviewable in a PR and deployed by deploy-rs. Adopting Node-RED
+  would move that logic back out of version control.
+  *Reopen only if* HA's own engine plus Nix packages proves unable to express
+  something genuinely needed — which has not happened yet.
+
+- **DHCP out of UniFi (Kea) — REJECTED 2026-09-19 (for now).** `services.kea.dhcp4`
+  exists and is fully declarative, and moving DHCP into the flake would make the
+  IP reservations that currently mitigate the hardcoded-IP fragility reviewable
+  in git, plus unlock DNSSEC and auto-DNS for leases. Brian is nonetheless
+  keeping DHCP in UniFi: it works, the UDM Pro is the natural owner of the L2/L3
+  edge, and moving it puts every device in the house behind a service this repo
+  would then have to keep up at all times.
+  *Reopen only if* the hardcoded-IP drift actually bites, or a concrete need for
+  DNSSEC/lease-DNS appears. Until then set the reservations in UniFi by hand and
+  leave it alone.
 
 ### Watch list — get Materialious onto an auto-updating source
 
