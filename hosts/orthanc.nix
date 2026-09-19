@@ -158,7 +158,7 @@
   };
 
   # ---------------------------------------------------------------------------
-  # Cloudflare Tunnel — external ingress for Navidrome and Vaultwarden
+  # Cloudflare Tunnel — external ingress for Navidrome
   # ---------------------------------------------------------------------------
   #
   # cloudflared opens an OUTBOUND connection to Cloudflare's edge, so external
@@ -175,8 +175,7 @@
   # rename the tunnel in the Cloudflare dashboard FIRST, then this attribute,
   # then the sops key above.
   #
-  # DNS in Cloudflare: `stream` and `vault` → <tunnel-id>.cfargotunnel.com
-  # (Proxied). Neither record is declared here — both were created by hand.
+  # DNS in Cloudflare: `stream` → <tunnel-id>.cfargotunnel.com (Proxied).
   # The `piped-api` CNAME that pointed at this same tunnel is dead — delete it.
 
   services.cloudflared = {
@@ -184,23 +183,6 @@
     tunnels."piped-api" = {
       credentialsFile = config.sops.secrets.cloudflared_piped_credentials.path;
       ingress."stream.theshire.io" = "http://pirateship.home.theshire.io:4533";
-
-      # Vaultwarden. Goes THROUGH Caddy on rivendell, not straight to the
-      # backend like stream does: Vaultwarden listens on 127.0.0.1 only, and
-      # the vault vhost is where the real client IP (CF-Connecting-IP) is
-      # turned into X-Real-IP for the login rate limit — keyed on this
-      # tunnel's source address, 10.0.1.10. See the vault vhost in
-      # modules/caddy.nix before changing either end.
-      #
-      # By IP, not rivendell.home.theshire.io: that name can resolve to an
-      # IPv6 address, which would miss Caddy's `remote_ip 10.0.1.10` matcher and
-      # silently send every public request down the LAN path (client IP =
-      # orthanc). originServerName makes cloudflared send the right SNI and
-      # verify Caddy's real vault.theshire.io certificate — no noTLSVerify.
-      ingress."vault.theshire.io" = {
-        service = "https://10.0.1.9";
-        originRequest.originServerName = "vault.theshire.io";
-      };
       default = "http_status:404";
     };
   };

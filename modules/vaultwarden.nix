@@ -5,13 +5,15 @@
 # https://vault.theshire.io via their "self-hosted" server setting. Everything
 # is end-to-end encrypted client-side; this server stores ciphertext and syncs.
 #
-# PUBLIC, via the Cloudflare Tunnel on orthanc (hosts/orthanc.nix) → Caddy on
-# rivendell → here. Inside the house vault.theshire.io resolves to Caddy
-# directly through the Blocky split-horizon wildcard; outside, the public
-# CNAME goes through the tunnel. Same URL everywhere, so the clients never
-# need to know which network they are on — that was the reason for choosing
-# the tunnel over a VPN: the apps are read-only when they cannot reach the
-# server, and a save should never depend on remembering to connect first.
+# Reached from outside through the Cloudflare Tunnel on orthanc
+# (hosts/orthanc.nix) → Caddy on rivendell → here. Inside the house
+# vault.theshire.io resolves to Caddy directly through the Blocky split-horizon
+# wildcard; outside, the public CNAME goes through the tunnel. Same URL
+# everywhere, so the clients never need to know which network they are on —
+# that was the reason for choosing the tunnel over a VPN: the apps are
+# read-only when they cannot reach the server, and a save should never depend
+# on remembering to connect first. (The tunnel route itself landed separately
+# from the controls below, which had to be live first.)
 #
 # Public exposure is why the controls below are not optional:
 #   - signups closed (single user)
@@ -40,6 +42,15 @@
 # Valid names are listed in the .env.template of the running version; an
 # unknown flag is dropped (FeatureFlagFilter::ValidOnly), not an error.
 #
+# Push: iOS/Android clients only learn about changes when Apple/Google push
+# to them, and only Bitwarden, Inc. can push to its own apps. So Vaultwarden
+# sends a "sync now" nudge — no vault data — through Bitwarden's relay, using an
+# installation ID/key from https://bitwarden.com/host/ (US region, which is
+# what the default PUSH_RELAY_URI/PUSH_IDENTITY_URI point at). Without it the
+# iOS app only syncs when opened, and iOS autofill serves a stale cache.
+# A phone that logged in BEFORE push was enabled never registered its push
+# token: log out and back in on it once.
+#
 # Backups: the live SQLite DB is never read by restic. backup-vaultwarden takes
 # a consistent `sqlite3 .backup` snapshot (plus attachments, sends and the RSA
 # key) into backupDir at 02:30, and restic's 03:00 run picks up that directory.
@@ -60,6 +71,11 @@ in
   services.vaultwarden = {
     enable = true;
     inherit backupDir;
+
+    # PUSH_INSTALLATION_ID / PUSH_INSTALLATION_KEY. Read by systemd as root
+    # before it drops to the vaultwarden user, so the sops default 0400
+    # root:root is right.
+    environmentFile = config.sops.secrets.vaultwarden_env.path;
 
     config = {
       DOMAIN = "https://vault.theshire.io";
@@ -85,6 +101,8 @@ in
       # its leftmost entry is client-supplied.
       IP_HEADER = "X-Real-IP";
 
+      PUSH_ENABLED = true;
+
       EXPERIMENTAL_CLIENT_FEATURE_FLAGS = lib.concatStringsSep "," [
         "ssh-key-vault-item"
         "ssh-agent"
@@ -94,6 +112,8 @@ in
       ];
     };
   };
+
+  sops.secrets.vaultwarden_env.restartUnits = [ "vaultwarden.service" ];
 
   # Snapshot just before restic's 03:00 local run (modules/backup.nix), so the
   # nightly archive is at most 30 minutes stale instead of the module's
