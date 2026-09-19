@@ -4,7 +4,9 @@
 # via Caddy on rivendell (TLS termination + reverse proxy).
 #
 # Storage: SQLite DB + NAR storage on orthanc's NVMe at /var/lib/atticd/.
-# GC retains entries used within the last 6 weeks.
+# GC evicts cache entries by `default-retention-period` below, which is the one
+# place that duration is written down — don't restate it elsewhere. A copy of it
+# in hosts/orthanc.nix drifted to "2 weeks" and went unnoticed until 2026-09-19.
 #
 # ---------------------------------------------------------------------------
 # Required sops secret (secrets/orthanc.yaml):

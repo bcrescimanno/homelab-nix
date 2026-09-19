@@ -273,8 +273,8 @@
     "/var/lib/minecraft"                  # Prominence II world + server files
     "/var/lib/minecraft-abyssal-ascent"   # Abyssal Ascent world + server files
     "/var/lib/jellyfin"   # library database, config, plugins (not cache — auto-regenerates)
-    # attic DB + NAR storage (GC retains entries used in the last 6 weeks —
-    # `default-retention-period` in modules/attic.nix).
+    # attic DB + NAR storage (GC retention is `default-retention-period` in
+    # modules/attic.nix — deliberately not repeated here).
     # The /var/lib/private prefix is REQUIRED — atticd runs with
     # DynamicUser=true, so /var/lib/atticd is only a symlink into
     # /var/lib/private/atticd and restic archives a symlink as a symlink.
