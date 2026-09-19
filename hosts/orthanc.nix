@@ -36,7 +36,8 @@
 
   # amd_pstate=active enables the EPP (Energy Performance Preference) driver,
   # which replaces acpi-cpufreq and gives the CPU hardware-level power hints.
-  # Required for auto-cpufreq's EPP mode to work on Zen 3.
+  # It is what makes the powersave governor + EPP setting below meaningful on
+  # Zen 3 — without it the driver falls back to acpi-cpufreq, which has no EPP.
   boot.kernelParams = [ "amd_pstate=active" ];
 
   # AMD microcode updates — apply latest CPU microcode on boot.
@@ -46,22 +47,52 @@
   # Power management
   # ---------------------------------------------------------------------------
   #
-  # auto-cpufreq dynamically scales the CPU governor and EPP based on system
-  # load. On a plugged-in desktop with bursty workloads (remote builds, game
-  # server), "powersave" governor + "balance_power" EPP idles efficiently while
-  # still boosting for short bursts. "turbo = auto" lets the CPU boost when
-  # needed but doesn't hold boost clocks during idle periods.
+  # The target state is the same one auto-cpufreq used to apply — "powersave"
+  # governor with "balance_power" EPP — but applied ONCE at boot instead of by
+  # a polling daemon.
+  #
+  # auto-cpufreq was removed 2026-09-19. With amd_pstate=active the scaling
+  # decision happens in the CPU's own hardware: the governor and EPP are hints
+  # the firmware acts on per-microsecond, and userspace re-deciding them on a
+  # poll interval adds nothing. Measured on orthanc that day, it was the single
+  # largest CPU consumer on the host by cumulative time — ~6.8% of a core
+  # averaged since boot, more than either Minecraft server — to re-apply values
+  # that never changed. Stopping it moved package power 31W → 29W (inside the
+  # noise, but in the right direction); the real argument is that it burns a
+  # core fraction continuously for no decision.
+  #
+  # Do not reintroduce it, or power-profiles-daemon, without a measurement
+  # showing the hardware governor is actually mis-scaling for this workload.
+  powerManagement.cpuFreqGovernor = "powersave";
 
-  services.auto-cpufreq = {
-    enable = true;
-    settings = {
-      charger = {
-        governor = "powersave";
-        energy_performance_preference = "balance_power";
-        turbo = "auto";
-      };
+  # EPP has no NixOS option, so set it directly. amd-pstate-epp defaults to
+  # "balance_performance" under the powersave governor, which holds higher
+  # clocks at idle than this box needs — it spends almost all its time waiting
+  # for a build or a game tick.
+  systemd.services.cpu-epp = {
+    description = "Set AMD P-State energy performance preference";
+    wantedBy = [ "multi-user.target" ];
+    after = [ "cpufreq.service" ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
     };
+    script = ''
+      shopt -s nullglob
+      for f in /sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference; do
+        echo balance_power > "$f"
+      done
+    '';
   };
+
+  # powertop --auto-tune at boot: runtime PM for PCIe devices, the USB bus and
+  # the SATA links. Safe here because orthanc is headless with nothing on USB
+  # but a hub and the motherboard's RGB controller, and nothing on SATA (root
+  # is NVMe) — the devices autosuspend touches are ones nothing uses.
+  #
+  # This does NOT enable PCIe ASPM, which is disabled on every link on this
+  # board and is a BIOS setting, not a kernel one.
+  powerManagement.powertop.enable = true;
 
   disko.devices = {
     disk.main = {

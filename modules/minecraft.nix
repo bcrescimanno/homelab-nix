@@ -100,6 +100,43 @@ let
       ONLINE_MODE = "TRUE";
       MOTD = srv.motd;
       ALLOW_FLIGHT = "TRUE"; # Many modpacks require this (jetpacks, mounts, etc.)
+
+      # -----------------------------------------------------------------------
+      # Autopause — SIGSTOP the JVM while nobody is connected.
+      #
+      # An idle modded server is not cheap: measured 2026-09-19, the two here
+      # together held 14.3GB RSS and ~13% of a core with zero players, and
+      # pausing both dropped orthanc's CPU package power from 31W to 19W. The
+      # last time anyone joined was 2026-04-06 (prominence) and 2026-06-17
+      # (abyssal-ascent), so that was ~12W burned continuously for nothing.
+      #
+      # The listening socket stays open while paused — knockd inside the
+      # container watches the interface for a SYN on 25565 and resumes the JVM,
+      # so joining still works, just with a few seconds of extra handshake.
+      # Memory stays resident: this buys CPU and power back, not RAM.
+      #
+      # ANY TCP CONNECT TO THE GAME PORT WAKES THE SERVER. That is why the
+      # image's own healthcheck stays disabled below, and why the Gatus
+      # monitors moved off tcp:// probes — a 1-minute probe would hold both
+      # servers awake forever and quietly undo all of this. Do not point a new
+      # uptime check at 25565/25566.
+      # -----------------------------------------------------------------------
+      ENABLE_AUTOPAUSE = "TRUE";
+
+      # Pause after 20 min with no players connected. Long enough to cover a
+      # disconnect/reconnect or a client crash mid-session without a resume.
+      AUTOPAUSE_TIMEOUT_EST = "1200";
+
+      # Grace period after startup before the first pause. A modpack this size
+      # takes minutes to finish loading; pausing mid-load is how you get a
+      # world that never finishes starting.
+      AUTOPAUSE_TIMEOUT_INIT = "1200";
+
+      # Required: the JVM watchdog counts wall-clock time, so a paused server
+      # looks to it like a tick that took hours, and it kills the server on
+      # resume. -1 disables it. The image sets this itself for autopause, but
+      # it is spelled out here because the failure mode is a dead world.
+      MAX_TICK_TIME = "-1";
     } // lib.optionalAttrs (srv.forceInclude != [ ]) {
       # Install mods the image would skip as client-only. Needed when a pack
       # marks a mod Client on CurseForge that server-side mods still require.
@@ -118,7 +155,9 @@ let
 
     # Disable the built-in healthcheck — Minecraft takes several minutes to
     # start (modpack download + Forge install), so the healthcheck fires during
-    # activation and causes a spurious rollback.
+    # activation and causes a spurious rollback. It must ALSO stay off for
+    # autopause: mc-monitor connects to the game port, which is exactly the
+    # knock that resumes a paused server.
     extraOptions = [ "--no-healthcheck" ];
   };
 in
