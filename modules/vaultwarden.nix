@@ -5,20 +5,34 @@
 # https://vault.theshire.io via their "self-hosted" server setting. Everything
 # is end-to-end encrypted client-side; this server stores ciphertext and syncs.
 #
-# LAN-only for now. vault.theshire.io resolves via the Blocky split-horizon
-# wildcard and has no public record or tunnel. Consequence: away from home the
-# clients work from their read-only offline cache — new logins and passkeys can
-# only be SAVED when the server is reachable. Remote access (Tailscale vs.
-# Cloudflare Tunnel) is an open decision, not an oversight.
+# Reached from outside through the Cloudflare Tunnel on orthanc
+# (hosts/orthanc.nix) → Caddy on rivendell → here. Inside the house
+# vault.theshire.io resolves to Caddy directly through the Blocky split-horizon
+# wildcard; outside, the public CNAME goes through the tunnel. Same URL
+# everywhere, so the clients never need to know which network they are on —
+# that was the reason for choosing the tunnel over a VPN: the apps are
+# read-only when they cannot reach the server, and a save should never depend
+# on remembering to connect first. (The tunnel route itself landed separately
+# from the controls below, which had to be live first.)
+#
+# Public exposure is why the controls below are not optional:
+#   - signups closed (single user)
+#   - no /admin
+#   - two-step login on the account (enforced by habit, not config)
+#   - real client IPs for the login rate limit — see the vault vhost in
+#     modules/caddy.nix; Vaultwarden reads X-Real-IP, which Caddy always sets.
+# Cloudflare Access cannot sit in front of this: the Bitwarden apps cannot
+# complete an Access login, so it would break every client.
 #
 # Fully declarative on purpose: there is NO admin page. ADMIN_TOKEN is unset,
 # which disables /admin entirely. That matters beyond attack surface — settings
 # saved through /admin land in $DATA_FOLDER/config.json, which OVERRIDES the
 # environment, so the admin page would silently shadow this file.
 #
-# Signups: SIGNUPS_ALLOWED is true ONLY to bootstrap the first account(s).
-# Flip it to false once they exist — there is no SMTP, so without signups and
-# without /admin, nobody else can ever register.
+# Signups are CLOSED. They were open only to bootstrap the single account.
+# There is no SMTP and no /admin, so nothing else can register. Adding a
+# person later means setting SIGNUPS_ALLOWED again — and because the server is
+# public, anyone who finds it can register in that window, so keep it short.
 #
 # Feature flags: SSH keys are still a gated client feature against Vaultwarden.
 # `ssh-key-vault-item` adds the item type, `ssh-agent`/`ssh-agent-v2` turn on
@@ -27,6 +41,15 @@
 # /api/config for ~1h, so a flag change takes up to an hour to show up.
 # Valid names are listed in the .env.template of the running version; an
 # unknown flag is dropped (FeatureFlagFilter::ValidOnly), not an error.
+#
+# Push: iOS/Android clients only learn about changes when Apple/Google push
+# to them, and only Bitwarden, Inc. can push to its own apps. So Vaultwarden
+# sends a "sync now" nudge — no vault data — through Bitwarden's relay, using an
+# installation ID/key from https://bitwarden.com/host/ (US region, which is
+# what the default PUSH_RELAY_URI/PUSH_IDENTITY_URI point at). Without it the
+# iOS app only syncs when opened, and iOS autofill serves a stale cache.
+# A phone that logged in BEFORE push was enabled never registered its push
+# token: log out and back in on it once.
 #
 # Backups: the live SQLite DB is never read by restic. backup-vaultwarden takes
 # a consistent `sqlite3 .backup` snapshot (plus attachments, sends and the RSA
@@ -49,6 +72,11 @@ in
     enable = true;
     inherit backupDir;
 
+    # PUSH_INSTALLATION_ID / PUSH_INSTALLATION_KEY. Read by systemd as root
+    # before it drops to the vaultwarden user, so the sops default 0400
+    # root:root is right.
+    environmentFile = config.sops.secrets.vaultwarden_env.path;
+
     config = {
       DOMAIN = "https://vault.theshire.io";
 
@@ -56,8 +84,7 @@ in
       ROCKET_ADDRESS = "127.0.0.1";
       ROCKET_PORT    = 8222;
 
-      # Bootstrap only — see the header. Set to false after account creation.
-      SIGNUPS_ALLOWED = true;
+      SIGNUPS_ALLOWED = false;
       # No SMTP: verification mail can never be sent and invitations would
       # dead-end. With no mail, a hint would be displayed to anyone who types
       # the email address, so hints are off.
@@ -65,10 +92,16 @@ in
       INVITATIONS_ALLOWED = false;
       SHOW_PASSWORD_HINT  = false;
 
-      # Caddy sets X-Forwarded-For, not X-Real-IP. Trusted only from local
-      # (non-global) addresses by default, which covers Caddy on 127.0.0.1.
-      # Without this every login rate-limit and failure log sees 127.0.0.1.
-      IP_HEADER = "X-Forwarded-For";
+      # Client IP for the login/2FA rate limit. X-Real-IP is Vaultwarden's
+      # default and is spelled out because the value only means something in
+      # combination with the Caddy vhost, which overwrites it on every request
+      # (CF-Connecting-IP via the tunnel, the peer address on the LAN). It is
+      # honoured only from local addresses (IP_HEADER_TRUSTED_PROXIES=local),
+      # which Caddy on 127.0.0.1 is. NOT X-Forwarded-For: through Cloudflare
+      # its leftmost entry is client-supplied.
+      IP_HEADER = "X-Real-IP";
+
+      PUSH_ENABLED = true;
 
       EXPERIMENTAL_CLIENT_FEATURE_FLAGS = lib.concatStringsSep "," [
         "ssh-key-vault-item"
@@ -79,6 +112,8 @@ in
       ];
     };
   };
+
+  sops.secrets.vaultwarden_env.restartUnits = [ "vaultwarden.service" ];
 
   # Snapshot just before restic's 03:00 local run (modules/backup.nix), so the
   # nightly archive is at most 30 minutes stale instead of the module's

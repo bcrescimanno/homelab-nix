@@ -103,7 +103,34 @@ in
       "listen.theshire.io".extraConfig = proxy "127.0.0.1:8095";
       # Vaultwarden (modules/vaultwarden.nix). WebSocket notifications share
       # the HTTP port since 1.29, and reverse_proxy upgrades them untouched.
-      "vault.theshire.io".extraConfig  = proxy "127.0.0.1:8222";
+      #
+      # PUBLIC via the Cloudflare Tunnel on orthanc (hosts/orthanc.nix), which
+      # connects here rather than to Vaultwarden directly, so both paths share
+      # this vhost. What differs is where the real client IP comes from, and
+      # Vaultwarden's login rate limit is keyed on it:
+      #   - tunnel: every request arrives from orthanc (10.0.1.10). The client
+      #     is in CF-Connecting-IP, which Cloudflare's edge OVERWRITES. Not
+      #     X-Forwarded-For — Cloudflare appends to a client-supplied one, so
+      #     its leftmost entry is attacker-controlled and would let a password
+      #     guesser rotate its way around the rate limit.
+      #   - LAN: the peer address itself.
+      # X-Real-IP is always SET, never passed through, so neither path can
+      # forge it. Without this every public request looks like 10.0.1.10 and
+      # one attacker's failures lock out every other remote client.
+      "vault.theshire.io".extraConfig = ''
+        @tunnel remote_ip 10.0.1.10
+        handle @tunnel {
+          reverse_proxy 127.0.0.1:8222 {
+            header_up X-Real-IP {http.request.header.CF-Connecting-IP}
+          }
+        }
+        handle {
+          reverse_proxy 127.0.0.1:8222 {
+            header_up X-Real-IP {remote_host}
+          }
+        }
+        ${tlsConfig}
+      '';
 
       # orthanc backends
       "jellyfin.theshire.io".extraConfig         = proxy "orthanc.home.theshire.io:8096";
