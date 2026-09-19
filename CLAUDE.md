@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-NixOS flake for a Raspberry Pi 5 homelab. Manages three hosts: `pirateship` (media stack), `rivendell` (Home Assistant, Caddy reverse proxy, secondary DNS, UPS monitoring), and `mirkwood` (primary DNS, Homepage, Grafana). Media storage is on `erebor` (UniFi UNAS Pro 4 NAS) via NFS mounts on pirateship.
+NixOS flake for a Raspberry Pi 5 homelab. Manages three hosts: `pirateship` (media stack), `rivendell` (Home Assistant, Caddy reverse proxy, secondary DNS, UPS monitoring, Vaultwarden), and `mirkwood` (primary DNS, Homepage, Grafana). Media storage is on `erebor` (UniFi UNAS Pro 4 NAS) via NFS mounts on pirateship.
 
 Uses `nixos-raspberrypi` for Pi-specific hardware support, `disko` for declarative disk partitioning, `sops-nix` for secrets management, `deploy-rs` for deployments with magic rollback, and `home-manager` (via the dotfiles flake) for user environment configuration.
 
@@ -50,7 +50,7 @@ SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops secrets/mirkwood.yaml
 | Host | Hardware | Role |
 |---|---|---|
 | `pirateship` | Raspberry Pi 5 | Media stack (arr apps, Jellyfin, SABnzbd, Navidrome, gluetun VPN), Glances |
-| `rivendell` | Raspberry Pi 5, 8GB | Home Assistant, Matter Server, Caddy (reverse proxy + TLS), Blocky+Unbound DNS (secondary), NUT (UPS), ntfy, Gatus, Glances |
+| `rivendell` | Raspberry Pi 5, 8GB | Home Assistant, Matter Server, Caddy (reverse proxy + TLS), Blocky+Unbound DNS (secondary), NUT (UPS), ntfy, Gatus, Vaultwarden, Glances |
 | `mirkwood` | Raspberry Pi 5, 4GB | Blocky+Unbound DNS (primary), Homepage, Prometheus, Grafana, Glances |
 | `erebor` | UniFi UNAS Pro 4 | NAS — 4×12TB RAID 6 (~24TB usable); NFS shares for pirateship media + restic backups |
 
@@ -82,6 +82,7 @@ SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops secrets/mirkwood.yaml
 - `modules/monitoring.nix` — Glances system monitor as native NixOS service (all three hosts, port 61208)
 - `modules/music-sync.nix` — keeps Lidarr, Navidrome and Music Assistant in step with `/var/lib/media/music`. **Every filesystem watcher on that share is inert** (NFS + a remote writer, same root cause as Jellyfin/Bazarr), so `music-sync.timer` polls the ~278 *directory* mtimes every 2 min (0.2–1s), debounces one interval so a half-copied album is never scanned, then issues a targeted `RefreshArtist` per changed artist plus `music/sync` to Music Assistant. `music-library-audit.timer` runs daily: it repoints Lidarr artists whose folder drifted from disk and ntfy's about folders needing a manual Library Import. Runs on the pirateship **host**, not in gluetun's netns — see the module comment.
 - `modules/qbittorrent-seed-policy.nix` — seeding policy on pirateship, reconciled every 5 min by `modules/qbittorrent-seed-policy.py`. Keyed on each torrent's **`private` flag**, never the tracker hostname (the `tracker` field reports whichever tracker last answered and rotates). Private → ratio `-1`, action `Stop`, upload uncapped (seed forever). Public → ratio `1.0`, action `RemoveWithContent`, upload capped. Global ratio limit stays **off** and the global action stays **Stop**, so anything unclassified defaults to seeding forever rather than being deleted. See the module comment before changing any of it.
+- `modules/vaultwarden.nix` — Vaultwarden (native `services.vaultwarden`, port 8222, `vault.theshire.io`) on rivendell, replacing 1Password; clients are the official Bitwarden apps. **LAN-only** (no tunnel/public record), so remote clients are read-only until that is decided. **No admin page on purpose** — `ADMIN_TOKEN` is unset, because `/admin` writes `config.json`, which overrides the Nix-generated env. `SIGNUPS_ALLOWED = true` is bootstrap-only; flip it once accounts exist (no SMTP, so nothing else can register). SSH keys/agent and iOS CXP import are gated behind `EXPERIMENTAL_CLIENT_FEATURE_FLAGS`. restic backs up the `backup-vaultwarden` SQLite snapshot in `/var/backup/vaultwarden` (02:30, ahead of restic's 03:00), never the live DB.
 - `modules/ntfy.nix` — ntfy push notification server container on rivendell (port 2586 LAN, proxied via Caddy)
 - `modules/nut.nix` — Network UPS Tools monitoring Tripp Lite SMC15002URM via USB (rivendell); exposes port 3493 for Home Assistant
 
@@ -149,7 +150,7 @@ Blocky handles ad blocking, conditional forwarding (`.theshire.io` → UDM Pro a
 ### Reverse Proxy (caddy.nix)
 
 Caddy runs on rivendell with the Cloudflare DNS plugin for DNS-01 ACME. All `*.theshire.io` services are proxied with automatic TLS. Key vhosts:
-- Local backends (`127.0.0.1`): ha, ntfy, monitor, doh, rivendell-stats
+- Local backends (`127.0.0.1`): ha, ntfy, monitor, doh, vault, rivendell-stats
 - mirkwood backends: homepage, grafana, mirkwood-stats
 - pirateship backends: jellyfin, dl, nzb, movies, tv, prowlarr, music, listen, pirateship-stats
 
