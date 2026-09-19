@@ -158,7 +158,25 @@ let
     # activation and causes a spurious rollback. It must ALSO stay off for
     # autopause: mc-monitor connects to the game port, which is exactly the
     # knock that resumes a paused server.
-    extraOptions = [ "--no-healthcheck" ];
+    extraOptions = [
+      "--no-healthcheck"
+
+      # Required by autopause. The resume path is knockd sniffing the container
+      # interface for a SYN to the game port, which needs a raw socket.
+      #
+      # /usr/local/sbin/knockd in the image carries the file capability
+      # cap_net_raw=ep, and podman's default bounding set does NOT include
+      # NET_RAW, so without this the *exec itself* fails with EPERM — the
+      # kernel refuses to run a binary whose permitted caps exceed the bounding
+      # set. Measured on orthanc 2026-09-19; the server still starts normally
+      # and only the log says `Failed to start knockd daemon`, after which
+      # autopause never pauses anything and nothing else looks wrong.
+      #
+      # The container runs as uid 1000, so this works via the file capability,
+      # not by being root: the cap has to be in the bounding set for the exec
+      # to succeed, and knockd then gains it as an ordinary non-root process.
+      "--cap-add=NET_RAW"
+    ];
   };
 in
 {
