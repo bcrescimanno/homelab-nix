@@ -229,23 +229,21 @@ in
         (mkHttp { name = "Lidarr";      url = "https://music.theshire.io";    group = "Media"; })
         (mkHttp { name = "Music Assistant"; url = "https://listen.theshire.io"; group = "Media"; })
 
-        # Gaming
-        {
-          name = "Minecraft — Prominence II";
-          url = "tcp://orthanc:25565";
-          group = "Gaming";
-          interval = "1m";
-          conditions = [ "[CONNECTED] == true" ];
-          alerts = [{ type = "ntfy"; }];
-        }
-        {
-          name = "Minecraft — Abyssal Ascent";
-          url = "tcp://orthanc:25566";
-          group = "Gaming";
-          interval = "1m";
-          conditions = [ "[CONNECTED] == true" ];
-          alerts = [{ type = "ntfy"; }];
-        }
+        # Gaming — DELIBERATELY EMPTY. Do not add a tcp:// check on
+        # orthanc:25565/25566 back here.
+        #
+        # Both Minecraft servers autopause (modules/minecraft.nix): the JVM is
+        # SIGSTOPped while nobody is connected, and knockd resumes it on the
+        # first SYN to the game port. A 1-minute uptime probe is such a SYN, so
+        # these two checks would keep both servers permanently awake — ~12W of
+        # CPU package power, measured 2026-09-19 — while reporting green for a
+        # server nobody plays. The probe would have been the only thing keeping
+        # it running.
+        #
+        # Liveness moved to the MinecraftServerDown alert in modules/grafana.nix,
+        # which reads the systemd unit state from Prometheus instead. (Gatus
+        # cannot query Prometheus itself: mirkwood keeps 9090 LAN-closed on
+        # purpose.)
 
         # Invidious — availability, then a real playback probe.
         #

@@ -164,6 +164,29 @@ let
               description = "systemd unit {{ $labels.name }} has been in the failed state for 10 minutes.";
             };
           }
+          {
+            # Minecraft liveness. This lives here, and not in Gatus, because
+            # the Minecraft servers autopause (modules/minecraft.nix): the JVM
+            # is SIGSTOPped while nobody is playing and ANY TCP connect to the
+            # game port resumes it. Gatus's old `tcp://orthanc:25565` probes ran
+            # every minute, so they would have held both servers awake forever
+            # and silently cancelled the power saving. Asking systemd whether
+            # the unit is up asks the same question without knocking.
+            #
+            # UnitFailed above only catches `failed`; a container that is
+            # cleanly stopped is `inactive`, which is what this catches. Note
+            # neither says the game is actually answering — that is the price of
+            # not touching the port, and it is the right trade for a server with
+            # no players most months.
+            alert = "MinecraftServerDown";
+            expr = ''systemd_unit_state{name=~"podman-minecraft-.*",state="active"} == 0'';
+            "for" = "10m";
+            labels.severity = "warning";
+            annotations = {
+              summary = "{{ $labels.name }} is not running on {{ $labels.instance }}";
+              description = "The Minecraft container unit has been out of the active state for 10 minutes. Paused-by-autopause still counts as active, so this is a real stop, not an idle server.";
+            };
+          }
         ];
       }
       {
