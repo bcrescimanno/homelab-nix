@@ -18,7 +18,9 @@
 # Public exposure is why the controls below are not optional:
 #   - signups closed (single user)
 #   - no /admin
-#   - two-step login on the account (enforced by habit, not config)
+#   - NO two-step login, by choice (2026-09-19, revisit later): the account is
+#     guarded by its master password and the per-IP login rate limit alone,
+#     which is why the rate limit must see real client IPs
 #   - real client IPs for the login rate limit — see the vault vhost in
 #     modules/caddy.nix; Vaultwarden reads X-Real-IP, which Caddy always sets.
 # Cloudflare Access cannot sit in front of this: the Bitwarden apps cannot
