@@ -1,8 +1,22 @@
 # modules/music-assistant.nix — Music Assistant multi-room audio server
 #
-# Self-hosted music server and multi-room playback controller.
-# Replaces Navidrome; accesses the music library directly via NFS mount
-# at /var/lib/media/music (declared in hosts/rivendell.nix).
+# Self-hosted music server and multi-room playback controller. Accesses the
+# music library directly via NFS mount at /var/lib/media/music (declared in
+# hosts/rivendell.nix).
+#
+# IT DOES NOT REPLACE NAVIDROME. The two run side by side and do not overlap:
+#
+#   Music Assistant (here, rivendell)  local playback — WiiM streamers, Apple
+#                                      HomePods, whole-home audio, HA
+#                                      automations and voice control
+#   Navidrome (modules/navidrome.nix,  remote/mobile listening over
+#   pirateship)                        OpenSubsonic, public at
+#                                      stream.theshire.io via orthanc's
+#                                      Cloudflare Tunnel; iOS client Amperfy
+#
+# WiiM devices do NOT use Navidrome — they could reach it on the LAN, but
+# playback to them is MA's job. Both read the same files on the same share,
+# which is why modules/music-sync.nix has to refresh both after an import.
 #
 # After deployment, open listen.theshire.io and add a "Filesystem" provider
 # pointing to /var/lib/media/music. AirPlay and DLNA device discovery is
