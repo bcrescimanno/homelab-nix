@@ -195,6 +195,9 @@ in
         # Home
         (mkHttp { name = "Homepage";       url = "https://homepage.theshire.io"; group = "Home"; })
         (mkHttp { name = "Home Assistant"; url = "https://ha.theshire.io";   group = "Home"; })
+        # /alive, not /: the web vault's index is a static file and answers 200
+        # even when the API behind it is wedged.
+        (mkHttp { name = "Vaultwarden";    url = "https://vault.theshire.io/alive"; group = "Home"; })
 
         # Media
         (mkHttp { name = "Jellyfin";    url = "https://jellyfin.theshire.io"; group = "Media"; })

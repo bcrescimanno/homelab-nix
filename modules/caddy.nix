@@ -101,6 +101,9 @@ in
 
       # rivendell backends (continued)
       "listen.theshire.io".extraConfig = proxy "127.0.0.1:8095";
+      # Vaultwarden (modules/vaultwarden.nix). WebSocket notifications share
+      # the HTTP port since 1.29, and reverse_proxy upgrades them untouched.
+      "vault.theshire.io".extraConfig  = proxy "127.0.0.1:8222";
 
       # orthanc backends
       "jellyfin.theshire.io".extraConfig         = proxy "orthanc.home.theshire.io:8096";
