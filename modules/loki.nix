@@ -84,12 +84,28 @@ in
       # high-cardinality we later want attached to a line without it becoming a
       # stream label (Blocky's client IP is the obvious candidate).
       #
-      # `from` is the date this schema starts applying and must not move
-      # backwards once data exists under it. Set to the day before rollout;
-      # adding a future schema later means appending a second entry here, never
-      # editing this one.
+      # `from` is the UTC date this schema starts applying, and Loki rejects
+      # any sample older than it with
+      #
+      #   failed to create stream: no schema config found for time <epoch>
+      #
+      # returned to the shipper as a 500. This bit on the very first deploy
+      # (2026-09-20): `from` was set to that same day, Alloy's 24h journal
+      # backfill immediately offered entries from the evening before, and every
+      # push failed — Alloy `active`, journal lines being read, zero entries
+      # accepted. Textbook green-and-doing-nothing.
+      #
+      # So `from` must sit at least as far back as the OLDEST sample that can
+      # legally arrive, which is the larger of Alloy's max_age (24h) and
+      # reject_old_samples_max_age (168h) below. A month of slack costs nothing
+      # — an empty schema period is just a date range with no index in it.
+      #
+      # It must not move backwards once data exists under it. Changing the
+      # schema later means APPENDING a second entry with a future `from`, never
+      # editing this one. Editing was safe here only because the broken first
+      # deploy meant nothing had ever been written.
       schema_config.configs = [{
-        from         = "2026-09-20";
+        from         = "2026-09-01";
         store        = "tsdb";
         object_store = "filesystem";
         schema       = "v13";
