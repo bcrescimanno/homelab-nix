@@ -28,6 +28,19 @@
 // If a scrape target or an alert URL is ever changed to a 100.x address or a
 // MagicDNS name, it will be DENIED and the failure will look like a network
 // problem. Change it back, or add the rule here deliberately.
+//
+// THE CONSEQUENCE THAT LOOKS LIKE A BUG, AND IS NOT
+//
+// Because nothing grants tag:homelab access to anything, a tagged host has an
+// EMPTY peer list. On orthanc, `tailscale status` prints only its own line and
+// `tailscale ping rivendell` answers "no matching peer" — even though all four
+// hosts are enrolled and Running. That is this policy working, not a broken
+// tailnet: a node's netmap only contains peers it is permitted to talk to.
+// Verified on 2026-09-20, first deploy.
+//
+// It follows that the data path CANNOT be verified from a homelab host. Test
+// from a device signed in as a tailnet member, which is what autogroup:member
+// below is for.
 
 {
   // tag:homelab is what every NixOS host enrols as (--advertise-tags in

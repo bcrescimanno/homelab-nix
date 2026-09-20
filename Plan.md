@@ -382,12 +382,29 @@ Remaining work, in order:
 - [ ] **Add `tailscale_auth_key`** (the OAuth client secret, `tskey-client-…`) to
       all four `secrets/*.yaml`. Until this exists on a host, that host's deploy
       fails at sops activation — this gates everything below.
-- [ ] **Deploy** orthanc → mirkwood → rivendell → pirateship. Approve the two
-      subnet routes and the exit node in the console (`autoApprovers` in
-      `tailscale/policy.hujson` covers re-enrolments after that). Check
-      `systemctl status tailscaled-set` on each: that unit is where the `set`
-      flags are actually exercised for the first time, and a rejected flag shows
-      up there as a failed oneshot rather than as anything visibly broken.
+- [x] **Deploy** orthanc → mirkwood → rivendell → pirateship — done 2026-09-20.
+      All four enrolled `Running` under `tag:homelab`; `tailscaled-set` returned
+      `success` everywhere, which is what confirmed `--accept-dns=false`,
+      `--advertise-routes` and `--advertise-exit-node` are accepted `set` flags.
+      Verified: `CorpDNS=false` and no `100.100.100.100` in `resolv.conf` on every
+      host; `10.0.1.0/24` advertised by rivendell + mirkwood, `none` on
+      pirateship; orthanc offers the exit node; pirateship's forwarding and
+      rp_filter sysctls byte-identical to the pre-deploy baseline, gluetun never
+      restarted, qBittorrent still `Session\Interface=10.2.0.2`, and a fresh
+      `vpn-leak-check` returned success.
+
+      **Deploy from a worktree with `./scripts/deploy <host>`, never the bare
+      `deploy`.** The PATH entry resolves to the MAIN checkout's copy and the
+      script derives `FLAKE` from its own location, so `deploy orthanc` silently
+      deployed the main checkout's stale pre-NUT branch and reverted orthanc's
+      upsmon/nutmon/`homelab-ups-shed.timer` while reporting success. Magic
+      rollback cannot catch this — the deploy genuinely succeeded, it was just the
+      wrong flake. Tell: activation logs `removing user`/`removing secret` for
+      things your change only adds.
+- [ ] **Approve the routes and exit node** in the console if `autoApprovers` did
+      not already cover them. This could not be checked from a host: tagged nodes
+      have an empty peer list by design (see `tailscale/policy.hujson`), so route
+      approval is only visible from the admin console or a member device.
 - [ ] **Tailnet DNS last, not first.** Set the global nameservers to rivendell's
       and mirkwood's `100.x` addresses, enable Override local DNS and MagicDNS —
       only once both Pis are on the tailnet with routes approved. This is the step
