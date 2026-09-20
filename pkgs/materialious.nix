@@ -53,10 +53,11 @@
 #
 #   1. It cannot carry the two shaka patches below. Neither
 #      `preferredVideoCodecs` nor `defaultBandwidthEstimate` is exposed upstream
-#      in any configurable form — verified against 1.17.11: no VITE_ variable,
+#      in any configurable form — re-verified against 1.18.7: no VITE_ variable,
 #      no settings entry, no UI toggle, and zero hits for either identifier
-#      anywhere under src/. They exist ONLY because the source is patched before
-#      building. A prebuilt image gives up the measured AV1 -> H.264 startup fix.
+#      anywhere under src/ or the new shared/. They exist ONLY because the source
+#      is patched before building. A prebuilt image gives up the measured
+#      AV1 -> H.264 startup fix.
 #   2. It moves config back to a runtime `replace_env_vars.sh` sed of VITE_
 #      placeholders, undoing the build-time baking below and re-opening the
 #      `#`-in-unquoted-dotenv truncation trap that installCheckPhase guards.
@@ -78,18 +79,18 @@
 
 buildNpmPackage rec {
   pname = "materialious";
-  version = "1.17.11";
+  version = "1.18.7";
 
   src = fetchFromGitHub {
     owner = "Materialious";
     repo = "Materialious";
     tag = version;
-    hash = "sha256-8JR+A5jZRqcw4nPPBfbP9akBtlP3nViAJ1hM2KHhatk=";
+    hash = "sha256-C5SINWHgOFlCky+JKplTj4Tw5Es9Z8/gawSD3E7LDUc=";
   };
 
   sourceRoot = "${src.name}/materialious";
 
-  npmDepsHash = "sha256-o8LuVN9CAVbErMVz4RbyDQIK91IhGEnsBTeT8MX/ERY=";
+  npmDepsHash = "sha256-NFwQFumzpbZb1omi/eL7AkFpkuta3BEmgjo1jTcvoPY=";
 
   # WORKAROUND 1 — `sharp` (a devDependency reached via @capacitor/assets, and
   # used only to generate mobile app icons) has a postinstall that downloads a
@@ -189,6 +190,20 @@ buildNpmPackage rec {
     # Upstream's Dockerfile writes placeholder values here and seds the real
     # ones in at container start. We have the real values at build time, so
     # they go straight in and no runtime substitution exists to go wrong.
+    #
+    # 1.18.x MOVED THE LOOKUP, AND VITE_ IS NOW THE FALLBACK, NOT THE NAME.
+    # src/lib/env.ts reads `env["PUBLIC_" + n] ?? import.meta.env["VITE_" + n]`,
+    # so every variable below is still honoured — but only as the second choice,
+    # and the names are built by string concatenation. That means grepping the
+    # tree for a literal `VITE_DEFAULT_SETTINGS` finds NOTHING and proves
+    # nothing; at 1.18.7 the only literal VITE_ hit in the whole source is
+    # VITE_DEFAULT_INVIDIOUS_INSTANCE. Confirm a variable is still consumed by
+    # grepping for its name minus the prefix (e.g. `DEFAULT_SPONSERBLOCK_INSTANCE`)
+    # against getPublicEnv callers instead.
+    #
+    # If upstream ever drops that `??` fallback, every default here goes quietly
+    # back to upstream's own — the installCheck's settings-JSON assertion is what
+    # turns that into a failed build rather than a silently re-themed site.
     #
     # WORKAROUND 3 / TRAP — VITE_DEFAULT_SETTINGS MUST stay single-quoted.
     # It is JSON containing `"themeColor": "#2596be"`, and in an unquoted
