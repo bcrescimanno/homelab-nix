@@ -429,12 +429,33 @@ upstreams = {
   # writing through that fd; what breaks is Alloy, which reads by path and
   # silently tails nothing (`loki_source_file_files_active_total` 0).
   #
-  # Every SUBSEQUENT start is clean — verified by restarting blocky after a
-  # manual chown, ownership held at blocky:blocky. So this needs fixing exactly
-  # once per host, and the "Z" tmpfiles rule below repairs it on the next
-  # activation or boot. After migrating a host, confirm with
-  #   stat -c '%U:%G' /var/log/blocky
-  # and if it says nobody, `chown -R blocky:blocky /var/log/blocky` once.
+  # A HOST-SIDE CHOWN ALONE DOES NOT FIX IT, and this is the part that will
+  # waste an hour if it is not written down. ProtectSystem = "strict" means
+  # Blocky runs in its own mount namespace with the log directory bind-mounted
+  # in, and that bind mount was established against the PRE-migration directory.
+  # After chowning on the host the two views disagree:
+  #
+  #   host:                stat /var/log/blocky -> uid 991 (blocky)
+  #   inside blocky's ns:  stat /var/log/blocky -> uid 65534, file unreadable
+  #
+  # so Blocky keeps logging "fileQueryLogWriter: can't create/open file ...
+  # permission denied" while `ls` on the host looks perfect. Observed on
+  # mirkwood 2026-09-20; diagnosed with
+  #   nsenter -t $(systemctl show blocky -p MainPID --value) -m -- stat /var/log/blocky
+  #
+  # The namespace is only rebuilt by a restart. So the one-time procedure per
+  # migrated host is BOTH steps, in this order:
+  #
+  #   chown -R blocky:blocky /var/log/blocky
+  #   systemctl restart blocky
+  #
+  # Every subsequent start is clean — verified on both DNS hosts. The "Z"
+  # tmpfiles rule below fixes the host side on the next activation or boot, and
+  # since Blocky restarts on those too, the pair self-heals from then on.
+  #
+  # Check with `stat -c '%U:%G' /var/log/blocky`, and confirm Blocky is really
+  # writing by watching the file grow — not by unit state, which stays
+  # active/success throughout because Blocky holds its old fd and never fails.
   systemd.services.blocky.serviceConfig = {
     DynamicUser = lib.mkForce false;
     User        = "blocky";
