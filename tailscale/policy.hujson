@@ -1,0 +1,89 @@
+// tailscale/policy.hujson — the tailnet access-control policy.
+//
+// This file is the source of truth for who on the tailnet may reach what. It is
+// HuJSON (JSON with comments and trailing commas), the format Tailscale's admin
+// console itself edits.
+//
+// HOW IT GETS APPLIED
+//
+// Today: by hand, pasted into the admin console under Access Controls. That is
+// the bootstrap, and it is a known gap — the file being in git is worth
+// something on its own (it is reviewable, it has history, it is restorable), but
+// nothing yet stops the console and this file from drifting apart.
+//
+// Next: tailscale/gitops-acl-action in a workflow, same shape as
+// .github/workflows/check-overlays.yml — test the policy on pull_request, apply
+// it on push to main. That needs TS_OAUTH_CLIENT_ID / TS_OAUTH_SECRET as repo
+// secrets, which is why it is a follow-up rather than part of the commit that
+// introduces this file: a workflow that cannot authenticate would fail on every
+// PR from the moment it landed. See Plan.md.
+//
+// WHAT IS DELIBERATELY ABSENT
+//
+// There is no rule granting tag:homelab access to anything. The homelab hosts
+// do not need the tailnet to talk to each other — Prometheus scrapes, ntfy
+// posts and NUT all use LAN addresses (10.0.1.x) and stay on the LAN. Leaving
+// it out means a compromised Pi cannot reach a laptop or phone over the tunnel.
+//
+// If a scrape target or an alert URL is ever changed to a 100.x address or a
+// MagicDNS name, it will be DENIED and the failure will look like a network
+// problem. Change it back, or add the rule here deliberately.
+
+{
+  // tag:homelab is what every NixOS host enrols as (--advertise-tags in
+  // modules/tailscale.nix). Tagged nodes are owned by the tailnet rather than
+  // by a user, which is what disables key expiry on them — servers never need
+  // to be re-authenticated. User devices stay untagged and keep expiry.
+  "tagOwners": {
+    "tag:homelab": ["autogroup:admin"],
+  },
+
+  // Without these, every re-enrolment of a Pi — a reinstall, a restore, a new
+  // auth key — parks its advertised routes in the console waiting for a human
+  // to click approve, and remote access stays quietly broken until someone
+  // notices. Scoped to tag:homelab so only these hosts can self-approve, and
+  // only for the one prefix they are supposed to carry.
+  "autoApprovers": {
+    "routes": {
+      "10.0.1.0/24": ["tag:homelab"],
+    },
+    "exitNode": ["tag:homelab"],
+  },
+
+  "acls": [
+    // Devices signed in as a tailnet member reach the homelab hosts directly,
+    // on every port those hosts actually have open. The port surface is the
+    // NixOS firewall's job, not this file's: the tailnet sees exactly what the
+    // LAN sees (see the header of modules/tailscale.nix), so "*" here does not
+    // mean "everything is exposed" — it means "this policy is not the thing
+    // that decides".
+    {
+      "action": "accept",
+      "src":    ["autogroup:member"],
+      "dst":    ["tag:homelab:*"],
+    },
+
+    // The LAN behind the subnet routers on rivendell and mirkwood: erebor, the
+    // UDM Pro, printers, anything that will never run a Tailscale client.
+    {
+      "action": "accept",
+      "src":    ["autogroup:member"],
+      "dst":    ["10.0.1.0/24:*"],
+    },
+
+    // Egress through orthanc when a client explicitly selects it as its exit
+    // node. Advertising and approving an exit node is not enough on its own —
+    // without this rule the selection silently blackholes.
+    {
+      "action": "accept",
+      "src":    ["autogroup:member"],
+      "dst":    ["autogroup:internet:*"],
+    },
+  ],
+
+  // Deliberately no "ssh" block. Tailscale SSH would let the tailnet itself
+  // authorize shell access, bypassing the key-only, PasswordAuthentication=no
+  // sshd configured in modules/base.nix. SSH keeps working over the tailnet the
+  // ordinary way, authenticated the ordinary way; the tunnel decides
+  // reachability, not identity.
+}

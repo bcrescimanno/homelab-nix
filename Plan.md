@@ -334,12 +334,74 @@ the answer is not "pick one" — they solve different problems:
   self-hosted control plane running on the lab it grants access to is
   chicken-and-egg during exactly the outage you need it for.
 
-**Decision to make before deploying anything:** does Tailscale *replace* the UDM
-Pro WireGuard server, or sit beside it? Replacing it is the only outcome that
-actually simplifies — adding Tailscale while keeping UDM WireGuard means four
-mechanisms, not three. Keeping UDM WireGuard as a break-glass fallback for when
-Tailscale's control plane is unreachable is a defensible exception, but it should
-be a deliberate, documented fallback rather than drift.
+**Decided 2026-09-20: Tailscale replaces the UDM Pro WireGuard server**, with a
+time-boxed break-glass window rather than an open-ended one. The UDM WireGuard
+server stays switched on until **2026-10-04** so there is a way in that does not
+depend on Tailscale's control plane while the tailnet is still unproven. On that
+date the client profiles are deleted from the phone and laptop and the server is
+turned off in the UniFi UI. If it is still on after that date it has become
+drift, which is the thing this section exists to prevent.
+
+The implementation landed in `modules/tailscale.nix`, imported by `base.nix`, so
+all four hosts join. Read that file's header before changing any of it — three
+things in it are load-bearing and each fails silently:
+
+- **Nothing opens a port, on purpose.** NixOS emits its top-level
+  `allowedTCPPorts` rules with no `-i` match, so the tailnet already sees exactly
+  the LAN-open surface and nothing more. mirkwood's Prometheus stays closed for
+  free. `trustedInterfaces = [ "tailscale0" ]` would break that and must not be
+  added.
+- **`extraUpFlags` applies only at first authentication**; `extraSetFlags` is the
+  every-activation reconcile path. Routes and the exit node live in the latter.
+- **`--accept-dns=false` on the hosts.** Client devices should accept tailnet
+  DNS — that is what makes Blocky follow the phone. The servers must not, or all
+  host name resolution, including the nightly upgrade's flake fetch, starts
+  depending on tailscaled.
+
+Topology: rivendell **and** mirkwood both advertise `10.0.1.0/24`, so the subnet
+router has the same redundancy the resolvers already have. orthanc advertises an
+exit node (opt-in per client, costs nothing unselected). pirateship stays a plain
+client — `useRoutingFeatures` above `none` would loosen reverse-path filtering on
+the host running gluetun's kill switch. The IoT VLAN `10.0.12.0/22` is **not**
+advertised; rivendell's `eth0.4` isolation is deliberate.
+
+Remaining work, in order:
+
+- [ ] **Bootstrap the tailnet.** Sign up with **GitHub**, not Apple — see the
+      no-Apple-ecosystem-coupling constraint. Define `tag:homelab`, then create an
+      OAuth client with the `auth_keys` scope scoped to that tag. Plain auth keys
+      cap out at 90 days and would need a remembered re-auth.
+- [ ] **Add `tailscale_auth_key`** (the OAuth client secret, `tskey-client-…`) to
+      all four `secrets/*.yaml`. Until this exists on a host, that host's deploy
+      fails at sops activation — this gates everything below.
+- [ ] **Deploy** orthanc → mirkwood → rivendell → pirateship. Approve the two
+      subnet routes and the exit node in the console (`autoApprovers` in
+      `tailscale/policy.hujson` covers re-enrolments after that). Check
+      `systemctl status tailscaled-set` on each: that unit is where the `set`
+      flags are actually exercised for the first time, and a rejected flag shows
+      up there as a failed oneshot rather than as anything visibly broken.
+- [ ] **Paste `tailscale/policy.hujson`** into Access Controls.
+- [ ] **Tailnet DNS last, not first.** Set the global nameservers to rivendell's
+      and mirkwood's `100.x` addresses, enable Override local DNS and MagicDNS —
+      only once both Pis are on the tailnet with routes approved. This is the step
+      that makes ad-blocking and split-horizon `*.theshire.io` follow the phone,
+      and it is also the step that makes off-LAN DNS depend on a reachable Pi.
+- [ ] **Verify from cellular**, not from the LAN — per the standing note that a
+      LAN test proves nothing about reachability. `tailscale status` shows
+      `direct` rather than `relay`; a `*.theshire.io` vhost loads on the real
+      wildcard cert; Blocky's query log shows the phone's `100.x` as the source; a
+      non-tailnet LAN device answers through the subnet route (erebor
+      `10.0.1.22`); and — the **negative** test — mirkwood's `9090` is still
+      refused.
+- [ ] **Re-verify pirateship** after its deploy: kill switch still latches,
+      qBittorrent still bound to tun0's IP.
+- [ ] **Add the ACL gitops workflow** (`tailscale/gitops-acl-action`, same shape
+      as `check-overlays.yml`) once `TS_OAUTH_CLIENT_ID`/`TS_OAUTH_SECRET` are
+      repo secrets. Until then the console and `policy.hujson` can drift.
+- [ ] **2026-10-04: turn the UDM WireGuard server off** and delete the client
+      profiles.
+- [ ] Add the tailnet range to qBittorrent's `WebUI\AuthSubnetWhitelist` when the
+      login-friction work happens (see that section).
 
 ### NAS (erebor) — Remaining Work
 
@@ -465,20 +527,19 @@ erebor is online (10G SFP+ at 10.0.1.22, 1G ethernet at 10.0.1.21 for management
 Reviewed 2026-09-19 against the live lab. Verdicts below; rejected ideas moved to
 "Decided Against" so they stop resurfacing.
 
-- [ ] **Tailscale — HIGH PRIORITY, design first.** The lab has three overlapping
-  remote-access mechanisms and no single story for "reach the homelab from
-  outside": the Cloudflare Tunnel on orthanc (public ingress for
-  `stream`/`vault`/Invidious), the UDM Pro's own WireGuard VPN server (outside
-  this repo, unmanaged by Nix), and gluetun's ProtonVPN WireGuard (**unrelated**
-  — that is outbound egress for the torrent stack and is not remote access).
-  Tailscale's job is the private half: SSH plus the LAN-only dashboards
-  (Homepage, Grafana, the three unauthenticated `*-stats` Glances vhosts) with
-  no inbound port and no public exposure.
+- [~] **Tailscale — IN PROGRESS.** Designed and written; awaiting the tailnet
+  bootstrap and the sops key. Its job is the private half of remote access: SSH
+  plus the LAN-only dashboards (Homepage, Grafana, the three unauthenticated
+  `*-stats` Glances vhosts) with no inbound port and no public exposure. It
+  **replaces** the UDM Pro's WireGuard server — the goal was consolidation, not a
+  fourth mechanism — and the Cloudflare Tunnel stays, because it serves people
+  who cannot be asked to join a VPN. gluetun's ProtonVPN WireGuard is
+  **unrelated** and must not be folded in: that is outbound egress for the
+  torrent stack.
 
-  `services.tailscale` is native, with `authKeyFile` for the sops key, so this
-  is declarative. **The goal is consolidation, not a fourth mechanism** — decide
-  what retires before deploying. Full comparison and the open decision are in
-  "Remote access consolidation" above.
+  `modules/tailscale.nix` is written and imported by `base.nix`. The decision,
+  the topology, the three silent-failure traps in that module, and the remaining
+  checklist are in "Remote access consolidation" above.
 
 - [ ] **Dead man's switch — external, out-of-band.** See "Observability gaps".
 - [ ] **Loki + Alloy — centralized logs.** See "Observability gaps" above; the
