@@ -255,7 +255,6 @@
           ./modules/invidious.nix
           ./modules/deadman.nix
           ./modules/loki.nix
-          ./modules/alloy.nix
           ./hosts/orthanc.nix
         ];
         specialArgs = { inherit inputs r2AccountId brianSshKey; };

@@ -64,7 +64,23 @@ let
   # serves.
   alloyPort = 12345;
 
-  shipBlocky = config.services.blocky.enable;
+  # NOT gated on services.blocky.enable, which is the obvious and wrong choice.
+  #
+  # Blocky runs DynamicUser, so its LogsDirectory is a symlink into
+  # /var/log/private/ — a directory systemd keeps at 0700 root:root. Alloy is
+  # also DynamicUser and cannot traverse into it, and NO group membership fixes
+  # that: the barrier is the parent directory's mode, not the files (which are
+  # 0644). `getent group blocky` on mirkwood does answer, but only because
+  # nss-systemd synthesises the entry while blocky is running — resolving it
+  # from another unit's SupplementaryGroups would make Alloy's start order
+  # depend on Blocky's, for a group that buys no access anyway.
+  #
+  # Shipping the query log therefore REQUIRES giving Blocky a static user and
+  # group first (lib/homelab.nix + DynamicUser = mkForce false), which turns
+  # /var/log/blocky into a real directory this can be let into. That is a
+  # separate, DNS-touching change; until it lands this stays off and the option
+  # below is the interlock.
+  shipBlocky = config.homelab.logging.blockyQueryLog;
 
   journalConfig = ''
     // ---------------------------------------------------------------------
@@ -153,6 +169,17 @@ let
   '';
 in
 {
+  options.homelab.logging.blockyQueryLog = lib.mkEnableOption ''
+    shipping Blocky's query log to Loki from this host.
+
+    Only meaningful on the DNS pair, and only once Blocky has been given a
+    static user and group — see the shipBlocky comment in modules/alloy.nix.
+    Enabling it against a DynamicUser Blocky yields a file source that matches
+    nothing, silently
+  '';
+
+  config = {
+
   services.alloy = {
     enable = true;
 
@@ -195,4 +222,6 @@ in
   networking.firewall.allowedTCPPorts = [ alloyPort ];
 
   homelab.postUpgradeCheck.services = [ "alloy" ];
+
+  };
 }
