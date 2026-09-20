@@ -63,6 +63,26 @@ in
         passwordFile = config.sops.secrets.nut_upsmon_password.path;
         upsmon = "primary";
       };
+      # Account the secondaries authenticate as (modules/nut-secondary.nix on
+      # mirkwood, pirateship and orthanc).
+      #
+      # Deliberately NOT the `upsmon` user above. That one is declared
+      # `upsmon = "primary"`, which in upsd.users grants the privileged set —
+      # including FSD, the command that tells every other host to shut down.
+      # Handing that to three remote clients would mean any one of them could
+      # power down the whole lab. `upsmon = "secondary"` grants only the
+      # read-and-listen access a secondary actually needs.
+      #
+      # Same split-by-privilege reasoning as nut_upsmon_password vs
+      # nut_ha_password, and as github_runner_token vs gatus_github_token.
+      #
+      # The password must match nut_secondary_password in each secondary's own
+      # secrets file — four copies of one value, since sops-nix renders per host.
+      upsmon-secondary = {
+        passwordFile = config.sops.secrets.nut_secondary_password.path;
+        upsmon = "secondary";
+      };
+
       # User for Home Assistant NUT integration
       homeassistant = {
         passwordFile = config.sops.secrets.nut_ha_password.path;

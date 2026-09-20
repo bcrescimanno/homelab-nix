@@ -75,7 +75,21 @@ need to be settled to get the main benefit. Today three of four hosts take an
 unclean power cut on every outage, and the software is already in the repo. The
 contained first step is:
 
-- [ ] **NUT secondaries on mirkwood, pirateship and orthanc.** Add `upsmon` with
+- [x] **NUT secondaries on mirkwood, pirateship and orthanc — DONE 2026-09-19**
+  (`modules/nut-secondary.nix`). All three run `upsmon` in netclient mode against
+  `tripplite@10.0.1.9` as `type=secondary`, authenticating as a dedicated
+  `upsmon-secondary` upsd user that does NOT hold primary privileges. Verified:
+  upsd logged all three logins (10.0.1.8 / 10.0.1.35 / 10.0.1.10), and stopping
+  upsd for 40s — past DEADTIME — left every secondary up and self-recovering,
+  which is the property that makes rivendell's kernel reboots safe. Shutdown
+  ordering comes free from the primary/secondary FSD + HOSTSYNC protocol, so
+  rivendell goes last without anything declaring it. **Still outstanding from the
+  original note:** orthanc's BIOS *Restore on AC Power Loss*, and the staged
+  early-shutdown tiers below (blocked on "is orthanc even on the UPS?" and on
+  NOTIFYCMD running unprivileged — see the module header).
+
+- [ ] ~~**NUT secondaries on mirkwood, pirateship and orthanc.**~~ Superseded by
+  the entry above; original text kept for the reasoning. Add `upsmon` with
   `type = "secondary"` pointed at `rivendell:3493` (credentials via the existing
   `nut_upsmon_password` pattern, one sops secret per host), so every host learns
   about `ONBATT`/`LOWBATT` instead of running flat out until the battery dies.
@@ -303,16 +317,59 @@ Reviewed 2026-09-19 against the live lab. Verdicts below; rejected ideas moved t
   still paired directly to Apple Home** and decide which should instead come
   through HA. HA has 477 enabled entities but only 3 lights / 1 climate, so the
   gap is devices HA never sees. Audit from the Home app, not from HA.
-- [ ] **SSO (Authelia) — TABLED PENDING DISCUSSION. Do not implement yet.**
-  `memory/sso-plan.md` is stale in two ways and must be rewritten before any
-  work starts: (a) it specifies an OCI **container**, but nixpkgs has
-  `services.authelia.instances.<name>` natively — the container version would
-  contradict the declarative principle in CLAUDE.md; (b) its vhost table still
-  routes `jellyfin.theshire.io` to pirateship, which moved to orthanc.
-  Separately, the *value* has dropped since it was written: nothing is public
-  except `vault` and the Invidious set, so Authelia would mostly add a login
-  wall between Brian and his own LAN dashboards. Brian wants to discuss scope
-  before this is picked up.
+### Login friction — the work Authelia was rejected in favour of
+
+Queued 2026-09-19. The goal is **fewer prompts**, not more auth. Each item uses the
+app's own native setting; nothing new is deployed. Do these as a batch, separately
+from any power or networking change.
+
+**Read this first — the one real hazard.** `DisabledForLocalAddresses` and
+subnet-whitelist settings judge the **connecting** address, which through Caddy is
+*rivendell*, not the browser. So they effectively disable auth for anything
+arriving via the reverse proxy, including from off-LAN **if a vhost were ever
+published**. That is safe today only because these vhosts resolve solely through
+split-horizon DNS, and Tailscale keeps remote access inside the same boundary.
+This turns "these vhosts stay private" from a fact into a **load-bearing
+invariant** — say so in a comment next to every setting below. If an arr UI ever
+needs to face an untrusted network, switch that app to
+`AuthenticationMethod=External` and revisit SSO.
+
+- [ ] **Radarr / Sonarr / Prowlarr / Lidarr** — set
+  `AuthenticationRequired=DisabledForLocalAddresses` (all four are currently
+  `Forms` + `Enabled`). Keep `AuthenticationMethod=Forms` so a login still exists
+  for any non-local path. These live in each app's `config.xml`, which the
+  containers own, so this needs the same treatment qBittorrent already gets: a
+  `preStart` that edits the file idempotently. Do not hand-edit via the UI — it
+  will drift and nothing will notice.
+
+- [ ] **qBittorrent** — add `WebUI\AuthSubnetWhitelistEnabled=true` plus
+  `WebUI\AuthSubnetWhitelist` covering the LAN and the tailnet range. This is a
+  natural extension of the existing `preStart` in `modules/arr-stack.nix`, which
+  already rewrites `WebUI\Username`, `WebUI\Password_PBKDF2`,
+  `WebUI\LocalHostAuth` and clears `WebUI\BanList`. Reuse that machinery rather
+  than adding a second mechanism.
+
+- [ ] **Grafana** — enable `auth.anonymous` with the `Viewer` role so dashboards
+  open with no prompt, keeping the admin login only for edits. Native and
+  declarative in `modules/grafana.nix`, which today sets only `security.admin_*`.
+
+- [ ] **Homepage widgets — the cheapest win, and it removes the *reason* to log
+  in.** All 12 widgets today are Glances system stats; there are **zero** arr
+  widgets. Homepage has native `radarr`/`sonarr`/`prowlarr`/`lidarr`/`sabnzbd`/
+  `qbittorrent`/`jellyfin` widgets that read via **API key**, no login involved.
+  Most "did that grab work / what's queued" trips into an app become a glance at a
+  page already open. API keys via sops (the recyclarr secrets already exist for
+  radarr/sonarr).
+
+- [ ] **UniFi — passkey on the UniFi account.** No reverse-proxy SSO can ever help
+  here; UniFi is not a Caddy vhost. A passkey turns the most annoying login into
+  Touch ID. **Unverified against this console** — Network 10.6.106 / UnifiOS 5.1.3;
+  see [[unifi-software-versions]].
+
+- [ ] **Bitwarden vault timeout** — if the vault re-prompts constantly, the
+  timeout is too short. "On browser restart" plus biometric unlock removes most
+  per-item friction. Client-side config, not infrastructure; belongs in dotfiles
+  notes if anywhere.
 
 ### Future Ideas — may or may not happen
 
@@ -333,6 +390,33 @@ work.
   interest-driven. No gap in the lab argues for them.
 
 ### Decided Against — do not revisit without a stated change
+
+- **SSO (Authelia) — REJECTED 2026-09-19.** Considered twice, for two different
+  reasons, and dropped on the second. The motivation that mattered was not
+  exposure but **login friction**: a separate credential for each arr app, qBittorrent,
+  the UniFi stack, Grafana. Authelia does not solve that, for three reasons:
+
+  1. **`forward_auth` does not remove an app's own login — it adds a gate in front
+     of it.** All four arrs are on `AuthenticationMethod=Forms` +
+     `AuthenticationRequired=Enabled` (read from `config.xml`, 2026-09-19), so
+     Authelia would mean logging into Authelia *and then* Radarr. Two prompts
+     where there is one today. Fixing it requires changing each app's own auth
+     setting — and once that is done, Authelia's only remaining job is being a
+     network gate, which is what Tailscale is for.
+  2. **It cannot touch a large share of the pain.** UniFi is not a Caddy vhost,
+     does not speak `forward_auth`, and owns its own account system. Vaultwarden
+     must keep its own login by definition.
+  3. The exposure argument is weak on its own: nothing is public except `vault`
+     and the Invidious set, so it would mostly gate Brian out of his own LAN
+     dashboards.
+
+  *Reopen only if* the arr UIs (or similar) need to be reachable from an untrusted
+  network or device **without** Tailscale, or if 2FA and an audit trail in front of
+  everything become requirements. At that point build it as native
+  `services.authelia.instances.<name>` — NOT the container in `memory/sso-plan.md`
+  — and pair it with `AuthenticationMethod=External` on each arr, which is the
+  setting that actually delegates auth to the proxy. See "Login friction" below
+  for what was done instead.
 
 - **Immich — REJECTED 2026-09-19.** The whole household is on the Apple photo
   ecosystem (iCloud Photos), which already does the job Immich would do:

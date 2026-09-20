@@ -88,6 +88,12 @@
     secrets = {
       vpn_env = {};
       qbt_credentials = {};
+      # Shared credential the NUT secondary uses to authenticate to rivendell's
+      # upsd (modules/nut-secondary.nix). Must hold the same value as
+      # nut_secondary_password in secrets/rivendell.yaml, which defines the
+      # matching upsd user. Default 0400 root:root is correct — systemd reads it
+      # via LoadCredential as root before upsmon drops privileges.
+      nut_secondary_password = {};
       # JWT push token for the attic post-build hook — provisioned in phase 2.
       # See step 5-6 in modules/attic.nix for setup instructions.
       attic_push_token = {};
