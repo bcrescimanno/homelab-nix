@@ -196,6 +196,57 @@
   };
 
   # ---------------------------------------------------------------------------
+  # UPS load shedding
+  # ---------------------------------------------------------------------------
+  #
+  # orthanc is the ONLY load on the UPS worth shedding, and this is measured
+  # rather than assumed (2026-09-19): its CPU alone is 11 of the 18 ups.load
+  # points, and driving it from idle to full took battery.runtime from 3680s
+  # (61 min) to 2036s (34 min). The three Pi 5s draw 1.9-2.7 W each on their
+  # internal rails, so shedding one of those buys nothing; erebor and the network
+  # gear are the other large draws and neither is ours to switch off.
+  #
+  # Nothing orthanc runs is needed during a power cut — Minecraft, Invidious,
+  # the attic cache, the CI runner and Jellyfin are all discretionary. Five
+  # minutes rides through the blips that make up most outages while still
+  # shedding long before the battery is meaningfully down; the 50% floor covers
+  # an outage that begins with an already-depleted battery.
+  #
+  # !! orthanc DOES NOT COME BACK BY ITSELF !! Its BIOS still needs *Restore on
+  # AC Power Loss* (open since it failed to return on 2026-08-09) and its
+  # Wake-on-LAN/PME state is unverified. Until one of those is sorted, a shed
+  # costs orthanc until someone presses power — which is why the shed push says
+  # so explicitly. See the header of modules/nut-secondary.nix.
+  homelab.ups = {
+    shedAfterMinutes = 5;
+    shedBelowCharge = 50;
+  };
+
+  # Wake-on-LAN, so a shed orthanc can be brought back without a physical press.
+  #
+  # THIS IS THE MECHANISM THAT MATTERS, and *Restore on AC Power Loss* is not a
+  # substitute for it. A shed is `systemctl poweroff` while the UPS is still
+  # happily supplying AC, so the PSU keeps standby power and the BIOS never sees
+  # an AC transition to restore from. The two settings cover disjoint cases:
+  #
+  #   shed, then mains returns   → no AC transition → only WoL can help  ← common
+  #   battery ran flat, UPS cut  → PSU lost standby → only the BIOS can help
+  #
+  # So both are wanted. This half is the one that covers the likely outage.
+  #
+  # Verified on the hardware 2026-09-19: `ethtool enp5s0` reported
+  # `Supports Wake-on: pumbg` (magic packet available) but `Wake-on: d`
+  # (disabled), so nothing would have woken. nixpkgs implements this as a
+  # systemd .link file, which udev applies even though this host uses the
+  # scripted/dhcpcd backend rather than networkd — confirmed by the comment in
+  # nixos/modules/tasks/network-interfaces.nix. The NIC keeps the setting across
+  # a soft poweroff because standby power remains; it is re-applied on each boot.
+  #
+  # enp5s0 is the 10.0.1.10 LAN port. enp6s0 and wlp4s0 are deliberately left
+  # alone — the waker on rivendell broadcasts to the LAN.
+  networking.interfaces.enp5s0.wakeOnLan.enable = true;
+
+  # ---------------------------------------------------------------------------
   # Cloudflare Tunnel — external ingress for Navidrome and Vaultwarden
   # ---------------------------------------------------------------------------
   #

@@ -75,33 +75,66 @@
 # cannot trigger a shutdown, so there is nothing there worth paging about.
 #
 # -----------------------------------------------------------------------------
-# NOT DONE HERE — staged / early shutdown
+# EARLY LOAD SHEDDING (homelab.ups.shed*)
 #
-# Powering pirateship and orthanc off EARLY, to leave battery runtime for the
-# DNS pair, is the load-shedding tier work in Plan.md → Power / Battery
-# Resilience. It is deliberately not attempted here. Two things block it, both
-# found while writing this module:
+# Everything above only gets a host down CLEANLY at the end of the battery. This
+# section is about ending the outage for one host EARLY so the rest last longer.
 #
-#   1. It needs an answer to "is orthanc even on the UPS?", still open in
-#      Plan.md. orthanc did not come back after 2026-08-09 and its BIOS needs
-#      *Restore on AC Power Loss* regardless of anything NUT does.
+# MEASURED 2026-09-19, which is what makes this worth doing at all:
 #
-#   2. NOTIFYCMD runs UNPRIVILEGED. upsmon forks: the root parent handles only
-#      SHUTDOWNCMD, and the monitoring child drops to the upsmon user
-#      (`nutmon` by default in nixpkgs, and unchanged here). So an ONBATT
-#      handler cannot `systemctl` or `poweroff` by itself. Staged shutdown needs
-#      a deliberate privilege path — a narrowly scoped polkit rule, a path-unit
-#      the notify script touches, or a root poller on `upsc`. Choose one when
-#      the tiers are designed; do not sprinkle sudo into a notify script.
+#   ups.load 18%  → battery.runtime 3680s (61 min)   all four hosts idle
+#   ups.load 29%  → battery.runtime 2036s (34 min)   orthanc at full CPU
+#
+# orthanc's CPU alone is 11 of those 18 load points, and taking it from idle to
+# busy costs 27 minutes of runtime. By contrast the Pi 5s draw 1.9-2.7 W each on
+# their internal rails (`vcgencmd pmic_read_adc`), so shedding a Pi buys
+# essentially nothing.
+#
+# THAT IS THE WHOLE FINDING: orthanc is the only load worth shedding. erebor and
+# the network gear are the other big draws and neither is ours to switch off. So
+# this is deliberately not a general tiering framework — it is one lever, applied
+# to one host, because that is where the measurement pointed.
+#
+# WHY A ROOT POLLER AND NOT AN ONBATT HOOK
+#
+# NOTIFYCMD runs UNPRIVILEGED: upsmon forks, the root parent handles only
+# SHUTDOWNCMD, and the monitoring child drops to the upsmon user (`nutmon`). So
+# an ONBATT handler cannot `poweroff`. The alternatives were a scoped polkit rule
+# or a path-unit the notify script touches; a root timer reading `upsc` is the
+# one with no IPC and no privilege escalation to reason about. It is one `upsc`
+# call every 30s — this is NOT the auto-cpufreq pattern that was removed from
+# hosts/orthanc.nix, which burned a core fraction continuously re-deciding
+# something that never changed. This poll makes a decision nothing else can make
+# with the privileges available.
+#
+# FAIL-SAFE DIRECTION IS "NEVER SHED ON UNCERTAINTY"
+#
+# If `upsc` fails — rivendell down, network gone, upsd restarting — the script
+# does nothing and leaves the timer state untouched. An unreachable UPS is not
+# evidence of an outage, and the cost of a wrong shed (a host off until someone
+# presses a button) is far worse than the cost of a missed one (upsmon's FSD
+# still catches the real end-of-battery case). Same discipline as the HA modules
+# where `unavailable` is neither open nor closed.
+#
+# !! BEFORE ENABLING THIS ON A HOST, MAKE SURE YOU CAN GET IT BACK !!
+#
+# A shed host does NOT come back on its own. orthanc's BIOS still needs *Restore
+# on AC Power Loss* (open since 2026-08-09, when it failed to return), and its
+# Wake-on-LAN/PME setting is unverified. Until one of those is true, a 3-minute
+# blip costs orthanc until someone physically presses power — so the shed
+# notification says exactly that, loudly, rather than pretending it is routine.
+# The natural follow-up is a WoL packet from rivendell (Tier 0, stays up) when
+# the UPS returns to OL; that needs orthanc's MAC and BIOS WoL confirmed first.
 #
 # -----------------------------------------------------------------------------
 # Secret required in each secondary's secrets/<host>.yaml:
 #   nut_secondary_password — must match the same key in secrets/rivendell.yaml,
 #                            which defines the matching upsd user.
 
-{ config, pkgs, ... }:
+{ config, lib, pkgs, ... }:
 
 let
+  shed = config.homelab.ups;
   upsdHost = "10.0.1.9"; # rivendell — IP on purpose, see header
   ntfyUrl = "http://10.0.1.9:2586/homelab";
   hostName = config.networking.hostName;
@@ -124,9 +157,123 @@ let
         ${ntfyUrl} || true
     fi
   '';
+  upsName = "tripplite";
+
+  shedScript = pkgs.writeShellScript "homelab-ups-shed" ''
+    set -u
+    PATH=${lib.makeBinPath [ config.power.ups.package pkgs.coreutils pkgs.curl pkgs.systemd ]}
+
+    STATE=/run/homelab-ups-shed/onbatt-since
+
+    # A failed query is NOT evidence of an outage. Leave the state alone and
+    # come back next tick; upsmon's FSD path still covers real end-of-battery.
+    if ! status=$(upsc ${upsName}@${upsdHost} ups.status 2>/dev/null); then
+      echo "upsc unreachable — no decision"
+      exit 0
+    fi
+
+    case "$status" in
+      *OB*) ;;
+      *)
+        # Back on mains (or never left). Clear any accumulated time.
+        if [ -f "$STATE" ]; then
+          echo "mains restored (status=$status) — clearing shed timer"
+          rm -f "$STATE"
+        fi
+        exit 0
+        ;;
+    esac
+
+    now=$(date +%s)
+    [ -f "$STATE" ] || echo "$now" > "$STATE"
+    since=$(cat "$STATE")
+    elapsed=$(( now - since ))
+
+    # battery.charge is advisory here: a missing value must not veto the shed,
+    # so an unreadable charge is treated as "no floor breach", never as 0.
+    charge=$(upsc ${upsName}@${upsdHost} battery.charge 2>/dev/null || echo "")
+
+    reason=""
+    ${lib.optionalString (shed.shedAfterMinutes != null) ''
+      if [ "$elapsed" -ge ${toString (shed.shedAfterMinutes * 60)} ]; then
+        reason="on battery for $(( elapsed / 60 ))m"
+      fi
+    ''}
+    ${lib.optionalString (shed.shedBelowCharge != null) ''
+      if [ -n "$charge" ] && [ "''${charge%%.*}" -le ${toString shed.shedBelowCharge} ]; then
+        reason="battery at ''${charge}%"
+      fi
+    ''}
+
+    if [ -z "$reason" ]; then
+      echo "on battery ''${elapsed}s (charge=''${charge:-unknown}) — holding"
+      exit 0
+    fi
+
+    echo "shedding: $reason"
+    curl -s --connect-timeout 5 --max-time 15 \
+      -H "Title: UPS: shedding ${hostName}" \
+      -H "Priority: 5" \
+      -H "Tags: electric_plug" \
+      -d "${hostName} is powering off to extend UPS runtime for the DNS pair ($reason, charge ''${charge:-unknown}%). IT WILL NOT COME BACK BY ITSELF — press power, or send a WoL packet, once mains is back." \
+      ${ntfyUrl} || true
+
+    systemctl poweroff
+  '';
 in
 
 {
+  options.homelab.ups = {
+    shedAfterMinutes = lib.mkOption {
+      type = lib.types.nullOr lib.types.int;
+      default = null;
+      description = ''
+        Power this host off after it has been continuously on battery for this
+        many minutes, to leave runtime for hosts that matter more. null disables
+        shedding. Any sighting of mains power resets the counter, so short blips
+        are ridden through rather than shed.
+
+        A shed host does not return on its own — see the warning in the module
+        header before setting this.
+      '';
+    };
+    shedBelowCharge = lib.mkOption {
+      type = lib.types.nullOr lib.types.int;
+      default = null;
+      description = ''
+        Power this host off as soon as battery charge is at or below this
+        percentage while on battery, regardless of how long the outage has run.
+        Covers an outage that starts with an already-depleted battery. null
+        disables the floor.
+      '';
+    };
+  };
+
+  config = lib.mkMerge [
+    (lib.mkIf (shed.shedAfterMinutes != null || shed.shedBelowCharge != null) {
+      systemd.tmpfiles.rules = [ "d /run/homelab-ups-shed 0700 root root -" ];
+
+      systemd.services.homelab-ups-shed = {
+        description = "Shed this host to extend UPS runtime";
+        serviceConfig = {
+          Type = "oneshot";
+          ExecStart = "${shedScript}";
+        };
+      };
+
+      systemd.timers.homelab-ups-shed = {
+        description = "Poll UPS state for early load shedding";
+        wantedBy = [ "timers.target" ];
+        timerConfig = {
+          OnBootSec = "2min";
+          OnUnitActiveSec = "30s";
+          AccuracySec = "5s";
+          Unit = "homelab-ups-shed.service";
+        };
+      };
+    })
+
+    {
   power.ups = {
     enable = true;
 
@@ -163,5 +310,7 @@ in
     };
   };
 
-  homelab.postUpgradeCheck.services = [ "upsmon" ];
+      homelab.postUpgradeCheck.services = [ "upsmon" ];
+    }
+  ];
 }
