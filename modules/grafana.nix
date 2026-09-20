@@ -539,6 +539,60 @@ let
         ];
       }
       {
+        # The external dead-man switch (modules/deadman.nix) watches the alert
+        # path from outside the house. These rules watch the watcher from
+        # inside it — specifically so that "not switched on yet" and
+        # "everything is fine" cannot look the same, which is the failure mode
+        # that made modules/nixpkgs-watch.nix useless for months.
+        name = "deadman";
+        rules = [
+          {
+            # Fires until the hc-ping.com URLs are pasted into sops. Without
+            # them the heartbeat runs, finds no secret and exits 0 — a green
+            # unit protecting nothing.
+            alert = "DeadmanSwitchUnprovisioned";
+            expr = ''homelab_deadman_provisioned == 0'';
+            "for" = "1h";
+            labels.severity = "warning";
+            annotations = {
+              summary = "{{ $labels.instance }} has no external dead-man switch configured";
+              description = "deadman_ping_url is missing or not an hc-ping.com URL on {{ $labels.instance }}, so ntfy is still a single point of failure. See the setup block in modules/deadman.nix.";
+            };
+          }
+          {
+            # Provisioned but no successful heartbeat in an hour (it runs every
+            # 15m). Gated on provisioned==1 because the timestamp is 0 before
+            # setup, which would otherwise fire this permanently.
+            alert = "DeadmanHeartbeatStale";
+            expr = ''
+              homelab_deadman_provisioned == 1
+              and (time() - homelab_deadman_last_success_timestamp_seconds) > 3600
+            '';
+            "for" = "15m";
+            labels.severity = "critical";
+            annotations = {
+              summary = "Dead-man heartbeat on {{ $labels.instance }} has not succeeded in over an hour";
+              description = "{{ $labels.instance }} has not completed a full heartbeat (ntfy round-trip plus hc-ping) since {{ $value | printf \"%.0f\" }}s ago. The external check is probably already red. Check `systemctl status deadman-heartbeat.timer`.";
+            };
+          }
+          {
+            # Honest about its own delivery: this alert travels the very path it
+            # reports on, so while the round-trip is broken it cannot arrive —
+            # the external check is the real reporter for that window. It earns
+            # its place on the RESOLVE edge, which does deliver and tells you
+            # ntfy was down and has come back.
+            alert = "DeadmanNtfyRoundTripFailing";
+            expr = ''homelab_deadman_ntfy_roundtrip_ok == 0 and homelab_deadman_provisioned == 1'';
+            "for" = "20m";
+            labels.severity = "critical";
+            annotations = {
+              summary = "{{ $labels.instance }} cannot publish and read back through ntfy";
+              description = "The ntfy probe topic round-trip from {{ $labels.instance }} to rivendell:2586 has been failing for 20m. rivendell or ntfy is down, or the LAN between them is partitioned.";
+            };
+          }
+        ];
+      }
+      {
         name = "ups";
         rules = [
           {

@@ -229,6 +229,7 @@
           ./modules/monitoring.nix
           ./modules/nut-secondary.nix
           ./modules/grafana.nix
+          ./modules/deadman.nix
         ];
         specialArgs = { inherit inputs nixos-raspberrypi r2AccountId brianSshKey; };
       };
@@ -252,6 +253,7 @@
           ./modules/jellyfin.nix
           ./modules/attic.nix
           ./modules/invidious.nix
+          ./modules/deadman.nix
           ./hosts/orthanc.nix
         ];
         specialArgs = { inherit inputs r2AccountId brianSshKey; };
