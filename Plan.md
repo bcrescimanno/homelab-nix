@@ -221,13 +221,13 @@ number here. The honest way to get it is to power orthanc off once and read
   Re-test afterwards: power orthanc off, then
   `wakeonlan -i 10.0.1.255 fc:34:97:a6:4f:ad` from rivendell.
 
-- [ ] **Decide what to do with orthanc's 5-minute shed until then.** The shed
-  works, but a shed orthanc currently needs a physical press — so every outage
-  longer than 5 minutes costs the builder, Jellyfin, the attic cache and the
-  Vaultwarden tunnel until someone notices. Options: leave it (maximum runtime,
-  manual recovery), raise `shedAfterMinutes` so only long outages trigger it, or
-  set it to `null` until the BIOS is sorted. Purely a judgement call about how
-  often medium outages happen here.
+- [x] **Decided 2026-09-19: leave the 5-minute shed exactly as it is.** Brian's
+  call, made knowing the consequence — a shed orthanc needs a physical press until
+  the BIOS trip above happens, so every outage longer than 5 minutes costs the
+  builder, Jellyfin, the attic cache and the Vaultwarden tunnel until someone
+  notices. Runtime for the network wins over orthanc's availability.
+  `shedAfterMinutes` stays `5`; it was **not** raised and **not** set to `null`.
+  Do not revisit this without a stated change — revisit only once WoL is proven.
 
 - [x] **erebor gets a clean shutdown — DONE 2026-09-19** (`homelab.ups.remoteShutdown`
   in `modules/nut.nix`). erebor is Debian 11 + systemd under UniFi OS, so
@@ -252,11 +252,15 @@ number here. The honest way to get it is to power orthanc off once and read
   unmount ordering, SSH failure raising a priority-5 alert, `upsc` unreachable
   doing nothing, and grace expiry proceeding with a warning.
 
-- [ ] **MANUAL PREREQUISITE for the above: authorize the key on erebor.** Until
-  this is done the SSH `poweroff` fails and erebor still hard-cuts (loudly — the
-  failure path pushes at priority 5). Add this public key on erebor **through the
-  UniFi console's SSH-key UI**, not by editing `/root/.ssh/authorized_keys`, or a
-  UniFi OS update will silently drop it:
+- [x] **MANUAL PREREQUISITE for the above: authorize the key on erebor — DONE
+  2026-09-19, and verified end to end.** Brian added it through the UniFi console's
+  SSH-key UI and `sudo ssh -i /run/secrets/erebor_shutdown_key -o BatchMode=yes
+  root@10.0.1.22` now succeeds from rivendell, with `/sbin/poweroff` present
+  (a symlink to `/bin/systemctl`). Note for later: `uname -a` on erebor reports
+  `5.10.216-alpine-unas`, which is only Ubiquiti's kernel build name — the
+  userspace is genuinely Debian 11 bullseye with systemd 247, so `poweroff`
+  behaves like systemd's and not busybox's. Keep using the **UniFi UI**, not
+  `/root/.ssh/authorized_keys`, or a UniFi OS update will silently drop it:
 
   ```
   ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHR2C10cUgtEdcQ7YdnDNBet9eTQmD5ByHcZT/920vIO rivendell-erebor-shutdown
@@ -265,7 +269,13 @@ number here. The honest way to get it is to power orthanc off once and read
   Then confirm from rivendell:
   `sudo ssh -i /run/secrets/erebor_shutdown_key -o BatchMode=yes root@10.0.1.22 true`
 
-- [ ] **Low power mode — shed load while running on battery**. Prompted by the 2026-08-09 outage (~19:57, all hosts hard-cut). Design only, not yet implemented.
+- [ ] ~~**Low power mode — shed load while running on battery**~~. **Superseded —
+  built and deployed 2026-09-19** (#741 secondaries, #743 shed + erebor + waker);
+  original text kept below for the reasoning, and because it records what the
+  2026-08-09 outage actually looked like. Note the design below reasons about
+  *tiers*; the measured power report proved that wrong — orthanc is the only load
+  worth shedding, so no tiering framework was built. Prompted by the 2026-08-09
+  outage (~19:57, all hosts hard-cut).
 
   **What today actually does.** Nothing coordinated. `modules/nut.nix` runs NUT on rivendell *only*, as `upsmon` `type = "primary"`, and no other host runs a secondary. So rivendell sees `ONBATT`/`LOWBATT` and can shut itself down, while **mirkwood, pirateship and orthanc have no idea the power is out** — they run flat out until the battery dies and then take an unclean power cut. There is no graceful shutdown ordering and no load shedding anywhere in the repo.
 
