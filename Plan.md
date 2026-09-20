@@ -455,7 +455,7 @@ erebor is online (10G SFP+ at 10.0.1.22, 1G ethernet at 10.0.1.21 for management
 
 #### Observability gaps (reviewed 2026-09-19)
 
-- [ ] **External dead man's switch — every alert path terminates at rivendell.**
+- [~] **External dead man's switch — every alert path terminates at rivendell.**
   Traced 2026-09-19. Prometheus and Alertmanager run on **mirkwood**, but
   Alertmanager's only receiver posts to `http://10.0.1.9:2586` — rivendell's
   ntfy (`modules/grafana.nix`). Gatus runs on rivendell. ntfy *is* on rivendell.
@@ -467,22 +467,41 @@ erebor is online (10G SFP+ at 10.0.1.22, 1G ethernet at 10.0.1.21 for management
   check for rivendell, but Gatus cannot report the death of its own host. This
   is the structural version of every silent failure in the memory index.
 
-  Fix, cheapest first:
-  1. **External dead man's switch** (healthchecks.io free tier or equivalent): a
-     timer on **mirkwood and orthanc** pings an outside endpoint on a schedule;
-     the outside service alerts *Brian* when the pings stop. This is the only
-     option that survives the whole house being down, and it is the one to do
-     first.
-  2. **Second notification channel**: point the most critical alerts at
-     `ntfy.sh` (public) as well as self-hosted ntfy, so a rivendell outage does
-     not mute them. Cheap; note it moves alert content off-premises, so keep it
-     to "host X is down", not diagnostics.
-  3. **Cross-monitoring**: a second Gatus (on mirkwood or orthanc) whose only
-     job is watching rivendell and the ntfy endpoint itself.
+  **BUILT 2026-09-20 in `modules/deadman.nix`** (mirkwood + orthanc), pending
+  account setup and deploy. Items 1 and 2 below are both delivered by it; item 3
+  is deliberately not being done.
 
-  Test it by actually stopping ntfy on rivendell and confirming an alert still
-  arrives — per the standing verification note, simulating around the constraint
-  that matters proves nothing. Also test the *resolve* path separately.
+  1. **External dead man's switch — DONE.** Implemented as an *earned* heartbeat
+     rather than a liveness ping, which is the part the original sketch got
+     wrong: a timer that just curls an outside endpoint stays green while ntfy
+     is dead, leaving the actual gap open. Instead each host publishes a random
+     token to a dedicated `deadman-probe` ntfy topic on rivendell, reads it back
+     through the poll API, and only then pings healthchecks.io. A failed
+     round-trip POSTs `/fail` immediately instead of waiting out the grace
+     period. One check per host, never a shared one.
+  2. **Second notification channel — DONE, as a side effect.** healthchecks.io
+     alerts out via a **public ntfy.sh topic**, reusing the existing ntfy iOS
+     app. Routing it back through `ntfy.theshire.io` would rebuild the single
+     point of failure one level up, so it deliberately shares nothing with the
+     path it reports on. Payloads stay at "host X round-trip failed", not
+     diagnostics, since they leave the premises.
+  3. **Cross-monitoring (second Gatus) — NOT doing.** The round-trip probe
+     already answers "is rivendell's ntfy alive", from two hosts, and reports it
+     somewhere that survives the house being down. A second Gatus would add a
+     service whose own alerts still have to escape, which is the original
+     problem again.
+
+  **Remaining before this is real:**
+  - [ ] Create the healthchecks.io account + two checks and the ntfy.sh
+        integration; recipe is in the `modules/deadman.nix` header.
+  - [ ] Paste each ping URL into `deadman_ping_url` in the matching host's sops
+        file, replacing the `REPLACE-ME-…` placeholder. Until then the hosts
+        deploy fine and `DeadmanSwitchUnprovisioned` alerts hourly — an
+        unprovisioned switch must never look like a healthy one.
+  - [ ] Test by **actually stopping ntfy on rivendell** and confirming the
+        ntfy.sh alert still arrives — simulating around the constraint that
+        matters proves nothing. Test the *resolve* path separately, and let it
+        outlast the retry period.
 
 - [ ] **Loki + Alloy — centralized logs. Supersedes the Promtail sketch below.**
   Originally scoped only as a prerequisite for the Pi-hole-style DNS dashboard.
@@ -582,7 +601,9 @@ Reviewed 2026-09-19 against the live lab. Verdicts below; rejected ideas moved t
   the topology, the three silent-failure traps in that module, and the remaining
   checklist are in "Remote access consolidation" above.
 
-- [ ] **Dead man's switch — external, out-of-band.** See "Observability gaps".
+- [~] **Dead man's switch — external, out-of-band.** Built 2026-09-20 in
+  `modules/deadman.nix`; awaiting the healthchecks.io account and a deploy. See
+  "Observability gaps".
 - [ ] **Loki + Alloy — centralized logs.** See "Observability gaps" above; the
   old Promtail sketch there has been replaced.
 - [~] **HomeKit migration — IN PROGRESS.** Done: four room bridges declared in
