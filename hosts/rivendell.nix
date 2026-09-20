@@ -110,6 +110,11 @@
       attic_push_token = {};
       nut_upsmon_password = {};
 
+      # Credential the three NUT secondaries authenticate with. Separate from
+      # nut_upsmon_password on purpose — see the upsmon-secondary user in
+      # modules/nut.nix for why a secondary must not hold primary privileges.
+      nut_secondary_password = {};
+
       # Group-readable so the Prometheus NUT exporter can read it. The exporter
       # runs with DynamicUser=true (the nixpkgs exporters default), so its UID is
       # not stable and the file cannot simply be chowned to it — a supplementary
