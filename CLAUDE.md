@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-NixOS flake for a homelab of three Raspberry Pi 5s and one x86_64 tower. Manages four hosts: `pirateship` (media stack), `rivendell` (Home Assistant, Caddy reverse proxy, secondary DNS, UPS monitoring, Vaultwarden, Music Assistant), `mirkwood` (primary DNS, Homepage, Prometheus/Grafana), and `orthanc` (Jellyfin, Minecraft, attic binary cache, Invidious, x86_64 CI runner). Media storage is on `erebor` (UniFi UNAS Pro 4 NAS) via NFS mounts on pirateship and orthanc.
+NixOS flake for a homelab of three Raspberry Pi 5s and one x86_64 tower. Manages four hosts: `pirateship` (media stack), `rivendell` (Home Assistant, Caddy reverse proxy, secondary DNS, NUT UPS primary, Vaultwarden, Music Assistant), `mirkwood` (primary DNS, Homepage, Prometheus/Grafana), and `orthanc` (Jellyfin, Minecraft, attic binary cache, Invidious, x86_64 CI runner). Media storage is on `erebor` (UniFi UNAS Pro 4 NAS) via NFS mounts on pirateship and orthanc. All four hosts are NUT-monitored and shut down cleanly on a dead battery; rivendell also powers `erebor` off over SSH, because UniFi OS has no NUT client.
 
 Uses `nixos-raspberrypi` for Pi-specific hardware support, `disko` for declarative disk partitioning, `sops-nix` for secrets management, `deploy-rs` for deployments with magic rollback, and `home-manager` (via the dotfiles flake) for user environment configuration.
 
@@ -53,11 +53,11 @@ SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops secrets/orthanc.yaml
 
 | Host | Hardware | Role |
 |---|---|---|
-| `pirateship` | Raspberry Pi 5, 4GB | Media stack (arr apps, SABnzbd, gluetun VPN), Bazarr, Navidrome, Glances |
-| `rivendell` | Raspberry Pi 5, 8GB | Home Assistant, Matter Server, OTBR (Thread), Caddy (reverse proxy + TLS), Blocky+Unbound DNS (secondary), NUT (UPS), ntfy, Gatus, Vaultwarden, Music Assistant, aarch64 CI runner, Glances |
-| `mirkwood` | Raspberry Pi 5, 4GB | Blocky+Unbound DNS (primary), Homepage, Prometheus, Grafana, Glances |
-| `orthanc` | x86_64 tower — Ryzen 9 5950X, 32GB, RX 550, NVMe | Jellyfin (VAAPI transcoding), Minecraft servers, attic binary cache, Invidious + companion, Cloudflare Tunnel, x86_64 CI runner / remote builder, Glances |
-| `erebor` | UniFi UNAS Pro 4 | NAS — 4×12TB RAID 6 (~24TB usable); NFS shares for media + restic backups |
+| `pirateship` | Raspberry Pi 5, 4GB | Media stack (arr apps, SABnzbd, gluetun VPN), Bazarr, Navidrome, Glances, upsmon secondary |
+| `rivendell` | Raspberry Pi 5, 8GB | Home Assistant, Matter Server, OTBR (Thread), Caddy (reverse proxy + TLS), Blocky+Unbound DNS (secondary), NUT UPS **primary** + power orchestration, ntfy, Gatus, Vaultwarden, Music Assistant, aarch64 CI runner, Glances |
+| `mirkwood` | Raspberry Pi 5, 4GB | Blocky+Unbound DNS (primary), Homepage, Prometheus, Grafana, Glances, upsmon secondary |
+| `orthanc` | x86_64 tower — Ryzen 9 5950X, 32GB, RX 550, NVMe | Jellyfin (VAAPI transcoding), Minecraft servers, attic binary cache, Invidious + companion, Cloudflare Tunnel, x86_64 CI runner / remote builder, Glances, upsmon secondary (**the one shed load**) |
+| `erebor` | UniFi UNAS Pro 4 | NAS — 4×12TB RAID 6 (~24TB usable); NFS shares for media + restic backups. No NUT client; rivendell SSHes in and runs `poweroff` at 25% battery |
 
 **orthanc is the only x86_64 host**, and the only one with `homelab.reboot.auto = true`. It builds its own closure locally on deploy (`remoteBuild = false`) and serves as the remote builder for the Pis.
 
@@ -83,7 +83,7 @@ SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops secrets/orthanc.yaml
 - `modules/gatus.nix` — Gatus service health monitor on rivendell (native NixOS service, port 8080); all monitors declared in Nix, alerts via ntfy. The `Gaming` group is **deliberately empty**: probing the Minecraft ports would defeat autopause (see `modules/minecraft.nix`). Gatus cannot check anything that needs a Prometheus query either, since 9090 is closed to the LAN — those checks belong in `grafana.nix` as alert rules
 - `modules/grafana.nix` — Prometheus (port 9090) + Alertmanager + Grafana (port 3001) on mirkwood. Scrape jobs: `blocky` (both DNS hosts), `node`, `systemd` and `smartctl` (all four hosts), `nut` (rivendell). **Prometheus itself is deliberately not exposed to the LAN** — only Grafana's 3001 is open, so nothing off-host can query 9090. All alert rules live here and route to the existing ntfy topic through alertmanager-ntfy, so there is one notification channel. Grafana dashboards are JSON-only
 - `modules/homeassistant.nix` — Home Assistant (native `services.home-assistant`), Matter Server (container) and OTBR (native `services.openthread-border-router`) on rivendell. HA reuses the container-era config dir via `configDir = /var/lib/homeassistant/config`, so `.storage` — every UI-created integration, device and dashboard — carries over untouched and the UI stays fully usable; only `configuration.yaml` becomes a read-only store symlink. **`extraComponents` is load-bearing**: integrations added through the UI live in `.storage`, which the module cannot see, so each one's domain must be listed or its Python deps are missing at runtime. Regenerate with the jq command in the module header. Matter Server is deliberately still a container — see the comment block before retrying `services.matter-server`. **HomeKit Bridge is declared here, one bridge per room**, because HAP has no room attribute and accessories land in the bridge's room. YAML overwrites the matching config entry (by name OR port) on every start, so UI filter edits are reverted; keep port+name stable or the pairing is orphaned. Matching **only sees `source: import` entries** — a UI-created bridge on the same port is silently skipped, so never add a bridge through the UI
-- `modules/ha-window-notifications.nix` — passive-cooling window prompts on rivendell (close above 66°F in the morning, open below 72°F in the evening, both suppressed by a sub-75°F forecast high in favour of one 08:00 "windows open day" message). The close threshold is 66 rather than 68 as **margin for the met.no fallback, which publishes whole degrees hourly** — a strict `above: 68` silently fired nothing on a 96°F day because the sensor read exactly 68.0. Raise it back toward 68 once the Eve Weather is paired. Declared as a **Home Assistant package** under `services.home-assistant.config.homeassistant.packages.windows`, which merges additively with the UI-authored `automations.yaml` — a package is used rather than a bare automation include because it can also declare the two `template:` sensors. The automations read `sensor.outdoor_temperature`, never the hardware entity, so swapping the source is a one-line change. See the comment block in the module before touching the thresholds or the fallback behaviour.
+- `modules/ha-window-notifications.nix` — passive-cooling window prompts on rivendell (close above **68**°F in the morning, open below 72°F in the evening, both suppressed by a sub-75°F forecast high in favour of one 08:00 "windows open day" message). `closeAboveF` was briefly lowered to 66 as margin for the met.no fallback, which publishes whole degrees hourly; it is **68 again** now that the Eve Weather feeds `sensor.outdoor_temperature` at 0.01°C resolution, where every threshold crossing generates its own sample. Declared as a **Home Assistant package** under `services.home-assistant.config.homeassistant.packages.windows`, which merges additively with the UI-authored `automations.yaml` — a package is used rather than a bare automation include because it can also declare the two `template:` sensors. The automations read `sensor.outdoor_temperature`, never the hardware entity, so swapping the source is a one-line change. See the comment block in the module before touching the thresholds or the fallback behaviour.
 - `modules/ha-dashboard.nix` — the **Home** Lovelace dashboard, declared via `services.home-assistant.lovelaceConfig` (YAML mode, dashboard `nixos-lovelace`, **read-only in the HA UI** — edit the Nix). Stock cards only, sections views (Home glance, Upstairs, Downstairs; one section per room). It is also forced to be the **system default dashboard**: an HA `preStart` snippet writes `core.default_panel` into `.storage/frontend.system_data`, so "Set as default" in the UI is reverted on restart. A per-user default (profile page) still wins over it. Entity choices are verified against the recorder — read the header before swapping an `_2` entity for its unsuffixed twin. **TVs are deliberately disabled in Music Assistant** and controlled via their native HA integrations.
 - `modules/ha-bathroom-lights.nix` — Boys Bathroom lights auto-off, **gated on the door** (HA package `boys_bathroom_lights`, read-only in the UI). The door is the room's occupancy proxy: `binary_sensor.boys_bathroom_door` (Matter Eve Door & Window, node 10, `device_class: door`, so **`on` = open**). Four automations: (1) door closed→open **while the light is already on** → 30s grace, re-check both, off; (2) light on **and** door open, both continuously for 5 min → off; (3) light on for 60 min behind a **closed** door → off; (4) sensor `unavailable` for 30 min → one ntfy infra alert. **Nothing ever turns the light on** — manual only. **The 15-minute timer and the 19:00–20:30 shower window are gone and must not come back**: a shower means a closed door, and rule 2 already blocks every fast path, so an hour-long backstop is the only thing that fires behind one. Rule 1 checks the light **before** its delay, not after — a `for`-style trigger plus a later light condition kills the light of someone who walked in and switched it on mid-grace (door opens while the light is off). `unavailable` is neither open nor closed, so every condition names its state explicitly and a dark sensor turns nothing off (fails safe, and rule 4 makes it visible). Rules 2 and 3 are **`mode: parallel`**, not queued: their `homeassistant: start` re-check sleeps for the rule's own duration (up to 60 min) and must never block a real trigger behind it; `light.turn_off` is idempotent. Rule 1 is `mode: restart` so a close/re-open starts a fresh grace period, and deliberately has **no start trigger** (a restart cannot tell you an open-edge happened). Durations are YAML mappings (`{ minutes = 5; }`), never `"00:05:00"` strings.
 - `modules/ha-hood-light.nix` — turns `light.hood_light` on when the kitchen hood fan (`switch.hood_power`) turns on (HA package `hood_light`, read-only in the UI). Never turns it off. The trigger is **`from: off` → `to: on` on purpose**: the hood is a Home Connect cloud appliance that flaps `unavailable` several times a day, and a reconnect mid-cook would otherwise re-light a light someone switched off.
@@ -107,7 +107,8 @@ SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops secrets/orthanc.yaml
 - `modules/qbittorrent-seed-policy.nix` — seeding policy on pirateship, reconciled every 5 min by `modules/qbittorrent-seed-policy.py`. Keyed on each torrent's **`private` flag**, never the tracker hostname (the `tracker` field reports whichever tracker last answered and rotates). Private → ratio `-1`, action `Stop`, upload uncapped (seed forever). Public → ratio `1.0`, action `RemoveWithContent`, upload capped. Global ratio limit stays **off** and the global action stays **Stop**, so anything unclassified defaults to seeding forever rather than being deleted. See the module comment before changing any of it.
 - `modules/vaultwarden.nix` — Vaultwarden (native `services.vaultwarden`, port 8222, `vault.theshire.io`) on rivendell, replacing 1Password; clients are the official Bitwarden apps. Single user; **signups closed** (no SMTP, so nothing can register) and **no admin page on purpose** — `ADMIN_TOKEN` is unset, because `/admin` writes `config.json`, which overrides the Nix-generated env. The vault vhost in `caddy.nix` sets `X-Real-IP` (from `CF-Connecting-IP` for traffic arriving from orthanc's tunnel, the peer address otherwise) and Vaultwarden keys its login rate limit on it — never switch it to `X-Forwarded-For`, whose leftmost entry is client-supplied through Cloudflare. iOS push goes through Bitwarden's relay (`vaultwarden_env` secret); a phone logged in before push was enabled must log out/in once. SSH keys/agent and iOS CXP import are gated behind `EXPERIMENTAL_CLIENT_FEATURE_FLAGS`. restic backs up the `backup-vaultwarden` SQLite snapshot in `/var/backup/vaultwarden` (02:30, ahead of restic's 03:00), never the live DB.
 - `modules/ntfy.nix` — ntfy push notification server on rivendell via native `services.ntfy-sh` (port 2586 on the LAN, proxied via Caddy). `upstream-base-url` is what makes iOS background push work. Every other host publishes to `http://rivendell:2586/homelab`
-- `modules/nut.nix` — Network UPS Tools monitoring Tripp Lite SMC15002URM via USB (rivendell); exposes port 3493 for Home Assistant
+- `modules/nut.nix` — Network UPS Tools on rivendell, monitoring the Tripp Lite SMC15002URM over USB as upsmon **primary**; exposes port 3493 for Home Assistant and the other three hosts. Also owns the two power-orchestration options, both off by default and enabled only on rivendell: `homelab.ups.remoteShutdown` (SSH `poweroff` to machines that cannot run upsmon — today just erebor, at 25% charge) and `homelab.ups.wakeOnRestore` (magic packet to a shed host once mains is back). See the UPS / Power section below
+- `modules/nut-secondary.nix` — upsmon in netclient mode on pirateship, mirkwood and orthanc, pointed at `tripplite@10.0.1.9` by **IP, never DNS** (power-failure infrastructure must not wait on a resolver). Before it, only rivendell knew the power was out and the other three ran until the battery died. Shutdown ordering is a property of the primary/secondary protocol, not of anything declared here: rivendell's upsmon sets FSD, secondaries act on it, and the primary waits HOSTSYNC before going down last. A rivendell **reboot** does not take them with it — per `upsmon.conf(5)` only a dead UPS *last known to be ON BATTERY* may force a shutdown, so a UPS last seen ONLINE just goes stale and gets complained about. Secondaries push only `SHUTDOWN` to ntfy (rivendell already pushes ONBATT/LOWBATT/ONLINE; COMMBAD is syslog-only or every kernel reboot would page three times). Also holds the `homelab.ups.shed*` options. **Never test with `upsmon -c fsd`** — that shuts down all four hosts for real; stop `upsd` on rivendell instead
 
 ### Deploy (deploy-rs)
 
@@ -192,11 +193,12 @@ External access does **not** go through Caddy's ports: `stream` and `vault` are 
 
 Secrets use `sops-nix` with age encryption. Rendered at runtime to `/run/secrets/`.
 
-**Every host** (declared by `backup.nix` and `base.nix`, one copy per host's own yaml):
-- `restic_password` — restic repository password (shared value across hosts)
-- `restic_r2_env` — Cloudflare R2 credentials for the offsite repo
-- `attic_push_token` — JWT push token for the attic post-build hook
-- `tailscale_auth_key` — Tailscale OAuth **client secret** (`tskey-client-…`, `auth_keys` scope, scoped to `tag:homelab`), declared by `tailscale.nix`. Not a plain auth key: those expire within 90 days, and `authKeyParameters` is appended to it as a query string, which is the OAuth calling convention
+**Every host** (one copy per host's own yaml):
+- `restic_password` — restic repository password (shared value across hosts); declared by `backup.nix`
+- `restic_r2_env` — Cloudflare R2 credentials for the offsite repo; declared by `backup.nix`
+- `attic_push_token` — JWT push token for the attic post-build hook; declared by `base.nix`
+- `nut_secondary_password` — upsmon secondary credential, **the same value in all four yamls**. rivendell's copy defines the matching user on upsd (`nut.nix`); the three secondaries authenticate with it (`nut-secondary.nix`). Declared in each host's own `hosts/<host>.nix`, not in a shared module
+- `tailscale_auth_key` — Tailscale OAuth **client secret** (`tskey-client-…`, `auth_keys` scope, scoped to `tag:homelab`), **the same value in all four yamls**; declared by `tailscale.nix`. It is an enrolment key, not a host identity — each host gets its own node key at first `tailscale up`. Not a plain auth key: those expire within 90 days, and `authKeyParameters` is appended to it as a query string, which is the OAuth calling convention
 
 **pirateship** (`secrets/pirateship.yaml`):
 - `vpn_env` — WireGuard credentials for gluetun
@@ -207,8 +209,9 @@ Secrets use `sops-nix` with age encryption. Rendered at runtime to `/run/secrets
 
 **rivendell** (`secrets/rivendell.yaml`):
 - `caddy_cloudflare_env` — `CLOUDFLARE_API_TOKEN` for DNS-01 ACME
-- `nut_upsmon_password` — internal upsmon user password
-- `nut_ha_password` — Home Assistant NUT integration password
+- `nut_upsmon_password` — the primary's own local upsmon user password (distinct from `nut_secondary_password` above)
+- `nut_ha_password` — Home Assistant NUT integration password; mode `0440` and group-readable so the DynamicUser Prometheus NUT exporter can read it
+- `erebor_shutdown_key` — dedicated SSH key rivendell uses to `poweroff` erebor on battery. **Its public half must be authorized on erebor through the UniFi console UI** — a hand-edited `authorized_keys` is dropped by UniFi OS updates, which would make this fail silently
 - `github_runner_token` — registration credential for the aarch64 CI runner
 - `gatus_github_token` — `GATUS_GITHUB_TOKEN=<fine-grained PAT>`; read-only (Administration: Read) token Gatus uses to check both self-hosted runners are online
 - `vaultwarden_env` — `PUSH_INSTALLATION_ID=`/`PUSH_INSTALLATION_KEY=` from https://bitwarden.com/host/ (US region); Vaultwarden's mobile push relay credentials
@@ -228,6 +231,37 @@ Secrets use `sops-nix` with age encryption. Rendered at runtime to `/run/secrets
 All hosts pull and apply updates from `github:bcrescimanno/homelab-nix` daily at 4am. ntfy notifications are sent on success or failure (`http://rivendell:2586/homelab`).
 
 **Reboots** (`modules/reboot-policy.nix`): after a clean upgrade (post-upgrade check passed), `homelab-reboot-check` compares the booted kernel with the installed one — **kernel only**; initrd/kernel-modules drift daily on the Pis without the kernel moving. `homelab.reboot.auto = true` (orthanc only) reboots inside 03:00–07:00 and never twice for the same kernel; everywhere else it pushes a nightly **"Reboot pending"** ntfy until someone reboots by hand. `homelab-reboot-report` confirms the host came back healthy. rivendell/mirkwood set `dnsPeer` to each other so enabling `auto` there can never take both resolvers down; pirateship needs its kill-switch latch and NFS verified after boot before it gets `auto`.
+
+### UPS / Power
+
+One Tripp Lite SMC15002URM carries all four hosts plus erebor and the network gear. rivendell is the upsmon **primary** (`nut.nix`); pirateship, mirkwood and orthanc are secondaries (`nut-secondary.nix`).
+
+**Load shedding is one lever on one host, because that is where the measurement pointed.** Measured 2026-09-19 at 100% battery:
+
+| `ups.load` | `battery.runtime` | state |
+|---|---|---|
+| 18% | 3680s (61 min) | all four hosts idle |
+| 29% | 2036s (34 min) | orthanc at full CPU |
+
+orthanc's CPU alone is 11 of those 18 points. The Pi 5s draw 1.9–2.7W each on their internal rails, so shedding one buys nothing measurable, and erebor and the network gear are the other big draws with neither being ours to switch off. **This is deliberately not a general tiering framework.**
+
+Thresholds, in the order they fire during an outage:
+
+| Charge / time | What happens | Where |
+|---|---|---|
+| 5 min on battery, or below 50% | orthanc sheds (`systemctl poweroff`) | `hosts/orthanc.nix` |
+| below 35% | pirateship sheds — **for NFS ordering, not power** (it draws ~1.9W) | `hosts/pirateship.nix` |
+| below 25% | rivendell lazily unmounts its own erebor mounts, confirms orthanc and pirateship are down (5 min grace), then SSHes `poweroff` to erebor | `hosts/rivendell.nix` |
+| `battery.charge.low` (the UPS reports 10) | primary sets FSD; every secondary shuts down, rivendell last | NUT protocol |
+
+**Why the ordering matters:** erebor's shares are `hard` NFS mounts, so IO to a vanished server blocks forever in D state. A consumer still holding one would hang, fail to unmount at FSD, stall past systemd's timeout and take exactly the unclean cut this prevents. mirkwood never sheds — it is the primary DNS resolver.
+
+**A shed host does not come back on its own.** A shed is a soft poweroff while the UPS still supplies AC, so orthanc's PSU keeps standby power and its BIOS never sees an AC transition to restore from. The two recovery paths cover disjoint cases and both are wanted:
+
+- shed, then mains returns → no AC transition → **only WoL helps** (the common case). `homelab.ups.wakeOnRestore` on rivendell sends a magic packet to orthanc's `enp5s0` MAC (the 10.0.1.10 LAN port, the only interface with `wakeOnLan` armed) on the LAN broadcast `10.0.1.255`, once mains has been stable 3 min, and only if the outage lasted at least 5 min — below that nothing would have shed
+- battery ran flat and the UPS cut output → PSU lost standby → **only the BIOS helps**. orthanc's *Restore on AC Power Loss* is still an open BIOS item
+
+Shedding fails safe: if `upsc` cannot be reached the script does nothing, because an unreachable UPS is not evidence of an outage and a wrong shed costs a host until someone presses a button.
 
 ### Media Storage
 
