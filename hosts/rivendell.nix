@@ -161,6 +161,36 @@
   # ---------------------------------------------------------------------------
   # Notify-only (Pis stay manual — see modules/reboot-policy.nix). dnsPeer is
   # set now so enabling `auto` later can never take both resolvers down.
+  # ---------------------------------------------------------------------------
+  # Wake shed hosts back up once mains is stably restored
+  # ---------------------------------------------------------------------------
+  #
+  # orthanc sheds itself 5 minutes into an outage (homelab.ups.shed* in
+  # hosts/orthanc.nix) to extend runtime for the DNS pair. That shed is a soft
+  # poweroff while the UPS still supplies AC, so orthanc's BIOS never sees an AC
+  # transition and cannot restore itself — a magic packet is the only way back.
+  # rivendell is the right sender: it is Tier 0 and stays up throughout.
+  #
+  # minOutageMinutes matches orthanc's shedAfterMinutes: below 5 minutes nothing
+  # would have shed, so an unreachable orthanc is down for an unrelated reason
+  # and must be left alone. stableMinutes is the anti-flap buffer — utilities
+  # bounce power repeatedly while restoring, and every bounce restarts it.
+  #
+  # MAC is enp5s0, orthanc's 10.0.1.10 LAN port, which is the interface with
+  # wakeOnLan armed. Broadcast must be the LAN's own, not 255.255.255.255.
+  homelab.ups.wakeOnRestore = {
+    enable = true;
+    stableMinutes = 3;
+    minOutageMinutes = 5;
+    targets = [
+      {
+        name = "orthanc";
+        mac = "fc:34:97:a6:4f:ad";
+        ip = "10.0.1.10";
+      }
+    ];
+  };
+
   homelab.reboot.dnsPeer = "10.0.1.8";  # mirkwood
 
   homelab.backup.paths = [
