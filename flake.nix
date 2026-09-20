@@ -186,6 +186,7 @@
           ./modules/lidarr-formats.nix
           ./modules/monitoring.nix
           ./modules/music-sync.nix
+          ./modules/nut-secondary.nix
           ./modules/navidrome.nix
           ./modules/qbittorrent-seed-policy.nix
           ./modules/vpn-killswitch.nix
@@ -226,6 +227,7 @@
           ./modules/dns.nix
           ./modules/homepage.nix
           ./modules/monitoring.nix
+          ./modules/nut-secondary.nix
           ./modules/grafana.nix
         ];
         specialArgs = { inherit inputs nixos-raspberrypi r2AccountId brianSshKey; };
@@ -245,6 +247,7 @@
           ./modules/base.nix
           ./modules/backup.nix
           ./modules/monitoring.nix
+          ./modules/nut-secondary.nix
           ./modules/minecraft.nix
           ./modules/jellyfin.nix
           ./modules/attic.nix

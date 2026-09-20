@@ -174,6 +174,13 @@
       # also pushes its own outputs to the cache).
       attic_push_token = {};
 
+      # Shared credential the NUT secondary uses to authenticate to rivendell's
+      # upsd (modules/nut-secondary.nix). Must hold the same value as
+      # nut_secondary_password in secrets/rivendell.yaml, which defines the
+      # matching upsd user. Default 0400 root:root is correct — systemd reads it
+      # via LoadCredential as root before upsmon drops privileges.
+      nut_secondary_password = {};
+
       # Cloudflare Tunnel credentials — JSON downloaded from Cloudflare Zero
       # Trust → Networks → Tunnels. The "piped" in the name is HISTORICAL: the
       # tunnel was created for piped-backend's PubSubHubbub callbacks, Piped is
