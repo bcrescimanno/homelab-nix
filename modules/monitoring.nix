@@ -53,6 +53,16 @@
 
   systemd.tmpfiles.rules = [
     "d /var/lib/prometheus-textfiles 0755 root root -"
+    # Every .prom here must be readable by the `node-exporter` user that
+    # node_exporter drops to — the directory being 0755 is not enough, the
+    # FILES have to be too. The classic way to get this wrong is the
+    # write-to-temp-then-rename pattern: `mktemp` creates 0600 and `mv`
+    # preserves it, which is how attic_push.prom sat unreadable on all four
+    # hosts and `attic_push_*` was never once collected (found 2026-09-20).
+    # Writers should chmod 0644 themselves; this normalises anything that
+    # forgets, and repairs files already on disk at the wrong mode, which a
+    # writer-side fix alone cannot do until its next run.
+    "z /var/lib/prometheus-textfiles/*.prom 0644 root root -"
   ];
 
   homelab.postUpgradeCheck.services = [ "glances" ];

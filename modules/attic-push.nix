@@ -67,6 +67,15 @@
       printf '# HELP attic_push_failure_total Attic store paths that failed to push\n' >> "$METRIC_TMP"
       printf '# TYPE attic_push_failure_total counter\n'                               >> "$METRIC_TMP"
       printf 'attic_push_failure_total %s\n' "$TOTAL_FAILURE"                          >> "$METRIC_TMP"
+      # node_exporter runs as the `node-exporter` user, NOT root. mktemp creates
+      # 0600 and `mv` preserves it, so without this chmod the published file is
+      # unreadable by the very collector it exists for — and the failure is
+      # silent in the way that matters: this hook succeeds, the file is correct
+      # on disk, the scrape target stays `up`, and only
+      # node_textfile_scrape_error=1 plus an ERROR line in
+      # `journalctl -u prometheus-node-exporter` says otherwise. attic_push_*
+      # had NEVER been collected on any of the four hosts before 2026-09-20.
+      chmod 0644 "$METRIC_TMP"
       mv "$METRIC_TMP" "$METRIC_FILE"
     fi
   '');
