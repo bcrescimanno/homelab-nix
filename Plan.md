@@ -549,11 +549,51 @@ erebor is online (10G SFP+ at 10.0.1.22, 1G ethernet at 10.0.1.21 for management
   which is what would make this active rather than passive. Deferred, not
   rejected.
 
-- [ ] **Grafana DNS dashboard (Pi-hole-style panels)** — blocked on Loki above.
-  `blocky_query_total` has only `client` and `type` (DNS record type) labels, so
-  there is no per-client blocked-domain breakdown; a Prometheus-only approach
-  cannot deliver this panel set. Once Loki is up, build top blocked domains and
-  per-client breakdowns in LogQL.
+- [x] **Grafana DNS dashboard (Pi-hole-style panels). DONE 2026-09-20.**
+  `dashboards/dns-queries.json`, "DNS — Query Analytics" (uid
+  `homelab-dns-queries`), provisioned to mirkwood alongside the existing
+  Prometheus-fed "Blocky" dashboard, which is deliberately kept: the two are
+  not redundant, and the split is now load-bearing (see the parsing note
+  below). 18 panels over five rows — overview stats, answer-source breakdown,
+  blocked vs allowed, client ranking + per-client table, top domains and
+  blocklist rules, and a formatted query log. Variables: resolver (multi),
+  a case-insensitive client substring, and a blocked/allowed filter for the
+  log panel.
+
+  The original premise held — `blocky_query_total` carries only `client` and
+  `type`, so none of this was expressible in Prometheus. Four things found
+  while building it that are not obvious from the data:
+
+  - **Only the six LEFT-HAND columns of the query log are parseable.** It is
+    tab-separated, but written by a CSV writer, and the `answer` column is
+    quoted *and contains literal tabs* whenever it holds an HTTPS/SVCB record
+    (miekg/dns serialises RRs with them). A positional parse past `answer`
+    therefore mis-assigns every later column on ~1.5% of lines — it reads the
+    response type as `IN`. Everything here stops at `question`, which is
+    lossless (verified: parsed line count == raw line count). Query type and
+    response code sit past that break, which is why they stay on the
+    Prometheus dashboard.
+  - **sprig's `hasPrefix` takes the PREFIX FIRST.** `hasPrefix .reason
+    "BLOCKED"` is not an error — it silently returns false for every line, and
+    the panel renders a clean, entirely wrong breakdown. Signature failure
+    mode of this lab; every `label_format` here is written prefix-first.
+  - **`topk()` does not avoid Loki's `max_query_series`.** The limit bounds
+    what a query MATERIALISES, so `topk(15, sum by (question) (...))` still
+    builds one series per domain and dies at 24h on the default 500 while
+    working fine at 6h. Fixed in `modules/loki.nix` by raising the limit
+    against measured cardinality (972 distinct domains). `approx_topk` is the
+    feature meant for exactly this and is **broken in Loki 3.7.7** — see that
+    module's comment before trying it.
+  - **The reason column has more values than the docs suggest** — `CACHED
+    NEGATIVE`, `CUSTOM DNS` (with a space) and `Special-Use Domain Name` all
+    appear. Matching `reason == "CACHED"` silently undercounts the cache hit
+    rate; the dashboard matches `CACHED.*`.
+
+  Not done, deliberately: the two resolvers each log what they answered and a
+  client using both is counted in both, so `All` sums rather than
+  de-duplicates. De-duplicating would need a query-side join on
+  (timestamp, client, question) that Loki cannot do cheaply; the host picker
+  is the escape hatch and the Notes row says so.
 
 ### Home Assistant / IoT
 

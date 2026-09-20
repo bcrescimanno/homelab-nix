@@ -1,0 +1,1847 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Pi-hole-style view of Blocky's query log out of Loki: who is asking, what is blocked, and what is served from cache rather than resolved.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": false,
+      "title": "Blocky",
+      "tooltip": "Blocky's own Prometheus metrics",
+      "type": "link",
+      "url": "/d/JvOqE4gR1"
+    }
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Overview",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Queries",
+      "description": "Every query the selected resolver(s) answered in the dashboard time range, after the client filter.",
+      "datasource": {
+        "type": "loki",
+        "uid": "homelab-loki"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 1
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "homelab-loki"
+          },
+          "editorMode": "code",
+          "expr": "sum(count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` [$__range]))",
+          "queryType": "instant"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "percentChangeColorMode": "standard"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "unit": "short",
+          "decimals": 0,
+          "mappings": [],
+          "noValue": "0"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Blocked",
+      "description": "Queries answered from a blocklist rather than resolved.",
+      "datasource": {
+        "type": "loki",
+        "uid": "homelab-loki"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 1
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "homelab-loki"
+          },
+          "editorMode": "code",
+          "expr": "sum(count_over_time({job=\"blocky\", host=~\"$host\"} |= \"BLOCKED\" | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` | reason =~ `BLOCKED.*` [$__range]))",
+          "queryType": "instant"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "percentChangeColorMode": "standard"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "red"
+          },
+          "unit": "short",
+          "decimals": 0,
+          "mappings": [],
+          "noValue": "0"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Block rate",
+      "description": "Blocked as a share of all queries.",
+      "datasource": {
+        "type": "loki",
+        "uid": "homelab-loki"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 1
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "homelab-loki"
+          },
+          "editorMode": "code",
+          "expr": "sum(count_over_time({job=\"blocky\", host=~\"$host\"} |= \"BLOCKED\" | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` | reason =~ `BLOCKED.*` [$__range])) / sum(count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` [$__range])) * 100",
+          "queryType": "instant"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "percentChangeColorMode": "standard"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "red"
+          },
+          "unit": "percent",
+          "decimals": 1,
+          "mappings": [],
+          "noValue": "0"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Served from cache",
+      "description": "Share of the queries that actually needed an answer (i.e. excluding blocked ones) that Blocky served from its own cache instead of asking anything upstream. CACHED NEGATIVE counts as a hit.",
+      "datasource": {
+        "type": "loki",
+        "uid": "homelab-loki"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 1
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "homelab-loki"
+          },
+          "editorMode": "code",
+          "expr": "sum(count_over_time({job=\"blocky\", host=~\"$host\"} |= \"CACHED\" | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` | reason =~ `CACHED.*` [$__range])) / sum(count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` | reason !~ `BLOCKED.*` [$__range])) * 100",
+          "queryType": "instant"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "percentChangeColorMode": "standard"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "unit": "percent",
+          "decimals": 1,
+          "mappings": [],
+          "noValue": "0"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Clients",
+      "description": "Distinct client names seen in the range.",
+      "datasource": {
+        "type": "loki",
+        "uid": "homelab-loki"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 1
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "homelab-loki"
+          },
+          "editorMode": "code",
+          "expr": "count(sum by (client_name) (count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` [$__range])))",
+          "queryType": "instant"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "percentChangeColorMode": "standard"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "unit": "short",
+          "decimals": 0,
+          "mappings": [],
+          "noValue": "0"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "p95 lookup",
+      "description": "95th percentile of Blocky's own duration column, over real lookups only — blocked and cached answers are 0 ms and would flatter it.",
+      "datasource": {
+        "type": "loki",
+        "uid": "homelab-loki"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 1
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "homelab-loki"
+          },
+          "editorMode": "code",
+          "expr": "quantile_over_time(0.95, {job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` | reason !~ `BLOCKED.*` | reason !~ `CACHED.*` | unwrap duration_ms [$__range]) by ()",
+          "queryType": "instant"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "percentChangeColorMode": "standard"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "unit": "ms",
+          "decimals": 0,
+          "mappings": [],
+          "noValue": "0"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 8,
+      "type": "row",
+      "title": "Traffic",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 5
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Where answers came from",
+      "description": "Every query bucketed by what actually produced the answer. 'Cached' and 'Recursive (Unbound)' are the two that matter for cache-vs-real-lookup: anything that is not cached, blocked or conditional left the house. 'Upstream DoH (fallback)' should normally be empty — Blocky's upstream strategy is `strict`, so traffic only lands there when Unbound is failing, and a persistent band is worth chasing.",
+      "datasource": {
+        "type": "loki",
+        "uid": "homelab-loki"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 16,
+        "x": 0,
+        "y": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "homelab-loki"
+          },
+          "editorMode": "code",
+          "expr": "sum by (source) (count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` | label_format source=`{{ if hasPrefix \"BLOCKED\" .reason }}Blocked{{ else if hasPrefix \"CACHED\" .reason }}Cached{{ else if eq .reason \"CONDITIONAL\" }}Conditional (UDM Pro){{ else if hasPrefix \"RESOLVED (tcp+udp:127.0.0.1:5335)\" .reason }}Recursive (Unbound){{ else if hasPrefix \"RESOLVED (https\" .reason }}Upstream DoH (fallback){{ else if hasPrefix \"RESOLVED\" .reason }}Resolved (other upstream){{ else if hasPrefix \"CUSTOM DNS\" .reason }}Custom DNS{{ else if hasPrefix \"Special-Use\" .reason }}Special-use (RFC 6761){{ else }}{{ .reason }}{{ end }}` [$__auto]))",
+          "queryType": "range",
+          "legendFormat": "{{source}}"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc",
+          "hideZeros": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "mappings": [],
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "barAlignment": 0,
+            "barWidthFactor": 0.9,
+            "lineWidth": 0,
+            "fillOpacity": 85,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": false,
+            "insertNulls": false,
+            "axisPlacement": "auto",
+            "axisLabel": "queries / interval",
+            "axisColorMode": "text",
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisSoftMin": 0,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Blocked"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Cached"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Recursive (Unbound)"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "purple"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Conditional (UDM Pro)"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Upstream DoH (fallback)"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "yellow"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Resolved (other upstream)"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "super-light-blue"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Custom DNS"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "super-light-purple"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Special-use (RFC 6761)"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "text"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 10,
+      "type": "piechart",
+      "title": "Answer source mix",
+      "description": "The same breakdown totalled over the range.",
+      "datasource": {
+        "type": "loki",
+        "uid": "homelab-loki"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "homelab-loki"
+          },
+          "editorMode": "code",
+          "expr": "sum by (source) (count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` | label_format source=`{{ if hasPrefix \"BLOCKED\" .reason }}Blocked{{ else if hasPrefix \"CACHED\" .reason }}Cached{{ else if eq .reason \"CONDITIONAL\" }}Conditional (UDM Pro){{ else if hasPrefix \"RESOLVED (tcp+udp:127.0.0.1:5335)\" .reason }}Recursive (Unbound){{ else if hasPrefix \"RESOLVED (https\" .reason }}Upstream DoH (fallback){{ else if hasPrefix \"RESOLVED\" .reason }}Resolved (other upstream){{ else if hasPrefix \"CUSTOM DNS\" .reason }}Custom DNS{{ else if hasPrefix \"Special-Use\" .reason }}Special-use (RFC 6761){{ else }}{{ .reason }}{{ end }}` [$__range]))",
+          "queryType": "instant",
+          "legendFormat": "{{source}}"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "pieType": "donut",
+        "displayLabels": [],
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "values": [
+            "value",
+            "percent"
+          ]
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "desc",
+          "hideZeros": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "mappings": [],
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Blocked"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Cached"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Recursive (Unbound)"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "purple"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Conditional (UDM Pro)"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Upstream DoH (fallback)"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "yellow"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Resolved (other upstream)"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "super-light-blue"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Custom DNS"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "super-light-purple"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Special-use (RFC 6761)"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "text"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Blocked vs allowed",
+      "description": "The headline split over time, for whatever the host and client pickers currently select.",
+      "datasource": {
+        "type": "loki",
+        "uid": "homelab-loki"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 16,
+        "x": 0,
+        "y": 14
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "homelab-loki"
+          },
+          "editorMode": "code",
+          "expr": "sum by (status) (count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` | label_format status=`{{ if hasPrefix \"BLOCKED\" .reason }}Blocked{{ else }}Allowed{{ end }}` [$__auto]))",
+          "queryType": "range",
+          "legendFormat": "{{status}}"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc",
+          "hideZeros": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "mappings": [],
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "barAlignment": 0,
+            "barWidthFactor": 0.9,
+            "lineWidth": 0,
+            "fillOpacity": 85,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": false,
+            "insertNulls": false,
+            "axisPlacement": "auto",
+            "axisLabel": "queries / interval",
+            "axisColorMode": "text",
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisSoftMin": 0,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Blocked"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Allowed"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 12,
+      "type": "bargauge",
+      "title": "Blocked vs allowed, by resolver",
+      "description": "Per DNS host. These are two independent resolvers, not a cluster — a client configured with both appears in both, so the two bars are not shares of one pie.",
+      "datasource": {
+        "type": "loki",
+        "uid": "homelab-loki"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 16,
+        "y": 14
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "homelab-loki"
+          },
+          "editorMode": "code",
+          "expr": "sum by (host, status) (count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` | label_format status=`{{ if hasPrefix \"BLOCKED\" .reason }}Blocked{{ else }}Allowed{{ end }}` [$__range]))",
+          "queryType": "instant",
+          "legendFormat": "{{host}} — {{status}}"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "valueMode": "text",
+        "namePlacement": "auto",
+        "showUnfilled": true,
+        "sizing": "auto",
+        "minVizWidth": 8,
+        "minVizHeight": 16,
+        "maxVizHeight": 300,
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "mappings": [],
+          "noValue": "0",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 13,
+      "type": "row",
+      "title": "Clients",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 21
+      }
+    },
+    {
+      "id": 14,
+      "type": "bargauge",
+      "title": "Noisiest clients",
+      "description": "Ranked by total queries. NOT affected by the client filter — this is the panel you pick a client from.",
+      "datasource": {
+        "type": "loki",
+        "uid": "homelab-loki"
+      },
+      "gridPos": {
+        "h": 11,
+        "w": 8,
+        "x": 0,
+        "y": 22
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "homelab-loki"
+          },
+          "editorMode": "code",
+          "expr": "topk(15, sum by (client_name) (count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{client_name}}"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "valueMode": "text",
+        "namePlacement": "auto",
+        "showUnfilled": true,
+        "sizing": "auto",
+        "minVizWidth": 8,
+        "minVizHeight": 16,
+        "maxVizHeight": 300,
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "mappings": [],
+          "noValue": "0",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 15,
+      "type": "bargauge",
+      "title": "Most-blocked clients",
+      "description": "Ranked by blocked queries only. Also ignores the client filter. A device near the top of this and not the panel to its left is doing little else.",
+      "datasource": {
+        "type": "loki",
+        "uid": "homelab-loki"
+      },
+      "gridPos": {
+        "h": 11,
+        "w": 8,
+        "x": 8,
+        "y": 22
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "homelab-loki"
+          },
+          "editorMode": "code",
+          "expr": "topk(15, sum by (client_name) (count_over_time({job=\"blocky\", host=~\"$host\"} |= \"BLOCKED\" | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | reason =~ `BLOCKED.*` [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{client_name}}"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "valueMode": "text",
+        "namePlacement": "auto",
+        "showUnfilled": true,
+        "sizing": "auto",
+        "minVizWidth": 8,
+        "minVizHeight": 16,
+        "maxVizHeight": 300,
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "mappings": [],
+          "noValue": "0",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "red"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 16,
+      "type": "table",
+      "title": "Per-client breakdown",
+      "description": "Queries, blocked, and blocked share per client, over the range. Ignores the client filter. A client with no blocked queries has no series for those two columns, which is why they read 0 rather than being absent.",
+      "datasource": {
+        "type": "loki",
+        "uid": "homelab-loki"
+      },
+      "gridPos": {
+        "h": 11,
+        "w": 8,
+        "x": 16,
+        "y": 22
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "homelab-loki"
+          },
+          "editorMode": "code",
+          "expr": "sum by (client_name, metric) (count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | label_format metric=`Queries` [$__range]))",
+          "queryType": "instant"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "loki",
+            "uid": "homelab-loki"
+          },
+          "editorMode": "code",
+          "expr": "sum by (client_name, metric) (count_over_time({job=\"blocky\", host=~\"$host\"} |= \"BLOCKED\" | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | reason =~ `BLOCKED.*` | label_format metric=`Blocked` [$__range]))",
+          "queryType": "instant"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "loki",
+            "uid": "homelab-loki"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(sum by (client_name) (count_over_time({job=\"blocky\", host=~\"$host\"} |= \"BLOCKED\" | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | reason =~ `BLOCKED.*` [$__range])) / sum by (client_name) (count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" [$__range])) * 100, \"metric\", \"Blocked %\", \"\", \"\")",
+          "queryType": "instant"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "joinByLabels",
+          "options": {
+            "join": [
+              "client_name"
+            ],
+            "value": "metric"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "includeByName": {},
+            "indexByName": {
+              "client_name": 0,
+              "Queries": 1,
+              "Blocked": 2,
+              "Blocked %": 3
+            },
+            "renameByName": {
+              "client_name": "Client"
+            }
+          }
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "countRows": false,
+          "fields": "",
+          "enablePagination": false
+        },
+        "sortBy": [
+          {
+            "displayName": "Queries",
+            "desc": true
+          }
+        ]
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false,
+            "filterable": false
+          },
+          "mappings": [],
+          "noValue": "0",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Blocked %"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "text"
+                }
+              },
+              {
+                "id": "max",
+                "value": 100
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Blocked"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "Queries per client over time",
+      "description": "The top 5 clients at each point in time, bucketed. This is the panel that shows a device that started talking at 3am and has not stopped.",
+      "datasource": {
+        "type": "loki",
+        "uid": "homelab-loki"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 33
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "homelab-loki"
+          },
+          "editorMode": "code",
+          "expr": "topk(5, sum by (client_name) (count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` [$__auto])))",
+          "queryType": "range",
+          "legendFormat": "{{client_name}}"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc",
+          "hideZeros": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "mappings": [],
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "barAlignment": 0,
+            "barWidthFactor": 0.9,
+            "lineWidth": 0,
+            "fillOpacity": 85,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": false,
+            "insertNulls": false,
+            "axisPlacement": "auto",
+            "axisLabel": "queries / interval",
+            "axisColorMode": "text",
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisSoftMin": 0,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 18,
+      "type": "row",
+      "title": "Domains",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 41
+      }
+    },
+    {
+      "id": 19,
+      "type": "bargauge",
+      "title": "Top blocked domains",
+      "description": "What the blocklists are actually catching, in the range.",
+      "datasource": {
+        "type": "loki",
+        "uid": "homelab-loki"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 8,
+        "x": 0,
+        "y": 42
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "homelab-loki"
+          },
+          "editorMode": "code",
+          "expr": "topk(20, sum by (question) (count_over_time({job=\"blocky\", host=~\"$host\"} |= \"BLOCKED\" | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` | reason =~ `BLOCKED.*` [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{question}}"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "valueMode": "text",
+        "namePlacement": "auto",
+        "showUnfilled": true,
+        "sizing": "auto",
+        "minVizWidth": 8,
+        "minVizHeight": 16,
+        "maxVizHeight": 300,
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "mappings": [],
+          "noValue": "0",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "red"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 20,
+      "type": "bargauge",
+      "title": "Top allowed domains",
+      "description": "What the house actually resolves, blocked queries excluded.",
+      "datasource": {
+        "type": "loki",
+        "uid": "homelab-loki"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 8,
+        "x": 8,
+        "y": 42
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "homelab-loki"
+          },
+          "editorMode": "code",
+          "expr": "topk(20, sum by (question) (count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` | reason !~ `BLOCKED.*` [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{question}}"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "valueMode": "text",
+        "namePlacement": "auto",
+        "showUnfilled": true,
+        "sizing": "auto",
+        "minVizWidth": 8,
+        "minVizHeight": 16,
+        "maxVizHeight": 300,
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "mappings": [],
+          "noValue": "0",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "green"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 21,
+      "type": "bargauge",
+      "title": "Blocklist rules doing the work",
+      "description": "The matched rule rather than the domain — `ads: *.doubleclick.net` is one rule catching many names. Useful for spotting which list earns its place, and for finding the rule to allowlist when something legitimate breaks.",
+      "datasource": {
+        "type": "loki",
+        "uid": "homelab-loki"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 8,
+        "x": 16,
+        "y": 42
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "homelab-loki"
+          },
+          "editorMode": "code",
+          "expr": "topk(15, sum by (rule) (count_over_time({job=\"blocky\", host=~\"$host\"} |= \"BLOCKED\" | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` | reason =~ `BLOCKED.*` | label_format rule=`{{ regexReplaceAll \"^BLOCKED \\\\((.*)\\\\)$\" .reason \"${1}\" }}` [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{rule}}"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "valueMode": "text",
+        "namePlacement": "auto",
+        "showUnfilled": true,
+        "sizing": "auto",
+        "minVizWidth": 8,
+        "minVizHeight": 16,
+        "maxVizHeight": 300,
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "mappings": [],
+          "noValue": "0",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "orange"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "orange",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 22,
+      "type": "row",
+      "title": "Query log",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 54
+      }
+    },
+    {
+      "id": 23,
+      "type": "logs",
+      "title": "Query log",
+      "description": "The raw query log, reformatted to one readable line. Use the client box and the blocked/allowed picker at the top to narrow it.",
+      "datasource": {
+        "type": "loki",
+        "uid": "homelab-loki"
+      },
+      "gridPos": {
+        "h": 14,
+        "w": 24,
+        "x": 0,
+        "y": 55
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "homelab-loki"
+          },
+          "editorMode": "code",
+          "expr": "{job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` $logfilter | line_format `{{ .client_name }}  {{ .question }}  {{ .reason }}  {{ .duration_ms }}ms`",
+          "queryType": "range",
+          "maxLines": 1000
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": false,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending",
+        "enableInfiniteScrolling": true
+      }
+    },
+    {
+      "id": 25,
+      "type": "row",
+      "title": "Notes",
+      "collapsed": true,
+      "panels": [
+        {
+          "id": 24,
+          "type": "text",
+          "title": "How to read this",
+          "gridPos": {
+            "h": 10,
+            "w": 24,
+            "x": 0,
+            "y": 70
+          },
+          "options": {
+            "mode": "markdown",
+            "code": {
+              "language": "plaintext",
+              "showLineNumbers": false,
+              "showMiniMap": false
+            },
+            "content": "**Source.** Blocky's own query log, shipped to Loki by Alloy (`modules/alloy.nix`).\nRetention is Loki's 14 days, not Blocky's 30 on disk.\n\n**The two resolvers are independent.** mirkwood and rivendell each log what\n*they* answered. A client configured with both is counted in both, so `All`\nsums rather than de-duplicates. Pick a single host for exact per-resolver\nnumbers.\n\n**Only the left-hand columns are parsed, on purpose.** The log is tab-separated,\nbut the `answer` column is CSV-quoted and can itself contain tabs — an HTTPS/SVCB\nrecord serialises with them. Parsing positionally past `answer` therefore\nmis-assigns columns on ~1.5% of lines (it reads `IN` as the response type). Every\nquery here stops at `question`, which is lossless. Query type and response code\nlive past that break: get them from the **Blocky** dashboard, which reads\nPrometheus.\n\n**Client filter** is a case-insensitive substring — `ipad` matches\n`iPad.home.theshire.io`. The two client ranking panels deliberately ignore it,\nso there is always something to pick from.\n\n**Counts are queries, not devices.** A page load is many queries, and a client\nthat retries a blocked name inflates its own bar — which is the honest number\nfor \"who is making the most requests\", but not for \"who is busiest\"."
+          }
+        }
+      ],
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 69
+      }
+    }
+  ],
+  "preload": false,
+  "refresh": "1m",
+  "schemaVersion": 42,
+  "tags": [
+    "dns",
+    "blocky",
+    "loki"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "host",
+        "label": "resolver",
+        "type": "query",
+        "datasource": {
+          "type": "loki",
+          "uid": "homelab-loki"
+        },
+        "definition": "label_values({job=\"blocky\"},host)",
+        "query": {
+          "refId": "LokiVariableQueryEditor-VariableQuery",
+          "type": 1,
+          "label": "host",
+          "stream": "{job=\"blocky\"}"
+        },
+        "current": {
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": [],
+        "refresh": 1,
+        "regex": "",
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "hide": 0,
+        "skipUrlSync": false
+      },
+      {
+        "name": "client",
+        "label": "client contains",
+        "type": "textbox",
+        "query": "",
+        "current": {
+          "text": "",
+          "value": ""
+        },
+        "options": [],
+        "hide": 0,
+        "skipUrlSync": false,
+        "description": "Case-insensitive substring. Leave empty for all."
+      },
+      {
+        "name": "logfilter",
+        "label": "query log shows",
+        "type": "custom",
+        "query": "All : | reason =~ `.*`,Blocked only : | reason =~ `BLOCKED.*`,Allowed only : | reason !~ `BLOCKED.*`",
+        "current": {
+          "text": "All",
+          "value": "| reason =~ `.*`"
+        },
+        "options": [
+          {
+            "selected": true,
+            "text": "All",
+            "value": "| reason =~ `.*`"
+          },
+          {
+            "selected": false,
+            "text": "Blocked only",
+            "value": "| reason =~ `BLOCKED.*`"
+          },
+          {
+            "selected": false,
+            "text": "Allowed only",
+            "value": "| reason !~ `BLOCKED.*`"
+          }
+        ],
+        "multi": false,
+        "includeAll": false,
+        "hide": 0,
+        "skipUrlSync": false
+      }
+    ]
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "DNS — Query Analytics",
+  "uid": "homelab-dns-queries",
+  "version": 1,
+  "weekStart": ""
+}
