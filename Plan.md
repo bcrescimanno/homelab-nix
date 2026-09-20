@@ -334,12 +334,115 @@ the answer is not "pick one" — they solve different problems:
   self-hosted control plane running on the lab it grants access to is
   chicken-and-egg during exactly the outage you need it for.
 
-**Decision to make before deploying anything:** does Tailscale *replace* the UDM
-Pro WireGuard server, or sit beside it? Replacing it is the only outcome that
-actually simplifies — adding Tailscale while keeping UDM WireGuard means four
-mechanisms, not three. Keeping UDM WireGuard as a break-glass fallback for when
-Tailscale's control plane is unreachable is a defensible exception, but it should
-be a deliberate, documented fallback rather than drift.
+**Decided 2026-09-20: Tailscale replaces the UDM Pro WireGuard server**, with a
+time-boxed break-glass window rather than an open-ended one. The UDM WireGuard
+server stays switched on until **2026-10-04** so there is a way in that does not
+depend on Tailscale's control plane while the tailnet is still unproven. On that
+date the client profiles are deleted from the phone and laptop and the server is
+turned off in the UniFi UI. If it is still on after that date it has become
+drift, which is the thing this section exists to prevent.
+
+The implementation landed in `modules/tailscale.nix`, imported by `base.nix`, so
+all four hosts join. Read that file's header before changing any of it — three
+things in it are load-bearing and each fails silently:
+
+- **Nothing opens a port, on purpose.** NixOS emits its top-level
+  `allowedTCPPorts` rules with no `-i` match, so the tailnet already sees exactly
+  the LAN-open surface and nothing more. mirkwood's Prometheus stays closed for
+  free. `trustedInterfaces = [ "tailscale0" ]` would break that and must not be
+  added.
+- **`extraUpFlags` applies only at first authentication**; `extraSetFlags` is the
+  every-activation reconcile path. Routes and the exit node live in the latter.
+- **`--accept-dns=false` on the hosts.** Client devices should accept tailnet
+  DNS — that is what makes Blocky follow the phone. The servers must not, or all
+  host name resolution, including the nightly upgrade's flake fetch, starts
+  depending on tailscaled.
+
+Topology: rivendell **and** mirkwood both advertise `10.0.1.0/24`, so the subnet
+router has the same redundancy the resolvers already have. orthanc advertises an
+exit node (opt-in per client, costs nothing unselected). pirateship stays a plain
+client — `useRoutingFeatures` above `none` would loosen reverse-path filtering on
+the host running gluetun's kill switch. The IoT VLAN `10.0.12.0/22` is **not**
+advertised; rivendell's `eth0.4` isolation is deliberate.
+
+Remaining work, in order:
+
+- [ ] **Bootstrap the tailnet.** Sign up with **GitHub**, not Apple — see the
+      no-Apple-ecosystem-coupling constraint. The identity provider is chosen once
+      and is painful to change later, and GitHub is already the account this
+      repo's automation authenticates as.
+- [ ] **Paste `tailscale/policy.hujson` into Access Controls — before creating the
+      OAuth client, not after.** The OAuth client's tag scope can only select tags
+      that already exist in `tagOwners`, so the policy has to land first or
+      `tag:homelab` will not be offered.
+- [ ] **Create the OAuth client**: Settings → OAuth clients, scope `auth_keys`
+      (write), tag `tag:homelab`. The secret is shown exactly once. Plain auth keys
+      cap out at 90 days and would need a remembered re-auth, which is the drift
+      this avoids.
+- [ ] **Add `tailscale_auth_key`** (the OAuth client secret, `tskey-client-…`) to
+      all four `secrets/*.yaml`. Until this exists on a host, that host's deploy
+      fails at sops activation — this gates everything below.
+- [x] **Deploy** orthanc → mirkwood → rivendell → pirateship — done 2026-09-20.
+      All four enrolled `Running` under `tag:homelab`; `tailscaled-set` returned
+      `success` everywhere, which is what confirmed `--accept-dns=false`,
+      `--advertise-routes` and `--advertise-exit-node` are accepted `set` flags.
+      Verified: `CorpDNS=false` and no `100.100.100.100` in `resolv.conf` on every
+      host; `10.0.1.0/24` advertised by rivendell + mirkwood, `none` on
+      pirateship; orthanc offers the exit node; pirateship's forwarding and
+      rp_filter sysctls byte-identical to the pre-deploy baseline, gluetun never
+      restarted, qBittorrent still `Session\Interface=10.2.0.2`, and a fresh
+      `vpn-leak-check` returned success.
+
+      **Deploy from a worktree with `./scripts/deploy <host>`, never the bare
+      `deploy`.** The PATH entry resolves to the MAIN checkout's copy and the
+      script derives `FLAKE` from its own location, so `deploy orthanc` silently
+      deployed the main checkout's stale pre-NUT branch and reverted orthanc's
+      upsmon/nutmon/`homelab-ups-shed.timer` while reporting success. Magic
+      rollback cannot catch this — the deploy genuinely succeeded, it was just the
+      wrong flake. Tell: activation logs `removing user`/`removing secret` for
+      things your change only adds.
+- [x] **Routes and exit node approved** — `autoApprovers` covered them with no
+      console clicking. rivendell reports `PrimaryRoutes=10.0.1.0/24` and carries
+      it in `AllowedIPs`. Note this is only visible from the advertising node or
+      the console: tagged nodes have an empty peer list by design (see
+      `tailscale/policy.hujson`).
+- [x] **Tailnet DNS** — done 2026-09-20, after the deploy, as planned. Global
+      nameservers set to rivendell `100.115.136.4` and mirkwood `100.79.85.116`,
+      Override local DNS + MagicDNS on.
+
+      **`*.theshire.io` publicly resolves to the WAN IP** (`grafana.theshire.io`
+      → CNAME `theshire.io` → `73.231.204.140`), so before this step an off-LAN
+      browser dialled the WAN and hung rather than failing fast. This step is what
+      makes the split-horizon answer reach the phone — it is not a nicety, it is
+      the difference between working and stalling.
+- [x] **Verified from cellular** 2026-09-20: `grafana.theshire.io` loads on the
+      real wildcard cert and `ssh rivendell` resolves via MagicDNS. Blocky's CSV
+      query log shows 45 rows with the phone's tailnet address `100.127.74.71` in
+      the client column, and the tailnet listener returns `0.0.0.0` for
+      `doubleclick.net` and `pagead2.googlesyndication.com` while `github.com`
+      resolves normally — so ad-blocking genuinely follows the phone.
+
+      The **negative** test was proven at the rule level rather than by one curl,
+      because a curl from mirkwood to its own tailnet address arrives on `lo`,
+      which the firewall accepts, and would have falsely passed. On mirkwood:
+      zero accept rules for 9090, zero `tailscale0`-specific rules, and the only
+      `-i` accepts are `lo` and ICMP. Prometheus binds `*:9090`, so the firewall
+      is the only thing protecting it — and it refuses on `tailscale0` for the
+      same reason it refuses on `eth0`.
+
+      Still untested: erebor `10.0.1.22` through the subnet route, and whether the
+      phone gets a `direct` path rather than `relay`.
+- [x] **pirateship re-verified** after its deploy: forwarding and rp_filter
+      sysctls byte-identical to the pre-deploy baseline, gluetun never restarted,
+      qBittorrent still `Session\Interface=10.2.0.2`, fresh `vpn-leak-check`
+      returned success with no latch.
+- [ ] **Add the ACL gitops workflow** (`tailscale/gitops-acl-action`, same shape
+      as `check-overlays.yml`) once `TS_OAUTH_CLIENT_ID`/`TS_OAUTH_SECRET` are
+      repo secrets. Until then the console and `policy.hujson` can drift.
+- [ ] **2026-10-04: turn the UDM WireGuard server off** and delete the client
+      profiles.
+- [ ] Add the tailnet range to qBittorrent's `WebUI\AuthSubnetWhitelist` when the
+      login-friction work happens (see that section).
 
 ### NAS (erebor) — Remaining Work
 
@@ -465,20 +568,19 @@ erebor is online (10G SFP+ at 10.0.1.22, 1G ethernet at 10.0.1.21 for management
 Reviewed 2026-09-19 against the live lab. Verdicts below; rejected ideas moved to
 "Decided Against" so they stop resurfacing.
 
-- [ ] **Tailscale — HIGH PRIORITY, design first.** The lab has three overlapping
-  remote-access mechanisms and no single story for "reach the homelab from
-  outside": the Cloudflare Tunnel on orthanc (public ingress for
-  `stream`/`vault`/Invidious), the UDM Pro's own WireGuard VPN server (outside
-  this repo, unmanaged by Nix), and gluetun's ProtonVPN WireGuard (**unrelated**
-  — that is outbound egress for the torrent stack and is not remote access).
-  Tailscale's job is the private half: SSH plus the LAN-only dashboards
-  (Homepage, Grafana, the three unauthenticated `*-stats` Glances vhosts) with
-  no inbound port and no public exposure.
+- [~] **Tailscale — IN PROGRESS.** Designed and written; awaiting the tailnet
+  bootstrap and the sops key. Its job is the private half of remote access: SSH
+  plus the LAN-only dashboards (Homepage, Grafana, the three unauthenticated
+  `*-stats` Glances vhosts) with no inbound port and no public exposure. It
+  **replaces** the UDM Pro's WireGuard server — the goal was consolidation, not a
+  fourth mechanism — and the Cloudflare Tunnel stays, because it serves people
+  who cannot be asked to join a VPN. gluetun's ProtonVPN WireGuard is
+  **unrelated** and must not be folded in: that is outbound egress for the
+  torrent stack.
 
-  `services.tailscale` is native, with `authKeyFile` for the sops key, so this
-  is declarative. **The goal is consolidation, not a fourth mechanism** — decide
-  what retires before deploying. Full comparison and the open decision are in
-  "Remote access consolidation" above.
+  `modules/tailscale.nix` is written and imported by `base.nix`. The decision,
+  the topology, the three silent-failure traps in that module, and the remaining
+  checklist are in "Remote access consolidation" above.
 
 - [ ] **Dead man's switch — external, out-of-band.** See "Observability gaps".
 - [ ] **Loki + Alloy — centralized logs.** See "Observability gaps" above; the

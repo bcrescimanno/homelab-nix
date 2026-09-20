@@ -187,6 +187,25 @@ let
               description = "The Minecraft container unit has been out of the active state for 10 minutes. Paused-by-autopause still counts as active, so this is a real stop, not an idle server.";
             };
           }
+          {
+            # Remote access is the definitive silent failure: a dead tailscaled
+            # changes nothing anyone can see from the LAN, and you find out when
+            # you are away from the house and need it. UnitFailed above only
+            # catches `failed`; a daemon that is cleanly stopped is `inactive`.
+            #
+            # This says the daemon is running, not that the node is authenticated
+            # or that its routes are approved — tailscaled stays active through
+            # both. Those are one-time console states, checked at setup, not
+            # things that drift.
+            alert = "TailscaleDown";
+            expr = ''systemd_unit_state{name="tailscaled.service",state="active"} == 0'';
+            "for" = "10m";
+            labels.severity = "warning";
+            annotations = {
+              summary = "tailscaled is not running on {{ $labels.instance }}";
+              description = "tailscaled has been out of the active state for 10 minutes. If this is rivendell or mirkwood, the LAN subnet route it advertises is gone with it — remote access survives on the other one, and dies if both are down.";
+            };
+          }
         ];
       }
       {
