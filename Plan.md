@@ -401,24 +401,41 @@ Remaining work, in order:
       rollback cannot catch this — the deploy genuinely succeeded, it was just the
       wrong flake. Tell: activation logs `removing user`/`removing secret` for
       things your change only adds.
-- [ ] **Approve the routes and exit node** in the console if `autoApprovers` did
-      not already cover them. This could not be checked from a host: tagged nodes
-      have an empty peer list by design (see `tailscale/policy.hujson`), so route
-      approval is only visible from the admin console or a member device.
-- [ ] **Tailnet DNS last, not first.** Set the global nameservers to rivendell's
-      and mirkwood's `100.x` addresses, enable Override local DNS and MagicDNS —
-      only once both Pis are on the tailnet with routes approved. This is the step
-      that makes ad-blocking and split-horizon `*.theshire.io` follow the phone,
-      and it is also the step that makes off-LAN DNS depend on a reachable Pi.
-- [ ] **Verify from cellular**, not from the LAN — per the standing note that a
-      LAN test proves nothing about reachability. `tailscale status` shows
-      `direct` rather than `relay`; a `*.theshire.io` vhost loads on the real
-      wildcard cert; Blocky's query log shows the phone's `100.x` as the source; a
-      non-tailnet LAN device answers through the subnet route (erebor
-      `10.0.1.22`); and — the **negative** test — mirkwood's `9090` is still
-      refused.
-- [ ] **Re-verify pirateship** after its deploy: kill switch still latches,
-      qBittorrent still bound to tun0's IP.
+- [x] **Routes and exit node approved** — `autoApprovers` covered them with no
+      console clicking. rivendell reports `PrimaryRoutes=10.0.1.0/24` and carries
+      it in `AllowedIPs`. Note this is only visible from the advertising node or
+      the console: tagged nodes have an empty peer list by design (see
+      `tailscale/policy.hujson`).
+- [x] **Tailnet DNS** — done 2026-09-20, after the deploy, as planned. Global
+      nameservers set to rivendell `100.115.136.4` and mirkwood `100.79.85.116`,
+      Override local DNS + MagicDNS on.
+
+      **`*.theshire.io` publicly resolves to the WAN IP** (`grafana.theshire.io`
+      → CNAME `theshire.io` → `73.231.204.140`), so before this step an off-LAN
+      browser dialled the WAN and hung rather than failing fast. This step is what
+      makes the split-horizon answer reach the phone — it is not a nicety, it is
+      the difference between working and stalling.
+- [x] **Verified from cellular** 2026-09-20: `grafana.theshire.io` loads on the
+      real wildcard cert and `ssh rivendell` resolves via MagicDNS. Blocky's CSV
+      query log shows 45 rows with the phone's tailnet address `100.127.74.71` in
+      the client column, and the tailnet listener returns `0.0.0.0` for
+      `doubleclick.net` and `pagead2.googlesyndication.com` while `github.com`
+      resolves normally — so ad-blocking genuinely follows the phone.
+
+      The **negative** test was proven at the rule level rather than by one curl,
+      because a curl from mirkwood to its own tailnet address arrives on `lo`,
+      which the firewall accepts, and would have falsely passed. On mirkwood:
+      zero accept rules for 9090, zero `tailscale0`-specific rules, and the only
+      `-i` accepts are `lo` and ICMP. Prometheus binds `*:9090`, so the firewall
+      is the only thing protecting it — and it refuses on `tailscale0` for the
+      same reason it refuses on `eth0`.
+
+      Still untested: erebor `10.0.1.22` through the subnet route, and whether the
+      phone gets a `direct` path rather than `relay`.
+- [x] **pirateship re-verified** after its deploy: forwarding and rp_filter
+      sysctls byte-identical to the pre-deploy baseline, gluetun never restarted,
+      qBittorrent still `Session\Interface=10.2.0.2`, fresh `vpn-leak-check`
+      returned success with no latch.
 - [ ] **Add the ACL gitops workflow** (`tailscale/gitops-acl-action`, same shape
       as `check-overlays.yml`) once `TS_OAUTH_CLIENT_ID`/`TS_OAUTH_SECRET` are
       repo secrets. Until then the console and `policy.hujson` can drift.
