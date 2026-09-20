@@ -25,6 +25,12 @@ let
   # matched by name, so setting this updates the existing one in place.
   promDatasourceUid = "homelab-prometheus";
 
+  # Same reasoning as above, applied before the fact: this datasource is being
+  # created with its uid already pinned, so it never gets a generated one and
+  # never needs the deleteDatasources dance that the Prometheus one required
+  # retrofitting. Dashboards in dashboards/ refer to it by this string.
+  lokiDatasourceUid = "homelab-loki";
+
   # Every metric name below was read off the live exporters before the rule was
   # written, not guessed. A rule naming a metric that does not exist is not an
   # error in Prometheus — it is a rule that silently never fires, which is the
@@ -636,6 +642,60 @@ let
           }
         ];
       }
+      {
+        # Log shipping watches itself. Without these three rules the whole Loki
+        # stack is a thing you only discover is broken on the day you need it —
+        # which is the precise failure this repo keeps re-learning.
+        name = "logging";
+        rules = [
+          {
+            # THE rule. A counter that is not advancing is the only evidence
+            # that distinguishes "shipping fine" from "active and shipping
+            # nothing", and Alloy reaches the latter state in at least two
+            # documented ways: missing journal group membership (Grafana's own
+            # docs: "starts without error but collects no journal entries") and
+            # a Loki-side rejection (observed 2026-09-20, schema misconfig,
+            # 67k lines read and zero accepted).
+            #
+            # increase() over 1h rather than a short rate: a quiet Pi at 2MB of
+            # journal a day can legitimately go minutes without a line, but not
+            # a full hour.
+            alert = "AlloyNotShipping";
+            expr = ''increase(loki_write_sent_entries_total[1h]) == 0'';
+            "for" = "30m";
+            labels.severity = "warning";
+            annotations = {
+              summary = "{{ $labels.instance }} has shipped no logs for an hour";
+              description = "Alloy on {{ $labels.instance }} is running but has not delivered a single log entry to Loki in an hour. Check `loki_source_journal_target_lines_total` to tell a dead reader from a rejecting writer.";
+            };
+          }
+          {
+            # Fires on the write path returning anything non-2xx, which is what
+            # the 2026-09-20 schema bug looked like from the client side long
+            # before any entry was actually dropped. Alloy retries with backoff,
+            # so a handful of these during a Loki restart is normal — hence the
+            # 15m `for`.
+            alert = "AlloyWriteErrors";
+            expr = ''increase(loki_write_request_duration_seconds_count{status_code!~"2.."}[30m]) > 0'';
+            "for" = "15m";
+            labels.severity = "warning";
+            annotations = {
+              summary = "Alloy on {{ $labels.instance }} is getting errors from Loki";
+              description = "Loki has been returning {{ $labels.status_code }} to Alloy on {{ $labels.instance }} for 15m. Logs are being retried and will be dropped if this persists.";
+            };
+          }
+          {
+            # Retries exhausted — these entries are gone for good.
+            alert = "AlloyDroppingLogs";
+            expr = ''increase(loki_write_dropped_entries_total[1h]) > 0'';
+            labels.severity = "critical";
+            annotations = {
+              summary = "Alloy on {{ $labels.instance }} is dropping logs ({{ $labels.reason }})";
+              description = "Alloy on {{ $labels.instance }} gave up on log entries after retrying, reason={{ $labels.reason }}. That data is lost.";
+            };
+          }
+        ];
+      }
     ];
   };
 in
@@ -690,6 +750,30 @@ in
         job_name       = "nut";
         metrics_path   = "/ups_metrics";
         static_configs = [{ targets = [ "rivendell:9199" ]; }];
+      }
+      {
+        # Alloy's own health, on all four hosts. This job is not optional
+        # garnish — it is the ONLY thing that can tell you Alloy has stopped
+        # shipping.
+        #
+        # Grafana's docs for loki.source.journal are explicit that without the
+        # right group membership the component "starts without error but
+        # collects no journal entries", and the first deploy of this stack
+        # (2026-09-20) demonstrated a second way to get there: Loki rejected
+        # every push with a schema error while alloy.service sat `active` and
+        # happily read 67k journal lines into a void. `up` was 1 the whole
+        # time. The AlloyNotShipping rule below is what closes that.
+        job_name       = "alloy";
+        static_configs = [{
+          targets = map (h: "${h}:12345") allHosts;
+        }];
+      }
+      {
+        # Loki itself — orthanc only. Gives ingestion rate and the store's own
+        # error counters, so "the log store is unhealthy" is visible from the
+        # metrics side rather than only from a failed query.
+        job_name       = "loki";
+        static_configs = [{ targets = [ "orthanc:3100" ]; }];
       }
     ];
 
@@ -803,14 +887,27 @@ in
       # recreating it.
       datasources.settings = {
         deleteDatasources = [{ name = "Prometheus"; orgId = 1; }];
-        datasources = [{
-          name      = "Prometheus";
-          type      = "prometheus";
-          uid       = promDatasourceUid;
-          url       = "http://127.0.0.1:9090";
-          isDefault = true;
-          orgId     = 1;
-        }];
+        datasources = [
+          {
+            name      = "Prometheus";
+            type      = "prometheus";
+            uid       = promDatasourceUid;
+            url       = "http://127.0.0.1:9090";
+            isDefault = true;
+            orgId     = 1;
+          }
+          {
+            # Loki lives on orthanc (modules/loki.nix), so unlike Prometheus
+            # this one is not loopback. Addressed by IP for the same reason
+            # Alloy is: see the header of modules/alloy.nix.
+            name      = "Loki";
+            type      = "loki";
+            uid       = lokiDatasourceUid;
+            url       = "http://10.0.1.10:3100";
+            isDefault = false;
+            orgId     = 1;
+          }
+        ];
       };
 
       # Dashboards are provisioned from the repo. Until 2026-08-01 only
