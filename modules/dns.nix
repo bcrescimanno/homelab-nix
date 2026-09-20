@@ -17,6 +17,11 @@
 { config, pkgs, lib, ... }:
 
 {
+  # Static user+group for Blocky. See the comment block on
+  # systemd.services.blocky below — this exists so its query log can be read
+  # off disk at all, not for sops ownership like the other callers.
+  imports = [ (import ../lib/homelab.nix "blocky") ];
+
   services.unbound = {
     enable = true;
     settings.server = {
@@ -379,8 +384,112 @@ upstreams = {
     };
   };
 
+  # ---------------------------------------------------------------------------
+  # Blocky off DynamicUser, so its query log can be read
+  # ---------------------------------------------------------------------------
+  #
+  # The nixpkgs module runs Blocky with DynamicUser = true. That makes
+  # LogsDirectory land at /var/log/private/blocky with /var/log/blocky a
+  # symlink to it, and systemd keeps /var/log/private at **0700 root:root**.
+  # Nothing but root can traverse it. Grafana Alloy (also DynamicUser) therefore
+  # could not read the query log at all, and no group membership fixes it — the
+  # files are already 0644, the barrier is the parent directory's mode. That is
+  # why shipping the query log needs this change and not just a group.
+  #
+  # Giving Blocky a static user costs nothing here: its StateDirectory was
+  # verified EMPTY on mirkwood (nothing written since March), so there is no
+  # state to migrate or lose. Only the log directory has contents.
+  #
+  # The migration itself was tested on orthanc before this was written, with a
+  # throwaway systemd-run unit reproducing the same shape. Two things came out
+  # of it, both load-bearing:
+  #
+  #   1. systemd DOES migrate the directory automatically, logging
+  #        "Found pre-existing private LogsDirectory= directory
+  #         /var/log/private/X, migrating to /var/log/X"
+  #        "Apparently, service previously had DynamicUser= turned on, and has
+  #         now turned it off."
+  #      The symlink becomes a real directory, contents intact, no leftover.
+  #
+  #   2. systemd does NOT chown what it migrated. The files stay owned by the
+  #      old dynamic UID, so the new static user cannot write into its own log
+  #      directory — the test service died with "Permission denied". A chown is
+  #      therefore MANDATORY, and it has to run before Blocky's first write,
+  #      which is why it is an ExecStartPre here rather than only a tmpfiles
+  #      rule.
+  #
+  # The "+" prefix runs the chown as root regardless of User= below.
+  #
+  # ONE-TIME TRANSITIONAL RACE, observed on rivendell 2026-09-20. On the single
+  # start that performs the migration, the ExecStartPre chown runs and exits 0,
+  # and the tree still ends up owned by **65534 (nobody)** — systemd chowns the
+  # migrated directory to nobody as it releases the OLD dynamic UID, which
+  # happens after ExecStartPre has already run. Blocky itself does not notice,
+  # because it opened its log file while ownership was still correct and keeps
+  # writing through that fd; what breaks is Alloy, which reads by path and
+  # silently tails nothing (`loki_source_file_files_active_total` 0).
+  #
+  # A HOST-SIDE CHOWN ALONE DOES NOT FIX IT, and this is the part that will
+  # waste an hour if it is not written down. ProtectSystem = "strict" means
+  # Blocky runs in its own mount namespace with the log directory bind-mounted
+  # in, and that bind mount was established against the PRE-migration directory.
+  # After chowning on the host the two views disagree:
+  #
+  #   host:                stat /var/log/blocky -> uid 991 (blocky)
+  #   inside blocky's ns:  stat /var/log/blocky -> uid 65534, file unreadable
+  #
+  # so Blocky keeps logging "fileQueryLogWriter: can't create/open file ...
+  # permission denied" while `ls` on the host looks perfect. Observed on
+  # mirkwood 2026-09-20; diagnosed with
+  #   nsenter -t $(systemctl show blocky -p MainPID --value) -m -- stat /var/log/blocky
+  #
+  # The namespace is only rebuilt by a restart. So the one-time procedure per
+  # migrated host is BOTH steps, in this order:
+  #
+  #   chown -R blocky:blocky /var/log/blocky
+  #   systemctl restart blocky
+  #
+  # Every subsequent start is clean — verified on both DNS hosts. The "Z"
+  # tmpfiles rule below fixes the host side on the next activation or boot, and
+  # since Blocky restarts on those too, the pair self-heals from then on.
+  #
+  # Check with `stat -c '%U:%G' /var/log/blocky`, and confirm Blocky is really
+  # writing by watching the file grow — not by unit state, which stays
+  # active/success throughout because Blocky holds its old fd and never fails.
+  systemd.services.blocky.serviceConfig = {
+    DynamicUser = lib.mkForce false;
+    User        = "blocky";
+    Group       = "blocky";
+
+    # DynamicUser = true implied both of these; turning it off silently drops
+    # them, so they are restated to keep the hardening the unit already had.
+    PrivateTmp = true;
+    RemoveIPC  = true;
+
+    # 0750 rather than systemd's default 0755: the query log is every DNS
+    # lookup every device in the house makes. Group-readable is enough, because
+    # Alloy joins the blocky group (see modules/alloy.nix).
+    LogsDirectoryMode = "0750";
+
+    ExecStartPre = "+${pkgs.coreutils}/bin/chown -R blocky:blocky /var/log/blocky";
+  };
+
+  # Ship the query log to Loki. Safe only now that the directory above is
+  # readable by a real group; see the interlock comment in modules/alloy.nix.
+  homelab.logging.blockyQueryLog = true;
+
   systemd.tmpfiles.rules = [
-    "d /var/log/blocky 0755 blocky blocky -"
+    # Mode matches LogsDirectoryMode above so the two cannot fight. The
+    # ExecStartPre is what actually guarantees ownership; this repairs the
+    # directory itself if Blocky is not running.
+    "d /var/log/blocky 0750 blocky blocky -"
+
+    # Recursive ownership repair, with "-" for mode so the files keep their own
+    # 0644 rather than inheriting the directory's 0750 (which on a regular file
+    # would mean setting execute bits). This is what self-heals the one-time
+    # transitional race described above on the next activation or boot, and it
+    # normalises anything else that leaves a file behind at the wrong owner.
+    "Z /var/log/blocky - blocky blocky -"
   ];
 
   networking.firewall = {

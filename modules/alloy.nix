@@ -154,16 +154,49 @@ let
       }]
     }
 
+    // Blocky stamps each line with its own LOCAL wall-clock time. Without
+    // this, Loki would timestamp entries by when Alloy read them, which is
+    // within a second while tailing live but badly wrong after any catch-up:
+    // resuming from a stored position after an Alloy outage would replay an
+    // hour of queries bunched at the restart instant, which is exactly the
+    // shape the per-client DNS panels are meant to show over time.
+    //
+    // The regex uses [0-9] rather than \d purely to avoid backslash escaping
+    // between Nix and Alloy's string syntax. Extracted values stay internal —
+    // nothing here promotes `ts` to a label.
+    loki.process "blocky" {
+      forward_to = [loki.write.default.receiver]
+
+      stage.regex {
+        expression = "^(?P<ts>[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2})"
+      }
+
+      stage.timestamp {
+        source   = "ts"
+        format   = "2006-01-02 15:04:05"
+        location = "${config.time.timeZone}"
+      }
+    }
+
     loki.source.file "blocky" {
       targets    = local.file_match.blocky.targets
-      forward_to = [loki.write.default.receiver]
+      forward_to = [loki.process.blocky.receiver]
 
       // MANDATORY, not a preference. Blocky keeps 30 days of query log on disk
       // — ~805MB per DNS host, measured — and the glob above matches all of
       // it. Without this, a first start (or any loss of the positions file)
       // replays a month of expired lines at Loki, which rejects everything
       // past reject_old_samples_max_age and logs an error per batch while the
-      // shipper looks healthy.
+      // shipper looks healthy — and would trip this stack's own
+      // AlloyWriteErrors alert on every rollout.
+      //
+      // Known, accepted cost: this also applies to each NEW file, and Blocky
+      // rolls to YYYY-MM-DD_ALL.log at local midnight. A file with no stored
+      // position is tailed from its end, so the queries written between
+      // creation and discovery (one sync_period, 10s default) are skipped —
+      // about 14 lines out of ~124,000 a day at the measured rate. The
+      // alternative is a glob narrow enough to backfill safely, which cannot
+      // be expressed statically because the filenames are dates.
       tail_from_end = true
     }
   '';
