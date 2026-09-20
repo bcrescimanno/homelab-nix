@@ -509,31 +509,45 @@ erebor is online (10G SFP+ at 10.0.1.22, 1G ethernet at 10.0.1.21 for management
         matters proves nothing. Test the *resolve* path separately, and let it
         outlast the retry period.
 
-- [ ] **Loki + Alloy — centralized logs. Supersedes the Promtail sketch below.**
+- [x] **Loki + Alloy — centralized logs. DONE 2026-09-20 (#754, and the Blocky
+  query log in the PR that follows it).** Supersedes the Promtail sketch below.
   Originally scoped only as a prerequisite for the Pi-hole-style DNS dashboard.
   That undersells it: this lab's characteristic failure mode is **silent**, and
   every instance in the memory index was found by SSHing to a host and grepping
   a journal — empty backups green for four months (#569), the timer oneshot
   reporting success, `systemctl show` returning success for an unknown unit, the
   restart loop that looked healthy, nixpkgs-watch swallowing its own error.
-  Centralized logs with retention turn that into one query, and let log-based
-  alerts ride the Alertmanager → ntfy path that already exists.
 
-  - **Use `services.alloy`, NOT Promtail** — Promtail hit EOL 2026-03-02.
-  - **Host Loki on orthanc**, not rivendell as previously sketched: four hosts of
-    journals plus retention wants RAM and disk, and orthanc has ~16GB free and
-    1.7TB free NVMe versus rivendell's 8GB shared with HA. Grafana stays on
-    mirkwood and gains a Loki datasource pointing at orthanc.
-  - Ship **both** the systemd journal (all four hosts) and Blocky's query log
-    (`/var/log/blocky/*` on rivendell + mirkwood).
-  - Retention: start at 7–14 days. Watch disk before raising it.
-  - Then build the LogQL panels the DNS dashboard needed all along: top clients,
-    top blocked domains, per-client breakdown.
+  What shipped:
 
-  Open question to settle at implementation time: orthanc is the one host that
-  might get rebooted for a game or a build, so log history has a gap exactly
-  when orthanc is the thing that broke. Accept it, or keep a small local buffer
-  on each host via Alloy's WAL.
+  - `modules/loki.nix` — Loki 3.7.7 on orthanc, single binary, TSDB + schema
+    v13, filesystem storage, **14-day retention**, not backed up.
+  - `modules/alloy.nix` — Alloy 1.17.1 on all four hosts via `base.nix`.
+    Promtail was avoided as planned; it hit EOL 2026-03-02.
+  - `modules/grafana.nix` — Loki datasource (uid `homelab-loki`), Alloy + Loki
+    scrape jobs, and three alert rules that watch the pipeline itself.
+
+  Measured volume rather than estimated: orthanc's journal ~57 MB/day, mirkwood
+  ~2 MB/day, and **Blocky's query log 23–31 MB/day per DNS host — twice all
+  four journals combined**. ~125 MB/day raw, ~250–400MB in Loki at 14 days,
+  against 1.7TB free. 97 streams across four hosts.
+
+  Two corrections to what this entry used to say:
+
+  - **"Ship `/var/log/blocky/*`" was not possible as written.** Blocky ran
+    `DynamicUser`, so that path is a symlink into `/var/log/private`, which
+    systemd keeps at 0700 root:root — no group membership can reach it. Fixed
+    by giving Blocky a static user; systemd migrates the directory but does
+    **not** chown it, so an ExecStartPre chown is mandatory or Blocky cannot
+    write its own log. Both behaviours were verified on a throwaway unit on
+    orthanc before touching a resolver.
+  - **The WAL open question is settled: accept the gap.** Alloy's WAL is
+    disabled by default *and* gated behind `--stability.level=experimental`, so
+    it is deliberately unused. orthanc's reboots still thin the history.
+
+  Still open: **Loki ruler → mirkwood's Alertmanager** for log-derived alerts,
+  which is what would make this active rather than passive. Deferred, not
+  rejected.
 
 - [ ] **Grafana DNS dashboard (Pi-hole-style panels)** — blocked on Loki above.
   `blocky_query_total` has only `client` and `type` (DNS record type) labels, so
@@ -610,8 +624,8 @@ Reviewed 2026-09-19 against the live lab. Verdicts below; rejected ideas moved t
 - [~] **Dead man's switch — external, out-of-band.** Built 2026-09-20 in
   `modules/deadman.nix`; awaiting the healthchecks.io account and a deploy. See
   "Observability gaps".
-- [ ] **Loki + Alloy — centralized logs.** See "Observability gaps" above; the
-  old Promtail sketch there has been replaced.
+- [x] **Loki + Alloy — centralized logs.** DONE 2026-09-20 (#754). See
+  "Observability gaps" above; the old Promtail sketch there has been replaced.
 - [~] **HomeKit migration — IN PROGRESS.** Done: four room bridges declared in
   `modules/homeassistant.nix` (Office, Kitchen, Hall, Boys Bathroom), covering
   all 3 `light.*` entities, `climate.main_floor`, and the 2 kitchen switches;
