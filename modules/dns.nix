@@ -412,15 +412,29 @@ upstreams = {
   #      The symlink becomes a real directory, contents intact, no leftover.
   #
   #   2. systemd does NOT chown what it migrated. The files stay owned by the
-  #      old dynamic UID (they show as nobody:nogroup), so the new static user
-  #      cannot write into its own log directory — the test service died with
-  #      "Permission denied". A chown is therefore MANDATORY, and it has to run
-  #      before Blocky's first write, which is why it is an ExecStartPre here
-  #      rather than only a tmpfiles rule: tmpfiles runs early at boot, when
-  #      /var/log/blocky is still the old symlink, and the migration does not
-  #      happen until the unit itself starts.
+  #      old dynamic UID, so the new static user cannot write into its own log
+  #      directory — the test service died with "Permission denied". A chown is
+  #      therefore MANDATORY, and it has to run before Blocky's first write,
+  #      which is why it is an ExecStartPre here rather than only a tmpfiles
+  #      rule.
   #
   # The "+" prefix runs the chown as root regardless of User= below.
+  #
+  # ONE-TIME TRANSITIONAL RACE, observed on rivendell 2026-09-20. On the single
+  # start that performs the migration, the ExecStartPre chown runs and exits 0,
+  # and the tree still ends up owned by **65534 (nobody)** — systemd chowns the
+  # migrated directory to nobody as it releases the OLD dynamic UID, which
+  # happens after ExecStartPre has already run. Blocky itself does not notice,
+  # because it opened its log file while ownership was still correct and keeps
+  # writing through that fd; what breaks is Alloy, which reads by path and
+  # silently tails nothing (`loki_source_file_files_active_total` 0).
+  #
+  # Every SUBSEQUENT start is clean — verified by restarting blocky after a
+  # manual chown, ownership held at blocky:blocky. So this needs fixing exactly
+  # once per host, and the "Z" tmpfiles rule below repairs it on the next
+  # activation or boot. After migrating a host, confirm with
+  #   stat -c '%U:%G' /var/log/blocky
+  # and if it says nobody, `chown -R blocky:blocky /var/log/blocky` once.
   systemd.services.blocky.serviceConfig = {
     DynamicUser = lib.mkForce false;
     User        = "blocky";
@@ -448,6 +462,13 @@ upstreams = {
     # ExecStartPre is what actually guarantees ownership; this repairs the
     # directory itself if Blocky is not running.
     "d /var/log/blocky 0750 blocky blocky -"
+
+    # Recursive ownership repair, with "-" for mode so the files keep their own
+    # 0644 rather than inheriting the directory's 0750 (which on a regular file
+    # would mean setting execute bits). This is what self-heals the one-time
+    # transitional race described above on the next activation or boot, and it
+    # normalises anything else that leaves a file behind at the wrong owner.
+    "Z /var/log/blocky - blocky blocky -"
   ];
 
   networking.firewall = {
