@@ -368,9 +368,17 @@ advertised; rivendell's `eth0.4` isolation is deliberate.
 Remaining work, in order:
 
 - [ ] **Bootstrap the tailnet.** Sign up with **GitHub**, not Apple — see the
-      no-Apple-ecosystem-coupling constraint. Define `tag:homelab`, then create an
-      OAuth client with the `auth_keys` scope scoped to that tag. Plain auth keys
-      cap out at 90 days and would need a remembered re-auth.
+      no-Apple-ecosystem-coupling constraint. The identity provider is chosen once
+      and is painful to change later, and GitHub is already the account this
+      repo's automation authenticates as.
+- [ ] **Paste `tailscale/policy.hujson` into Access Controls — before creating the
+      OAuth client, not after.** The OAuth client's tag scope can only select tags
+      that already exist in `tagOwners`, so the policy has to land first or
+      `tag:homelab` will not be offered.
+- [ ] **Create the OAuth client**: Settings → OAuth clients, scope `auth_keys`
+      (write), tag `tag:homelab`. The secret is shown exactly once. Plain auth keys
+      cap out at 90 days and would need a remembered re-auth, which is the drift
+      this avoids.
 - [ ] **Add `tailscale_auth_key`** (the OAuth client secret, `tskey-client-…`) to
       all four `secrets/*.yaml`. Until this exists on a host, that host's deploy
       fails at sops activation — this gates everything below.
@@ -380,7 +388,6 @@ Remaining work, in order:
       `systemctl status tailscaled-set` on each: that unit is where the `set`
       flags are actually exercised for the first time, and a rejected flag shows
       up there as a failed oneshot rather than as anything visibly broken.
-- [ ] **Paste `tailscale/policy.hujson`** into Access Controls.
 - [ ] **Tailnet DNS last, not first.** Set the global nameservers to rivendell's
       and mirkwood's `100.x` addresses, enable Override local DNS and MagicDNS —
       only once both Pis are on the tailnet with routes approved. This is the step
