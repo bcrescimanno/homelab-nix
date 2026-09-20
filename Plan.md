@@ -61,7 +61,13 @@ Shell function in dotfiles `home/common.nix`. deploy-rs config in `flake.nix` un
 
 ### Home Automation
 
-- [ ] **Install the Eve Energy plug and finish the Eve Door & Window 3-pack (ordered 2026-09-13)** — **2026-09-15: two of three Eves paired.** Office door = Matter node 9, in `openings` in `modules/ha-hvac-openings.nix`. Boys Bathroom door = node 10, drives `modules/ha-bathroom-lights.nix`. **The plug is still not installed, so the mesh still has no Thread router**: `ot-ctl neighbor table` shows only `C` children, and the Eve Weather (node 7) sits at **-96 dBm / LQ 1**, timing out its subscription repeatedly through the day. Install the plug next and confirm the `R` role in the neighbor table, then pair the third Eve; a mains-powered router is the only fix that gives the mesh depth. Add any cooling-relevant sensor to `openings` and deploy rivendell. Full steps in `devices/contact-sensors.md` → Decision and `devices/smart-plugs.md` → Decision.
+- [~] **Install the Eve Energy plug and finish the Eve Door & Window 3-pack (ordered 2026-09-13)** — **2026-09-15: two of three Eves paired.** Office door = Matter node 9, in `openings` in `modules/ha-hvac-openings.nix`. Boys Bathroom door = node 10, drives `modules/ha-bathroom-lights.nix`.
+
+  **✅ DONE — the mesh has a Thread router.** The first Eve Energy plug ("Office Plug") went in **2026-09-15** as **Matter node 11** and took the router role. **Re-verified live 2026-09-20:** Thread Network Diagnostics reports `RoutingRole: 5 (Router)`; rivendell's `ot-ctl neighbor table` shows an **`R`** entry at RLOC16 `0xb000`, ext MAC `923978dd24d28bbc`, **LQ In/Out 3/3, avg RSSI -65 dBm** — the strongest link in the mesh. `ot-ctl router table` lists two allocated routers (id 7 = rivendell/leader, id 44 = the plug).
+
+  The plug is carrying real traffic, not sitting idle: it parents **two of the three** sleepy end devices — node 9 office door (`0xb005`, LQ 3) and node 10 bathroom door (`0xb087`, LQ 2). Node 7 Eve Weather remains a direct child of the border router (`0x1cc0`, -81 dBm / LQ 2), which is expected — the fence is closer to rivendell than to the office plug. This matches the 2026-09-15 outcome exactly; nothing has drifted.
+
+  Remaining: pair the **third Eve Door & Window**, and install the **second Eve Energy plug**. Add any cooling-relevant sensor to `openings` and deploy rivendell. Full steps in `devices/contact-sensors.md` → Decision and `devices/smart-plugs.md` → Decision.
 
   Pairing gotcha (2026-09-15): the second sensor hung forever on the iPhone's "Connecting" screen while the device advertised happily on BLE and matter-server logged **nothing at all** — no `Starting Matter commissioning` line, because the setup code never reached it. **Rebooting the iPhone fixed it instantly.** iOS's MatterSupport extension wedges after a successful commissioning, so every device after the first in one session can stall. Reboot the phone before debugging the stack.
 
