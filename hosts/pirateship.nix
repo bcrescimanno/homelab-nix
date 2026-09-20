@@ -107,6 +107,25 @@
   # ---------------------------------------------------------------------------
   # Backup
   # ---------------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
+  # UPS load shedding
+  # ---------------------------------------------------------------------------
+  #
+  # NOT for power: this Pi draws ~1.9 W on its internal rails, so shedding it
+  # saves nothing measurable (see Plan.md → Measured power report). It sheds so
+  # that **erebor can be powered off cleanly**.
+  #
+  # pirateship holds a `hard` NFS mount of erebor's whole media share for the arr
+  # stack and Navidrome. If erebor went down first, every IO here would block
+  # forever in D state, this host would then fail to unmount at FSD, stall past
+  # systemd's timeout and take the unclean cut the NUT work exists to prevent.
+  #
+  # 35% is above rivendell's 25% erebor trigger so this host is already gone by
+  # then; rivendell's `waitForDown` verifies it rather than assuming. No charge
+  # floor and no early time trigger — there is no power reason to go sooner, and
+  # the media stack may as well run while the battery lasts.
+  homelab.ups.shedBelowCharge = 35;
+
   homelab.backup.paths = [
     "/var/lib/qbittorrent/config"
     "/var/lib/radarr/config"

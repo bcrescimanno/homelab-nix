@@ -115,6 +115,15 @@
       # modules/nut.nix for why a secondary must not hold primary privileges.
       nut_secondary_password = {};
 
+      # SSH private key rivendell uses to power erebor off before the battery
+      # dies (homelab.ups.remoteShutdown). A dedicated key rather than a host
+      # key, same pattern as nix_remote_builder_key. Default 0400 root:root is
+      # right — the shutdown unit runs as root.
+      #
+      # Public half must be authorized on erebor VIA THE UNIFI CONSOLE UI:
+      #   ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHR2C10cUgtEdcQ7YdnDNBet9eTQmD5ByHcZT/920vIO rivendell-erebor-shutdown
+      erebor_shutdown_key = {};
+
       # Group-readable so the Prometheus NUT exporter can read it. The exporter
       # runs with DynamicUser=true (the nixpkgs exporters default), so its UID is
       # not stable and the file cannot simply be chowned to it — a supplementary
@@ -161,6 +170,87 @@
   # ---------------------------------------------------------------------------
   # Notify-only (Pis stay manual — see modules/reboot-policy.nix). dnsPeer is
   # set now so enabling `auto` later can never take both resolvers down.
+  # ---------------------------------------------------------------------------
+  # Wake shed hosts back up once mains is stably restored
+  # ---------------------------------------------------------------------------
+  #
+  # orthanc sheds itself 5 minutes into an outage (homelab.ups.shed* in
+  # hosts/orthanc.nix) to extend runtime for the DNS pair. That shed is a soft
+  # poweroff while the UPS still supplies AC, so orthanc's BIOS never sees an AC
+  # transition and cannot restore itself — a magic packet is the only way back.
+  # rivendell is the right sender: it is Tier 0 and stays up throughout.
+  #
+  # minOutageMinutes matches orthanc's shedAfterMinutes: below 5 minutes nothing
+  # would have shed, so an unreachable orthanc is down for an unrelated reason
+  # and must be left alone. stableMinutes is the anti-flap buffer — utilities
+  # bounce power repeatedly while restoring, and every bounce restarts it.
+  #
+  # MAC is enp5s0, orthanc's 10.0.1.10 LAN port, which is the interface with
+  # wakeOnLan armed. Broadcast must be the LAN's own, not 255.255.255.255.
+  # ---------------------------------------------------------------------------
+  # Cleanly power off erebor before the battery dies
+  # ---------------------------------------------------------------------------
+  #
+  # erebor is a UNAS Pro 4 on UniFi OS: no NUT client, cannot be an upsmon
+  # secondary. Before this it ran until UPS output stopped and took an unclean
+  # cut on a 4-disk Btrfs RAID 6 every outage — the largest remaining exposure in
+  # the power chain. It is Debian 11 + systemd underneath, so SSH `poweroff`
+  # works.
+  #
+  # 25% is chosen to sit well clear of `battery.charge.low` (10), where upsmon
+  # sets FSD and everything else starts shutting down: the array needs its own
+  # quiet window to flush, not a scramble shared with three other hosts.
+  #
+  # ORDERING. erebor's shares are `hard` NFS mounts, so IO to a vanished server
+  # blocks forever. Consumers must be gone first or they hang, fail to unmount at
+  # FSD, stall past systemd's timeout and take the very unclean cut this
+  # prevents:
+  #   * rivendell's OWN two mounts are lazily unmounted here (unmountFirst).
+  #   * orthanc sheds at 5 min and pirateship at 35% charge, both before this
+  #     25% trigger; waitForDown VERIFIES that rather than trusting it.
+  # mirkwood is absent from waitForDown on purpose — it mounts erebor only for
+  # restic, via an automount that is idle unless a backup is running.
+  #
+  # !! MANUAL PREREQUISITE !! The public half of erebor_shutdown_key must be
+  # authorized on erebor, added through the **UniFi console's SSH-key UI** rather
+  # than by hand-editing /root/.ssh/authorized_keys — a UniFi OS update will drop
+  # a hand-added key and this would silently stop working. The script reports an
+  # SSH failure at priority 5 precisely so that cannot go unnoticed.
+  homelab.ups.remoteShutdown = {
+    enable = true;
+    belowCharge = 25;
+    keyFile = config.sops.secrets.erebor_shutdown_key.path;
+    unmountFirst = [
+      "/var/backup/erebor"
+      "/var/lib/media/music"
+    ];
+    waitForDown = [
+      "10.0.1.10" # orthanc
+      "10.0.1.35" # pirateship
+    ];
+    waitMinutes = 5;
+    targets = [
+      {
+        name = "erebor";
+        host = "10.0.1.22";
+        user = "root";
+      }
+    ];
+  };
+
+  homelab.ups.wakeOnRestore = {
+    enable = true;
+    stableMinutes = 3;
+    minOutageMinutes = 5;
+    targets = [
+      {
+        name = "orthanc";
+        mac = "fc:34:97:a6:4f:ad";
+        ip = "10.0.1.10";
+      }
+    ];
+  };
+
   homelab.reboot.dnsPeer = "10.0.1.8";  # mirkwood
 
   homelab.backup.paths = [

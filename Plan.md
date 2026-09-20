@@ -101,6 +101,170 @@ contained first step is:
   Prerequisite, physical: orthanc's BIOS still needs *Restore on AC Power Loss*
   or it will never come back on its own regardless of what NUT does.
 
+#### Measured power report (2026-09-19)
+
+Tripp Lite SMC15002URM, `ups.power.nominal` 1500, battery 100%, input 119 V.
+
+| condition | `ups.load` | `output.current` | `battery.runtime` |
+|---|---|---|---|
+| all four hosts idle | **18%** | 1.0 A | **3680 s — 61 min** |
+| orthanc at full CPU (32 threads) | **29%** | 2.0 A | **2036 s — 34 min** |
+
+Per host:
+
+| host | measurement | how |
+|---|---|---|
+| orthanc | **19.0 W** CPU package, idle | `intel-rapl:0/energy_uj`, 95.045 J over 5 s (root) |
+| rivendell | 2.65 W internal rails | `sudo vcgencmd pmic_read_adc`, sum of V×A |
+| mirkwood | 2.48 W internal rails | same |
+| pirateship | 1.91 W internal rails | same |
+
+**Three conclusions, and the third is the plan:**
+
+1. **orthanc IS on the UPS** — settled. Stressing its CPU moved `ups.load`
+   18% → 29%, which also answers the question this section has carried since
+   2026-08-09. (erebor and the network gear are still unconfirmed; that needs a
+   physical look at the UPS outlets.)
+
+2. **orthanc's CPU alone is 11 of the 18 load points**, and driving it from idle
+   to busy costs **27 minutes** of runtime. orthanc's 19 W idle package is also
+   below the 29 W quoted in `hosts/orthanc.nix`, consistent with auto-cpufreq's
+   own overhead being gone since #736.
+
+3. **orthanc is the ONLY load worth shedding.** The Pi 5s draw ~2 W each on their
+   internal rails, so shedding one buys nothing measurable; erebor and the
+   network gear are the other big draws and neither is ours to switch off. So do
+   NOT build a general tiering framework — the measurement points at one lever,
+   on one host. This is the main reason the tier sketch below was not implemented
+   as written.
+
+**Do not trust absolute watts from this UPS.** `ups.power` reports `0.0` and
+`output.voltage` reports `0.0` — several wattage fields are broken in its USB HID
+data, and `output.current` has one decimal and read exactly 1.0 / 2.0, which is
+inconsistent with the 18%→29% load ratio. Reason in **load points and runtime**.
+Total draw is roughly 120–200 W and that is an estimate, not a measurement.
+
+Runtime scales nonlinearly — fitting the two points gives runtime ≈ C/load^1.24,
+so halving load more than doubles it. **Extrapolating below the measured range is
+unreliable**, so the projected post-shed runtime is deliberately not quoted as a
+number here. The honest way to get it is to power orthanc off once and read
+`battery.runtime`; that is a two-minute test worth doing at a quiet moment.
+
+- [x] **Shed orthanc early — DONE 2026-09-19.** `homelab.ups.shedAfterMinutes = 5`
+  and `shedBelowCharge = 50` in `hosts/orthanc.nix`, implemented in
+  `modules/nut-secondary.nix` as a root systemd timer polling `upsc` every 30 s
+  (12 ms CPU per tick). A root poller rather than an ONBATT hook because
+  NOTIFYCMD runs unprivileged as `nutmon` and cannot `poweroff`. **Fails safe:**
+  an unreachable `upsc` never sheds and never clears accumulated state, because
+  an unreachable UPS is not evidence of an outage. All six branches were tested
+  with a stubbed `upsc` on the host (hold / elapsed-shed / charge-floor-shed /
+  mains-reset / unreachable-preserves-state).
+
+- [x] **Wake orthanc back up after a shed — DONE 2026-09-19.** WoL armed on
+  orthanc (`networking.interfaces.enp5s0.wakeOnLan.enable`; it read
+  `Supports Wake-on: pumbg` but `Wake-on: d`, so nothing would have woken it),
+  plus a waker on rivendell (`homelab.ups.wakeOnRestore` in `modules/nut.nix`).
+
+  **`Restore on AC Power Loss` is NOT a substitute and never was** — a shed is a
+  soft poweroff while the UPS still supplies AC, so the BIOS sees no AC
+  transition. The two mechanisms cover disjoint cases and both are wanted:
+
+  | case | recovered by |
+  |---|---|
+  | shed, then mains returns (**the common one**) | WoL only |
+  | battery ran flat, UPS cut output | BIOS auto-restore only |
+
+  Three guards, because a spurious wake would resurrect a host deliberately
+  powered off for maintenance: (1) only after an outage rivendell itself
+  witnessed; (2) only if it lasted ≥ `minOutageMinutes` (5, matching orthanc's
+  shed threshold); (3) only once mains has been continuously up for
+  `stableMinutes` (3) — the **anti-flap buffer**, since utilities bounce power
+  repeatedly while restoring and every bounce restarts the clock. The *longest*
+  outage segment is remembered, not the latest, or a 20-minute outage followed by
+  a 10-second flicker would overwrite the duration with 10s and silently never
+  wake. State lives in `/var/lib`, not `/run`, so a rivendell that shut down too
+  still remembers it owes a wake. Attempts are bounded (3, 180s apart) and a
+  give-up sends a distinct ntfy naming the BIOS/physical-press fallback.
+
+  Verified: all nine branches against the deployed script with stubbed
+  `upsc`/`ping`/`wakeonlan` (no-outage, short-outage, buffer-hold, flap-reset,
+  longest-segment retention, send, retry-spacing, exhausted, and the full
+  outage→buffer→send→boot→success sequence); and real magic packets from
+  rivendell were **captured arriving on orthanc's `enp5s0`** (UDP:9, 102 bytes,
+  0 dropped).
+
+- [!] **WoL does NOT currently wake orthanc — TESTED AND FAILED 2026-09-19.**
+  orthanc was powered off, the deployed waker sent two magic packets 180s apart,
+  and **orthanc did not come up**; Brian pressed the button after a few minutes.
+
+  Where it fails is now pinned down. After that manual boot, `ethtool enp5s0`
+  reported **`Wake-on: g`** with no intervention, so udev *is* applying the
+  `.link` file and the NixOS side is correct and durable. The packets were also
+  confirmed arriving on the NIC earlier. **So the break is below the OS: the
+  board is not honouring PME wake from S5.** On this board (ASUS X570-E Gaming)
+  that is almost always one of two BIOS settings, both under
+  Advanced → APM Configuration:
+    * **ErP Ready = Enabled** — cuts standby power to PCIe/LAN in S5, which
+      disables WoL outright. Most likely culprit.
+    * **Power On By PCI-E/PCI = Disabled**.
+
+  Note the waker's own logic was correct throughout: two attempts, correct
+  broadcast and MAC, then it noticed orthanc was back and cleared state. It
+  cannot distinguish "my packet worked" from "someone pressed the button", so
+  its success push after a manual recovery is expected, not a bug.
+
+- [ ] **ONE BIOS TRIP FIXES THREE THINGS** — all in the same APM Configuration
+  menu, so do them together:
+    1. `ErP Ready` = **Disabled** (WoL from S5)
+    2. `Power On By PCI-E/PCI` = **Enabled** (WoL from S5)
+    3. `Restore AC Power Loss` = **Power On** (the battery-ran-flat case)
+  Re-test afterwards: power orthanc off, then
+  `wakeonlan -i 10.0.1.255 fc:34:97:a6:4f:ad` from rivendell.
+
+- [ ] **Decide what to do with orthanc's 5-minute shed until then.** The shed
+  works, but a shed orthanc currently needs a physical press — so every outage
+  longer than 5 minutes costs the builder, Jellyfin, the attic cache and the
+  Vaultwarden tunnel until someone notices. Options: leave it (maximum runtime,
+  manual recovery), raise `shedAfterMinutes` so only long outages trigger it, or
+  set it to `null` until the BIOS is sorted. Purely a judgement call about how
+  often medium outages happen here.
+
+- [x] **erebor gets a clean shutdown — DONE 2026-09-19** (`homelab.ups.remoteShutdown`
+  in `modules/nut.nix`). erebor is Debian 11 + systemd under UniFi OS, so
+  rivendell SSHes in and runs `poweroff` at **25% charge** — well clear of
+  `battery.charge.low` (10), where upsmon sets FSD and everything else starts
+  shutting down, so the array gets its own quiet window to flush.
+
+  **Ordering was the whole difficulty.** erebor's shares are `hard` NFS mounts,
+  so IO to a vanished server blocks forever; a consumer still holding a mount
+  would hang, then fail to unmount at FSD, stall past systemd's timeout and take
+  the very unclean cut this prevents. Handled in two parts: rivendell lazily
+  unmounts **its own** two live mounts (`/var/backup/erebor`,
+  `/var/lib/media/music` — lazy so Music Assistant or restic cannot veto it), and
+  `waitForDown` verifies orthanc and pirateship are already gone. **pirateship
+  now sheds at 35% charge** purely to make that true — not for power, since it
+  draws ~1.9 W. A 5-minute grace then bounds the wait so a consumer that never
+  sheds cannot deadlock the sequence and leave the array to be cut anyway.
+
+  Verified: ten branches against the deployed script with stubbed
+  `upsc`/`ping`/`ssh`/`mountpoint`/`umount`/`curl` — mains no-op, charge above
+  threshold, grace hold, consumers-down shutdown, no-repeat, mains reset, the
+  unmount ordering, SSH failure raising a priority-5 alert, `upsc` unreachable
+  doing nothing, and grace expiry proceeding with a warning.
+
+- [ ] **MANUAL PREREQUISITE for the above: authorize the key on erebor.** Until
+  this is done the SSH `poweroff` fails and erebor still hard-cuts (loudly — the
+  failure path pushes at priority 5). Add this public key on erebor **through the
+  UniFi console's SSH-key UI**, not by editing `/root/.ssh/authorized_keys`, or a
+  UniFi OS update will silently drop it:
+
+  ```
+  ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHR2C10cUgtEdcQ7YdnDNBet9eTQmD5ByHcZT/920vIO rivendell-erebor-shutdown
+  ```
+
+  Then confirm from rivendell:
+  `sudo ssh -i /run/secrets/erebor_shutdown_key -o BatchMode=yes root@10.0.1.22 true`
+
 - [ ] **Low power mode — shed load while running on battery**. Prompted by the 2026-08-09 outage (~19:57, all hosts hard-cut). Design only, not yet implemented.
 
   **What today actually does.** Nothing coordinated. `modules/nut.nix` runs NUT on rivendell *only*, as `upsmon` `type = "primary"`, and no other host runs a secondary. So rivendell sees `ONBATT`/`LOWBATT` and can shut itself down, while **mirkwood, pirateship and orthanc have no idea the power is out** — they run flat out until the battery dies and then take an unclean power cut. There is no graceful shutdown ordering and no load shedding anywhere in the repo.
