@@ -42,6 +42,13 @@
 # BATTERY, each secondary assumes the worst and shuts down rather than running
 # until it crashes.
 #
+# TESTED, not just read: on 2026-09-19 17:17:28 upsd was stopped on rivendell for
+# 40 seconds — comfortably past the 15s DEADTIME — while the UPS was OL. All
+# three secondaries logged "Communications with UPS ... lost", retried every 5s,
+# stayed up, and re-established on their own at 17:18:08-17:18:13 with no
+# intervention and no ntfy push. Re-run that way if this is ever in doubt; do
+# NOT test with `upsmon -c fsd`, which would shut down all four hosts for real.
+#
 # -----------------------------------------------------------------------------
 # WHY upsdHost IS AN IP AND NOT A NAME
 #

@@ -75,7 +75,21 @@ need to be settled to get the main benefit. Today three of four hosts take an
 unclean power cut on every outage, and the software is already in the repo. The
 contained first step is:
 
-- [ ] **NUT secondaries on mirkwood, pirateship and orthanc.** Add `upsmon` with
+- [x] **NUT secondaries on mirkwood, pirateship and orthanc — DONE 2026-09-19**
+  (`modules/nut-secondary.nix`). All three run `upsmon` in netclient mode against
+  `tripplite@10.0.1.9` as `type=secondary`, authenticating as a dedicated
+  `upsmon-secondary` upsd user that does NOT hold primary privileges. Verified:
+  upsd logged all three logins (10.0.1.8 / 10.0.1.35 / 10.0.1.10), and stopping
+  upsd for 40s — past DEADTIME — left every secondary up and self-recovering,
+  which is the property that makes rivendell's kernel reboots safe. Shutdown
+  ordering comes free from the primary/secondary FSD + HOSTSYNC protocol, so
+  rivendell goes last without anything declaring it. **Still outstanding from the
+  original note:** orthanc's BIOS *Restore on AC Power Loss*, and the staged
+  early-shutdown tiers below (blocked on "is orthanc even on the UPS?" and on
+  NOTIFYCMD running unprivileged — see the module header).
+
+- [ ] ~~**NUT secondaries on mirkwood, pirateship and orthanc.**~~ Superseded by
+  the entry above; original text kept for the reasoning. Add `upsmon` with
   `type = "secondary"` pointed at `rivendell:3493` (credentials via the existing
   `nut_upsmon_password` pattern, one sops secret per host), so every host learns
   about `ONBATT`/`LOWBATT` instead of running flat out until the battery dies.
