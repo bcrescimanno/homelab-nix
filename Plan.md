@@ -193,24 +193,77 @@ number here. The honest way to get it is to power orthanc off once and read
   rivendell were **captured arriving on orthanc's `enp5s0`** (UDP:9, 102 bytes,
   0 dropped).
 
-- [ ] **Still to do: prove the wake actually brings orthanc out of S5.** Every
-  link in the chain is verified except the last one, which needs orthanc actually
-  powered off — the packet reaching a *running* NIC does not prove the NIC wakes
-  the board. Do this deliberately, with someone able to press the button: shed
-  orthanc (`systemctl poweroff`), then `wakeonlan -i 10.0.1.255 fc:34:97:a6:4f:ad`
-  from rivendell. Until that passes, treat the shed as recoverable-in-theory.
+- [!] **WoL does NOT currently wake orthanc — TESTED AND FAILED 2026-09-19.**
+  orthanc was powered off, the deployed waker sent two magic packets 180s apart,
+  and **orthanc did not come up**; Brian pressed the button after a few minutes.
 
-- [ ] **orthanc BIOS: *Restore on AC Power Loss*** — still unset, still needs a
-  physical visit. Covers only the battery-ran-flat case (see the table above), so
-  it is no longer the blocker it looked like, but it is the other half.
+  Where it fails is now pinned down. After that manual boot, `ethtool enp5s0`
+  reported **`Wake-on: g`** with no intervention, so udev *is* applying the
+  `.link` file and the NixOS side is correct and durable. The packets were also
+  confirmed arriving on the NIC earlier. **So the break is below the OS: the
+  board is not honouring PME wake from S5.** On this board (ASUS X570-E Gaming)
+  that is almost always one of two BIOS settings, both under
+  Advanced → APM Configuration:
+    * **ErP Ready = Enabled** — cuts standby power to PCIe/LAN in S5, which
+      disables WoL outright. Most likely culprit.
+    * **Power On By PCI-E/PCI = Disabled**.
 
-- [ ] **erebor gets no shutdown signal at all and hard-cuts every outage.**
-  UniFi OS has no NUT client and cannot be an upsmon secondary, so a 4-disk
-  Btrfs RAID 6 takes an unclean power cut every time the battery runs out. This
-  is now the largest remaining exposure in the power chain. Options: an
-  SSH-triggered shutdown from rivendell on LOWBATT (erebor currently refuses
-  Brian's key, and it would be imperative UniFi-side), or accept it as a
-  documented risk. Needs a decision.
+  Note the waker's own logic was correct throughout: two attempts, correct
+  broadcast and MAC, then it noticed orthanc was back and cleared state. It
+  cannot distinguish "my packet worked" from "someone pressed the button", so
+  its success push after a manual recovery is expected, not a bug.
+
+- [ ] **ONE BIOS TRIP FIXES THREE THINGS** — all in the same APM Configuration
+  menu, so do them together:
+    1. `ErP Ready` = **Disabled** (WoL from S5)
+    2. `Power On By PCI-E/PCI` = **Enabled** (WoL from S5)
+    3. `Restore AC Power Loss` = **Power On** (the battery-ran-flat case)
+  Re-test afterwards: power orthanc off, then
+  `wakeonlan -i 10.0.1.255 fc:34:97:a6:4f:ad` from rivendell.
+
+- [ ] **Decide what to do with orthanc's 5-minute shed until then.** The shed
+  works, but a shed orthanc currently needs a physical press — so every outage
+  longer than 5 minutes costs the builder, Jellyfin, the attic cache and the
+  Vaultwarden tunnel until someone notices. Options: leave it (maximum runtime,
+  manual recovery), raise `shedAfterMinutes` so only long outages trigger it, or
+  set it to `null` until the BIOS is sorted. Purely a judgement call about how
+  often medium outages happen here.
+
+- [x] **erebor gets a clean shutdown — DONE 2026-09-19** (`homelab.ups.remoteShutdown`
+  in `modules/nut.nix`). erebor is Debian 11 + systemd under UniFi OS, so
+  rivendell SSHes in and runs `poweroff` at **25% charge** — well clear of
+  `battery.charge.low` (10), where upsmon sets FSD and everything else starts
+  shutting down, so the array gets its own quiet window to flush.
+
+  **Ordering was the whole difficulty.** erebor's shares are `hard` NFS mounts,
+  so IO to a vanished server blocks forever; a consumer still holding a mount
+  would hang, then fail to unmount at FSD, stall past systemd's timeout and take
+  the very unclean cut this prevents. Handled in two parts: rivendell lazily
+  unmounts **its own** two live mounts (`/var/backup/erebor`,
+  `/var/lib/media/music` — lazy so Music Assistant or restic cannot veto it), and
+  `waitForDown` verifies orthanc and pirateship are already gone. **pirateship
+  now sheds at 35% charge** purely to make that true — not for power, since it
+  draws ~1.9 W. A 5-minute grace then bounds the wait so a consumer that never
+  sheds cannot deadlock the sequence and leave the array to be cut anyway.
+
+  Verified: ten branches against the deployed script with stubbed
+  `upsc`/`ping`/`ssh`/`mountpoint`/`umount`/`curl` — mains no-op, charge above
+  threshold, grace hold, consumers-down shutdown, no-repeat, mains reset, the
+  unmount ordering, SSH failure raising a priority-5 alert, `upsc` unreachable
+  doing nothing, and grace expiry proceeding with a warning.
+
+- [ ] **MANUAL PREREQUISITE for the above: authorize the key on erebor.** Until
+  this is done the SSH `poweroff` fails and erebor still hard-cuts (loudly — the
+  failure path pushes at priority 5). Add this public key on erebor **through the
+  UniFi console's SSH-key UI**, not by editing `/root/.ssh/authorized_keys`, or a
+  UniFi OS update will silently drop it:
+
+  ```
+  ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHR2C10cUgtEdcQ7YdnDNBet9eTQmD5ByHcZT/920vIO rivendell-erebor-shutdown
+  ```
+
+  Then confirm from rivendell:
+  `sudo ssh -i /run/secrets/erebor_shutdown_key -o BatchMode=yes root@10.0.1.22 true`
 
 - [ ] **Low power mode — shed load while running on battery**. Prompted by the 2026-08-09 outage (~19:57, all hosts hard-cut). Design only, not yet implemented.
 
