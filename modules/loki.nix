@@ -150,6 +150,47 @@ in
         volume_enabled = true;
 
         allow_structured_metadata = true;
+
+        # Raised from the default 500 for dashboards/dns-queries.json, whose
+        # "top N domains" panels cannot be written at all without it.
+        #
+        # This limit bounds the series a query may MATERIALISE, not the number
+        # it returns, so wrapping an aggregation in topk() does NOT help: the
+        # inner `sum by (question)` builds one series per distinct domain
+        # first, and only then does topk cut it to 15. Measured here
+        # 2026-09-20: `topk(15, sum by (question) (...))` over the query log
+        # succeeds at 6h and fails at 24h with HTTP 400 "maximum number of
+        # series (500) reached for a single query". A dashboard that works at
+        # 6h and breaks at 24h is worse than no dashboard, because the panel
+        # reads as broken rather than as limited.
+        #
+        # The value is sized against measured cardinality: 972 distinct
+        # question names across the whole retained window on 2026-09-20 (which
+        # was ~24h of data — Loki had only just been stood up), and ~970 over
+        # 24h, so the set is close to saturated within a day and grows slowly
+        # after that. 20k is ~20x that with room for 14 days of accrual, while
+        # staying low enough to still stop a genuinely runaway grouping — an
+        # accidental `sum by (answer)` over a week, say. It costs memory only
+        # while such a query runs, on the host with 32GB.
+        #
+        # approx_topk() IS THE FEATURE BUILT FOR THIS, AND IT IS BROKEN IN
+        # 3.7.7 — do not "fix" this by reaching for it. It needs
+        # `shard_aggregations = [ "approx_topk" ]` here, and with that set the
+        # query frontend maps the AST and then the querier cannot parse what
+        # the frontend produced:
+        #
+        #   caller=retry.go:125 msg="received an error but not a retryable
+        #   code, this is possibly a bug." code=Code(400) err="rpc error:
+        #   code = Code(400) desc = parse error at line 1, col 1: syntax
+        #   error: unexpected IDENTIFIER"
+        #
+        # Loki flags it as a bug itself. Verified on orthanc against both a
+        # trivial `approx_topk(5, sum by (host) (count_over_time({job=
+        # "blocky"}[5m])))` and the real panel queries, so it is the feature
+        # and not the query. Worth retrying on a future Loki bump — it is the
+        # better design, since its memory is bounded by k rather than by
+        # cardinality.
+        max_query_series = 20000;
       };
 
       # Phones home to Grafana Labs by default.
