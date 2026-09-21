@@ -69,6 +69,42 @@
 # Icons resolve from CDN (dashboard-icons for `*.png`, @mdi/svg for `mdi-*`);
 # nothing is vendored, so a broken icon is cosmetic only.
 #
+# LIVE SERVICE WIDGETS — credentials
+#
+# Required sops secret (secrets/mirkwood.yaml):
+#   homepage_env — env file containing:
+#                    HOMEPAGE_VAR_RADARR_KEY=<radarr api key>
+#                    HOMEPAGE_VAR_SONARR_KEY=<sonarr api key>
+#                    HOMEPAGE_VAR_LIDARR_KEY=<lidarr api key>
+#                    HOMEPAGE_VAR_PROWLARR_KEY=<prowlarr api key>
+#                    HOMEPAGE_VAR_SABNZBD_KEY=<sabnzbd api key>
+#                    HOMEPAGE_VAR_QBT_USER=<qbittorrent user>
+#                    HOMEPAGE_VAR_QBT_PASS=<qbittorrent password>
+#
+# Homepage substitutes `{{HOMEPAGE_VAR_*}}` at runtime, so no key is ever
+# written into the Nix store. The secret keeps sops-nix's default 0400
+# root:root: systemd reads `EnvironmentFile=` itself, as root, before the
+# service drops to its DynamicUser — so no ownership juggling is needed here
+# (same reasoning as nut_secondary_password in hosts/mirkwood.nix).
+#
+# The arr apps each have ONE global API key, so these are necessarily the same
+# values recyclarr and jellyfin-notify use; there is no per-client key to mint.
+#
+# Widgets talk to services DIRECTLY (`http://pirateship:7878`), not through
+# Caddy. That keeps TLS and the reverse proxy out of a LAN-internal call, and
+# it avoids adding an `X-Forwarded-For` hop to the arr apps, whose local-address
+# auth bypass is sensitive to exactly that (see modules/arr-stack.nix).
+#
+# Homepage authenticates the Servarr apps with `?apikey=` as a QUERY PARAM, not
+# the `X-Api-Key` header. Both were verified against the live services.
+#
+# NO JELLYFIN WIDGET — it cannot work here. Homepage (2.2.0 and 2.3.0 alike)
+# calls `{url}/emby/{endpoint}?api_key={key}`, and orthanc runs Jellyfin 12,
+# which removed BOTH the `/emby/*` compatibility prefix (404) and `?api_key=`
+# auth (401). Only `Authorization: MediaBrowser Token="..."` works, and this
+# build does not pass custom headers from widget config. Verified, not assumed.
+# Jellyfin therefore stays a plain link until upstream fixes the widget.
+#
 # See https://gethomepage.dev/configs/services/ for the full schema.
 
 { config, pkgs, lib, ... }:
@@ -158,6 +194,9 @@ in
     listenPort = 3000;
     openFirewall = true;
     allowedHosts = "mirkwood.home.theshire.io:3000,mirkwood:3000,10.0.1.8:3000,homepage.theshire.io";
+
+    # Supplies the HOMEPAGE_VAR_* values referenced by the widgets below.
+    environmentFiles = [ config.sops.secrets.homepage_env.path ];
 
     settings = {
       title = "Homelab";
@@ -401,6 +440,8 @@ in
       # ---------------------------------------------------------------
       {
         Media = [
+          # Deliberately no widget — Jellyfin 12 removed the /emby prefix and
+          # ?api_key= auth that Homepage's widget uses. See the header.
           { Jellyfin = { href = "https://jellyfin.theshire.io"; description = "Media server"; icon = "jellyfin.png"; }; }
           { YouTube = { href = "https://yt.theshire.io"; description = "Invidious (Materialious UI)"; icon = "invidious.png"; }; }
           { "Music Assistant" = { href = "https://listen.theshire.io"; description = "Multi-room audio"; icon = "music-assistant.png"; }; }
@@ -409,13 +450,103 @@ in
       }
       {
         Downloads = [
-          { qBittorrent = { href = "https://dl.theshire.io"; description = "Torrent client"; icon = "qbittorrent.png"; }; }
-          { SABnzbd = { href = "https://nzb.theshire.io"; description = "Usenet client"; icon = "sabnzbd.png"; }; }
-          { Radarr = { href = "https://movies.theshire.io"; description = "Movie manager"; icon = "radarr.png"; }; }
-          { Sonarr = { href = "https://tv.theshire.io"; description = "TV manager"; icon = "sonarr.png"; }; }
-          { Prowlarr = { href = "https://prowlarr.theshire.io"; description = "Indexer manager"; icon = "prowlarr.png"; }; }
-          { Lidarr = { href = "https://lidarr.theshire.io"; description = "Music manager"; icon = "lidarr.png"; }; }
-          { Bazarr = { href = "https://subtitles.theshire.io"; description = "Subtitle manager"; icon = "bazarr.png"; }; }
+          {
+            qBittorrent = {
+              href = "https://dl.theshire.io";
+              description = "Torrent client";
+              icon = "qbittorrent.png";
+              # Credentials are belt-and-braces: mirkwood is inside
+              # qBittorrent's `WebUI\AuthSubnetWhitelist`, so an unauthenticated
+              # /api/v2 call from here already succeeds. Supplied anyway so the
+              # widget keeps working if that whitelist is ever narrowed.
+              widget = {
+                type = "qbittorrent";
+                url = "http://pirateship:9091";
+                username = "{{HOMEPAGE_VAR_QBT_USER}}";
+                password = "{{HOMEPAGE_VAR_QBT_PASS}}";
+              };
+            };
+          }
+          {
+            SABnzbd = {
+              href = "https://nzb.theshire.io";
+              description = "Usenet client";
+              icon = "sabnzbd.png";
+              widget = {
+                type = "sabnzbd";
+                url = "http://pirateship:8080";
+                # The API key, NOT the NZB key — sabnzbd.ini holds both.
+                key = "{{HOMEPAGE_VAR_SABNZBD_KEY}}";
+              };
+            };
+          }
+          {
+            Radarr = {
+              href = "https://movies.theshire.io";
+              description = "Movie manager";
+              icon = "radarr.png";
+              widget = {
+                type = "radarr";
+                url = "http://pirateship:7878";
+                key = "{{HOMEPAGE_VAR_RADARR_KEY}}";
+              };
+            };
+          }
+          {
+            Sonarr = {
+              href = "https://tv.theshire.io";
+              description = "TV manager";
+              icon = "sonarr.png";
+              widget = {
+                type = "sonarr";
+                url = "http://pirateship:8989";
+                key = "{{HOMEPAGE_VAR_SONARR_KEY}}";
+              };
+            };
+          }
+          {
+            Prowlarr = {
+              href = "https://prowlarr.theshire.io";
+              description = "Indexer manager";
+              icon = "prowlarr.png";
+              widget = {
+                type = "prowlarr";
+                url = "http://pirateship:9696";
+                key = "{{HOMEPAGE_VAR_PROWLARR_KEY}}";
+              };
+            };
+          }
+          {
+            Lidarr = {
+              href = "https://lidarr.theshire.io";
+              description = "Music manager";
+              icon = "lidarr.png";
+              widget = {
+                type = "lidarr";
+                url = "http://pirateship:8686";
+                key = "{{HOMEPAGE_VAR_LIDARR_KEY}}";
+              };
+            };
+          }
+          {
+            Bazarr = {
+              href = "https://subtitles.theshire.io";
+              description = "Subtitle manager";
+              icon = "bazarr.png";
+              # NO WIDGET YET — needs HOMEPAGE_VAR_BAZARR_KEY in homepage_env.
+              # Bazarr's config.yaml holds SIX `apikey:` entries; five are its
+              # OUTBOUND credentials for radarr/sonarr/jellyfin/plex/subsource.
+              # The one Bazarr authenticates WITH is the one under `auth:`:
+              #   sudo sed -n '/^auth:/,/^[^ ]/p' /var/lib/bazarr/config/config.yaml \
+              #     | grep -oP '^\s+apikey:\s*\K\S+'
+              # Once it is in the secret, uncomment:
+              #   widget = {
+              #     type = "bazarr";
+              #     url = "http://pirateship:6767";
+              #     key = "{{HOMEPAGE_VAR_BAZARR_KEY}}";
+              #   };
+            };
+          }
         ];
       }
       {
@@ -454,6 +585,10 @@ in
       }
     ];
   };
+
+  # Default 0400 root:root is correct — systemd reads EnvironmentFile= as root
+  # before homepage-dashboard drops to its DynamicUser. See the header.
+  sops.secrets.homepage_env = {};
 
   homelab.postUpgradeCheck.services = [ "homepage-dashboard" ];
 }
