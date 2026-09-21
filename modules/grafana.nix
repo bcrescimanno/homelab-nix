@@ -889,6 +889,37 @@ in
         admin_password = "$__env{GF_SECURITY_ADMIN_PASSWORD}";
         secret_key     = "$__env{GF_SECURITY_SECRET_KEY}";
       };
+
+      # No login prompt on the LAN. Grafana is LAN/tailnet-only — 3001 is the
+      # ONLY port mirkwood opens for this stack, and Prometheus' 9090 stays
+      # closed (see the comment above it) — so the login form was buying
+      # nothing that the network boundary does not already buy.
+      #
+      # `Editor`, not `Viewer` or `Admin`, and the distinction matters:
+      #   - Viewer cannot use Explore, and Explore is how LogQL and PromQL
+      #     queries actually get written here. That is most of what this
+      #     Grafana is opened for, so Viewer would leave the login prompt in
+      #     place for the common case and defeat the point.
+      #   - Editor can view dashboards, run Explore and edit panels in the
+      #     browser, but cannot touch datasources, users, or server settings.
+      #   - Admin would hand all of that to anyone on the LAN for no gain,
+      #     since everything administrative here is declared in this file.
+      #
+      # Nothing is lost by anonymous users being unable to SAVE a dashboard:
+      # dashboards are provisioned from the repo as JSON and are read-only in
+      # the UI regardless of role (allowUiUpdates is not set below).
+      #
+      # org_name must match the real org or Grafana refuses to start; this
+      # instance has the stock "Main Org." (id 1), confirmed against its
+      # sqlite on 2026-09-20.
+      #
+      # The login form is deliberately NOT disabled — `admin` still signs in
+      # from the corner of the page for anything Editor cannot do.
+      "auth.anonymous" = {
+        enabled   = true;
+        org_name  = "Main Org.";
+        org_role  = "Editor";
+      };
     };
 
     provision = {
