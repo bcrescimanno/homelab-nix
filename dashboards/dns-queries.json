@@ -70,7 +70,7 @@
             "uid": "homelab-loki"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` [$__range]))",
+          "expr": "sum(count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | label_format client_name=`{{ .client_name | trimSuffix \".home.theshire.io\" | trimSuffix \".theshire.io\" }}` | client_name =~ `(?i).*$client.*` [$__range]))",
           "queryType": "instant"
         }
       ],
@@ -128,7 +128,7 @@
             "uid": "homelab-loki"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({job=\"blocky\", host=~\"$host\"} |= \"BLOCKED\" | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` | reason =~ `BLOCKED.*` [$__range]))",
+          "expr": "sum(count_over_time({job=\"blocky\", host=~\"$host\"} |= \"BLOCKED\" | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | label_format client_name=`{{ .client_name | trimSuffix \".home.theshire.io\" | trimSuffix \".theshire.io\" }}` | client_name =~ `(?i).*$client.*` | reason =~ `BLOCKED.*` [$__range]))",
           "queryType": "instant"
         }
       ],
@@ -186,7 +186,7 @@
             "uid": "homelab-loki"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({job=\"blocky\", host=~\"$host\"} |= \"BLOCKED\" | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` | reason =~ `BLOCKED.*` [$__range])) / sum(count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` [$__range])) * 100",
+          "expr": "sum(count_over_time({job=\"blocky\", host=~\"$host\"} |= \"BLOCKED\" | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | label_format client_name=`{{ .client_name | trimSuffix \".home.theshire.io\" | trimSuffix \".theshire.io\" }}` | client_name =~ `(?i).*$client.*` | reason =~ `BLOCKED.*` [$__range])) / sum(count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | label_format client_name=`{{ .client_name | trimSuffix \".home.theshire.io\" | trimSuffix \".theshire.io\" }}` | client_name =~ `(?i).*$client.*` [$__range])) * 100",
           "queryType": "instant"
         }
       ],
@@ -244,7 +244,7 @@
             "uid": "homelab-loki"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({job=\"blocky\", host=~\"$host\"} |= \"CACHED\" | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` | reason =~ `CACHED.*` [$__range])) / sum(count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` | reason !~ `BLOCKED.*` [$__range])) * 100",
+          "expr": "sum(count_over_time({job=\"blocky\", host=~\"$host\"} |= \"CACHED\" | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | label_format client_name=`{{ .client_name | trimSuffix \".home.theshire.io\" | trimSuffix \".theshire.io\" }}` | client_name =~ `(?i).*$client.*` | reason =~ `CACHED.*` [$__range])) / sum(count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | label_format client_name=`{{ .client_name | trimSuffix \".home.theshire.io\" | trimSuffix \".theshire.io\" }}` | client_name =~ `(?i).*$client.*` | reason !~ `BLOCKED.*` [$__range])) * 100",
           "queryType": "instant"
         }
       ],
@@ -302,7 +302,7 @@
             "uid": "homelab-loki"
           },
           "editorMode": "code",
-          "expr": "count(sum by (client_name) (count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` [$__range])))",
+          "expr": "count(sum by (client_name) (count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | label_format client_name=`{{ .client_name | trimSuffix \".home.theshire.io\" | trimSuffix \".theshire.io\" }}` | client_name =~ `(?i).*$client.*` [$__range])))",
           "queryType": "instant"
         }
       ],
@@ -360,7 +360,7 @@
             "uid": "homelab-loki"
           },
           "editorMode": "code",
-          "expr": "quantile_over_time(0.95, {job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` | reason !~ `BLOCKED.*` | reason !~ `CACHED.*` | unwrap duration_ms [$__range]) by ()",
+          "expr": "quantile_over_time(0.95, {job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | label_format client_name=`{{ .client_name | trimSuffix \".home.theshire.io\" | trimSuffix \".theshire.io\" }}` | client_name =~ `(?i).*$client.*` | reason !~ `BLOCKED.*` | reason !~ `CACHED.*` | unwrap duration_ms [$__range]) by ()",
           "queryType": "instant"
         }
       ],
@@ -431,7 +431,7 @@
             "uid": "homelab-loki"
           },
           "editorMode": "code",
-          "expr": "sum by (source) (count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` | label_format source=`{{ if hasPrefix \"BLOCKED\" .reason }}Blocked{{ else if hasPrefix \"CACHED\" .reason }}Cached{{ else if eq .reason \"CONDITIONAL\" }}Conditional (UDM Pro){{ else if hasPrefix \"RESOLVED (tcp+udp:127.0.0.1:5335)\" .reason }}Recursive (Unbound){{ else if hasPrefix \"RESOLVED (https\" .reason }}Upstream DoH (fallback){{ else if hasPrefix \"RESOLVED\" .reason }}Resolved (other upstream){{ else if hasPrefix \"CUSTOM DNS\" .reason }}Custom DNS{{ else if hasPrefix \"Special-Use\" .reason }}Special-use (RFC 6761){{ else }}{{ .reason }}{{ end }}` [$__auto]))",
+          "expr": "sum by (source) (count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | label_format client_name=`{{ .client_name | trimSuffix \".home.theshire.io\" | trimSuffix \".theshire.io\" }}` | client_name =~ `(?i).*$client.*` | label_format source=`{{ if hasPrefix \"BLOCKED\" .reason }}Blocked{{ else if hasPrefix \"CACHED\" .reason }}Cached{{ else if eq .reason \"CONDITIONAL\" }}Conditional (UDM Pro){{ else if hasPrefix \"RESOLVED (tcp+udp:127.0.0.1:5335)\" .reason }}Recursive (Unbound){{ else if hasPrefix \"RESOLVED (https\" .reason }}Upstream DoH (fallback){{ else if hasPrefix \"RESOLVED\" .reason }}Resolved (other upstream){{ else if hasPrefix \"CUSTOM DNS\" .reason }}Custom DNS{{ else if hasPrefix \"Special-Use\" .reason }}Special-use (RFC 6761){{ else }}{{ .reason }}{{ end }}` [$__auto]))",
           "queryType": "range",
           "legendFormat": "{{source}}"
         }
@@ -638,7 +638,7 @@
             "uid": "homelab-loki"
           },
           "editorMode": "code",
-          "expr": "sum by (source) (count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` | label_format source=`{{ if hasPrefix \"BLOCKED\" .reason }}Blocked{{ else if hasPrefix \"CACHED\" .reason }}Cached{{ else if eq .reason \"CONDITIONAL\" }}Conditional (UDM Pro){{ else if hasPrefix \"RESOLVED (tcp+udp:127.0.0.1:5335)\" .reason }}Recursive (Unbound){{ else if hasPrefix \"RESOLVED (https\" .reason }}Upstream DoH (fallback){{ else if hasPrefix \"RESOLVED\" .reason }}Resolved (other upstream){{ else if hasPrefix \"CUSTOM DNS\" .reason }}Custom DNS{{ else if hasPrefix \"Special-Use\" .reason }}Special-use (RFC 6761){{ else }}{{ .reason }}{{ end }}` [$__range]))",
+          "expr": "sum by (source) (count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | label_format client_name=`{{ .client_name | trimSuffix \".home.theshire.io\" | trimSuffix \".theshire.io\" }}` | client_name =~ `(?i).*$client.*` | label_format source=`{{ if hasPrefix \"BLOCKED\" .reason }}Blocked{{ else if hasPrefix \"CACHED\" .reason }}Cached{{ else if eq .reason \"CONDITIONAL\" }}Conditional (UDM Pro){{ else if hasPrefix \"RESOLVED (tcp+udp:127.0.0.1:5335)\" .reason }}Recursive (Unbound){{ else if hasPrefix \"RESOLVED (https\" .reason }}Upstream DoH (fallback){{ else if hasPrefix \"RESOLVED\" .reason }}Resolved (other upstream){{ else if hasPrefix \"CUSTOM DNS\" .reason }}Custom DNS{{ else if hasPrefix \"Special-Use\" .reason }}Special-use (RFC 6761){{ else }}{{ .reason }}{{ end }}` [$__range]))",
           "queryType": "instant",
           "legendFormat": "{{source}}"
         }
@@ -824,7 +824,7 @@
             "uid": "homelab-loki"
           },
           "editorMode": "code",
-          "expr": "sum by (status) (count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` | label_format status=`{{ if hasPrefix \"BLOCKED\" .reason }}Blocked{{ else }}Allowed{{ end }}` [$__auto]))",
+          "expr": "sum by (status) (count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | label_format client_name=`{{ .client_name | trimSuffix \".home.theshire.io\" | trimSuffix \".theshire.io\" }}` | client_name =~ `(?i).*$client.*` | label_format status=`{{ if hasPrefix \"BLOCKED\" .reason }}Blocked{{ else }}Allowed{{ end }}` [$__auto]))",
           "queryType": "range",
           "legendFormat": "{{status}}"
         }
@@ -941,7 +941,7 @@
             "uid": "homelab-loki"
           },
           "editorMode": "code",
-          "expr": "sort_desc(sum by (host, status) (count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` | label_format status=`{{ if hasPrefix \"BLOCKED\" .reason }}Blocked{{ else }}Allowed{{ end }}` [$__range])))",
+          "expr": "sort_desc(sum by (host, status) (count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | label_format client_name=`{{ .client_name | trimSuffix \".home.theshire.io\" | trimSuffix \".theshire.io\" }}` | client_name =~ `(?i).*$client.*` | label_format status=`{{ if hasPrefix \"BLOCKED\" .reason }}Blocked{{ else }}Allowed{{ end }}` [$__range])))",
           "queryType": "instant",
           "legendFormat": "{{host}} \u2014 {{status}}"
         }
@@ -1029,7 +1029,7 @@
             "uid": "homelab-loki"
           },
           "editorMode": "code",
-          "expr": "sort_desc(topk(15, sum by (client_name) (count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" [$__range]))))",
+          "expr": "sort_desc(topk(15, sum by (client_name) (count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | label_format client_name=`{{ .client_name | trimSuffix \".home.theshire.io\" | trimSuffix \".theshire.io\" }}` [$__range]))))",
           "queryType": "instant",
           "legendFormat": "{{client_name}}"
         }
@@ -1104,7 +1104,7 @@
             "uid": "homelab-loki"
           },
           "editorMode": "code",
-          "expr": "sort_desc(topk(15, sum by (client_name) (count_over_time({job=\"blocky\", host=~\"$host\"} |= \"BLOCKED\" | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | reason =~ `BLOCKED.*` [$__range]))))",
+          "expr": "sort_desc(topk(15, sum by (client_name) (count_over_time({job=\"blocky\", host=~\"$host\"} |= \"BLOCKED\" | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | label_format client_name=`{{ .client_name | trimSuffix \".home.theshire.io\" | trimSuffix \".theshire.io\" }}` | reason =~ `BLOCKED.*` [$__range]))))",
           "queryType": "instant",
           "legendFormat": "{{client_name}}"
         }
@@ -1179,7 +1179,7 @@
             "uid": "homelab-loki"
           },
           "editorMode": "code",
-          "expr": "sort_desc(topk(15, (sum by (client_name) (count_over_time({job=\"blocky\", host=~\"$host\"} |= \"BLOCKED\" | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | reason =~ `BLOCKED.*` [$__range])) / sum by (client_name) (count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" [$__range])) * 100) and (sum by (client_name) (count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" [$__range])) > 20)))",
+          "expr": "sort_desc(topk(15, (sum by (client_name) (count_over_time({job=\"blocky\", host=~\"$host\"} |= \"BLOCKED\" | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | label_format client_name=`{{ .client_name | trimSuffix \".home.theshire.io\" | trimSuffix \".theshire.io\" }}` | reason =~ `BLOCKED.*` [$__range])) / sum by (client_name) (count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | label_format client_name=`{{ .client_name | trimSuffix \".home.theshire.io\" | trimSuffix \".theshire.io\" }}` [$__range])) * 100) and (sum by (client_name) (count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | label_format client_name=`{{ .client_name | trimSuffix \".home.theshire.io\" | trimSuffix \".theshire.io\" }}` [$__range])) > 20)))",
           "queryType": "instant",
           "legendFormat": "{{client_name}}"
         }
@@ -1254,7 +1254,7 @@
             "uid": "homelab-loki"
           },
           "editorMode": "code",
-          "expr": "topk(5, sum by (client_name) (count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` [$__auto])))",
+          "expr": "topk(5, sum by (client_name) (count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | label_format client_name=`{{ .client_name | trimSuffix \".home.theshire.io\" | trimSuffix \".theshire.io\" }}` | client_name =~ `(?i).*$client.*` [$__auto])))",
           "queryType": "range",
           "legendFormat": "{{client_name}}"
         }
@@ -1353,7 +1353,7 @@
             "uid": "homelab-loki"
           },
           "editorMode": "code",
-          "expr": "sort_desc(topk(20, sum by (question) (count_over_time({job=\"blocky\", host=~\"$host\"} |= \"BLOCKED\" | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` | reason =~ `BLOCKED.*` [$__range]))))",
+          "expr": "sort_desc(topk(20, sum by (question) (count_over_time({job=\"blocky\", host=~\"$host\"} |= \"BLOCKED\" | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | label_format client_name=`{{ .client_name | trimSuffix \".home.theshire.io\" | trimSuffix \".theshire.io\" }}` | client_name =~ `(?i).*$client.*` | reason =~ `BLOCKED.*` [$__range]))))",
           "queryType": "instant",
           "legendFormat": "{{question}}"
         }
@@ -1428,7 +1428,7 @@
             "uid": "homelab-loki"
           },
           "editorMode": "code",
-          "expr": "sort_desc(topk(20, sum by (question) (count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` | reason !~ `BLOCKED.*` [$__range]))))",
+          "expr": "sort_desc(topk(20, sum by (question) (count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | label_format client_name=`{{ .client_name | trimSuffix \".home.theshire.io\" | trimSuffix \".theshire.io\" }}` | client_name =~ `(?i).*$client.*` | reason !~ `BLOCKED.*` [$__range]))))",
           "queryType": "instant",
           "legendFormat": "{{question}}"
         }
@@ -1503,7 +1503,7 @@
             "uid": "homelab-loki"
           },
           "editorMode": "code",
-          "expr": "sort_desc(topk(15, sum by (rule) (count_over_time({job=\"blocky\", host=~\"$host\"} |= \"BLOCKED\" | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` | reason =~ `BLOCKED.*` | label_format rule=`{{ regexReplaceAll \"^BLOCKED \\\\((.*)\\\\)$\" .reason \"${1}\" }}` [$__range]))))",
+          "expr": "sort_desc(topk(15, sum by (rule) (count_over_time({job=\"blocky\", host=~\"$host\"} |= \"BLOCKED\" | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | label_format client_name=`{{ .client_name | trimSuffix \".home.theshire.io\" | trimSuffix \".theshire.io\" }}` | client_name =~ `(?i).*$client.*` | reason =~ `BLOCKED.*` | label_format rule=`{{ regexReplaceAll \"^BLOCKED \\\\((.*)\\\\)$\" .reason \"${1}\" }}` [$__range]))))",
           "queryType": "instant",
           "legendFormat": "{{rule}}"
         }
@@ -1591,7 +1591,7 @@
             "uid": "homelab-loki"
           },
           "editorMode": "code",
-          "expr": "{job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` $logfilter | line_format `{{ .client_name }}  {{ .question }}  {{ .reason }}  {{ .duration_ms }}ms`",
+          "expr": "{job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | label_format client_name=`{{ .client_name | trimSuffix \".home.theshire.io\" | trimSuffix \".theshire.io\" }}` | client_name =~ `(?i).*$client.*` $logfilter | line_format `{{ .client_name }}  {{ .question }}  {{ .reason }}  {{ .duration_ms }}ms`",
           "queryType": "range",
           "maxLines": 1000
         }
@@ -1631,7 +1631,7 @@
               "showLineNumbers": false,
               "showMiniMap": false
             },
-            "content": "**Source.** Blocky's own query log, shipped to Loki by Alloy (`modules/alloy.nix`).\nRetention is Loki's 14 days, not Blocky's 30 on disk.\n\n**The two resolvers are independent.** mirkwood and rivendell each log what\n*they* answered. A client configured with both is counted in both, so `All`\nsums rather than de-duplicates. Pick a single host for exact per-resolver\nnumbers.\n\n**Only the left-hand columns are parsed, on purpose.** The log is tab-separated,\nbut the `answer` column is CSV-quoted and can itself contain tabs \u2014 an HTTPS/SVCB\nrecord serialises with them. Parsing positionally past `answer` therefore\nmis-assigns columns on ~1.5% of lines (it reads `IN` as the response type). Every\nquery here stops at `question`, which is lossless. Query type and response code\nlive past that break: get them from the **Blocky** dashboard, which reads\nPrometheus.\n\n**Client filter** is a case-insensitive substring \u2014 `ipad` matches\n`iPad.home.theshire.io`. The three client ranking panels deliberately ignore\nit, so there is always something to pick from.\n\n**Every ranked panel is sorted high to low in LogQL, not in Grafana.** Loki\nreturns series in arbitrary order, so each of those queries is wrapped in\n`sort_desc(...)` and the panel simply renders them in the order Loki hands\nback. They are also set to \"All values\" rather than \"Calculate\", which draws\none bar per series instead of collapsing them to a single number.\n\n**Do not add a `reduce` transformation to sort these instead.** An instant\nquery returns one frame per series carrying `meta.type: numeric-multi`, and\n`reduce` spreads that meta onto its own reshaped output. The frame then lies\nabout its shape, the panel finds no numeric field, and every bar renders as\nno-value \u2014 silently, with no error. That shipped once and looked like the\npanels were reporting zero.\n\n**Counts are queries, not devices.** A page load is many queries, and a client\nthat retries a blocked name inflates its own bar \u2014 which is the honest number\nfor \"who is making the most requests\", but not for \"who is busiest\"."
+            "content": "**Source.** Blocky's own query log, shipped to Loki by Alloy (`modules/alloy.nix`).\nRetention is Loki's 14 days, not Blocky's 30 on disk.\n\n**The two resolvers are independent.** mirkwood and rivendell each log what\n*they* answered. A client configured with both is counted in both, so `All`\nsums rather than de-duplicates. Pick a single host for exact per-resolver\nnumbers.\n\n**Only the left-hand columns are parsed, on purpose.** The log is tab-separated,\nbut the `answer` column is CSV-quoted and can itself contain tabs \u2014 an HTTPS/SVCB\nrecord serialises with them. Parsing positionally past `answer` therefore\nmis-assigns columns on ~1.5% of lines (it reads `IN` as the response type). Every\nquery here stops at `question`, which is lossless. Query type and response code\nlive past that break: get them from the **Blocky** dashboard, which reads\nPrometheus.\n\n**Client names are shortened to the bare hostname.** Blocky logs the FQDN it\ngets back from the UDM Pro, so every query here runs\n`| label_format client_name=...` to trim `.home.theshire.io` (and the plain\n`.theshire.io` that orthanc answers with). It is a `trimSuffix`, not a cut at\nthe first dot, so an IPv4 address, an IPv6 address and a dotless name all pass\nthrough untouched \u2014 which matters, because an unresolved client IS its IP here.\n\n**Client filter** is a case-insensitive substring \u2014 `ipad` matches `iPad`. It\nruns after the shortening, so it sees short names and cannot match the domain.\nThe three client ranking panels deliberately ignore it, so there is always\nsomething to pick from.\n\n**A client shown as a bare IP has no PTR, and stays that way for an hour.**\nBlocky caches the client name for one hardcoded hour whether the lookup\nsucceeded or not, so a single failure names that device by its IP for the next\nhour of log lines \u2014 which is why one device appears under both names on the\nsame day. The usual cause is two devices sharing a hostname: UniFi keeps one\nrecord per name, so of three iPads only the one that renewed last has a PTR.\nRenaming them is the fix, and it also splits them apart here, where all three\nare a single bar. Infrastructure and tailnet addresses are pinned in\n`clientLookup.clients` in `modules/dns.nix` instead, which skips the lookup.\n\n**Every ranked panel is sorted high to low in LogQL, not in Grafana.** Loki\nreturns series in arbitrary order, so each of those queries is wrapped in\n`sort_desc(...)` and the panel simply renders them in the order Loki hands\nback. They are also set to \"All values\" rather than \"Calculate\", which draws\none bar per series instead of collapsing them to a single number.\n\n**Do not add a `reduce` transformation to sort these instead.** An instant\nquery returns one frame per series carrying `meta.type: numeric-multi`, and\n`reduce` spreads that meta onto its own reshaped output. The frame then lies\nabout its shape, the panel finds no numeric field, and every bar renders as\nno-value \u2014 silently, with no error. That shipped once and looked like the\npanels were reporting zero.\n\n**Counts are queries, not devices.** A page load is many queries, and a client\nthat retries a blocked name inflates its own bar \u2014 which is the honest number\nfor \"who is making the most requests\", but not for \"who is busiest\"."
           }
         }
       ],

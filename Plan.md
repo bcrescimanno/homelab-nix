@@ -609,6 +609,42 @@ erebor is online (10G SFP+ at 10.0.1.22, 1G ethernet at 10.0.1.21 for management
     has no renderer plugin. That harness is the only way any of this was
     settled; assume the same is needed for the next transformation change.
 
+  - **Client names are shortened in LogQL, and the reason some are missing is
+    upstream of Blocky entirely.** Every query trims the domain off
+    `client_name` with `trimSuffix ".home.theshire.io" | trimSuffix
+    ".theshire.io"` — a suffix trim rather than a cut at the first dot,
+    because an unresolved client IS its own IP in this column and `10.0.1.184`
+    must not become `10`. The same guard covers IPv6 and the dotless names the
+    IoT VLAN returns (`THERMADOR-PRD486WIGU-68A40E2C6376`).
+
+    What the shortening exposed is that **a failed PTR is cached for one hour,
+    hardcoded**, in `client_names_resolver.go`: the miss is stored exactly like
+    a hit, so one failure names that device by its IP for the next hour of log
+    lines. Measured on 2026-09-20: 10.0.1.184 logged as
+    `iPhone.home.theshire.io` for hours 01–08 and as `10.0.1.184` for 09–17,
+    ~8,000 lines under the wrong identity. **The PTRs fail because UniFi keeps
+    one record per hostname and several devices answer to the same one** —
+    `iPad.home.theshire.io` resolves to whichever of three iPads renewed last,
+    and the other two get NXDOMAIN. Confirmed by digging the UDM Pro directly:
+    .63 answered 20/20, .69 and .166 answered 0/20, and all three log as
+    "iPad" and merge into one bar.
+
+    Fixed as far as this side can: `clientLookup.clients` in `modules/dns.nix`
+    pins the five machines, loopback (the second-busiest client on mirkwood,
+    16k queries in 6h, logged as `127.0.0.1`) and the tailnet addresses, which
+    live in CGNAT space and can never have a PTR. Static entries are consulted
+    before the cache path, so they cannot be poisoned. **The rest needs
+    device-side renaming** — the duplicate "iPad"/"iPhone" names — which is
+    also the only thing that will split them apart in the rankings.
+
+  - **Conditional forwarding covered one VLAN out of six.** The reverse zone
+    was `1.0.10.in-addr.arpa`, so `dig -x` through Blocky returned nothing for
+    anything off 10.0.1.0/24 while the UDM Pro answered the same query fine.
+    Now `0.10.in-addr.arpa`, one suffix covering 10.0.0.0/16. This never
+    affected the dashboard — `clientLookup` queries its upstream directly and
+    bypasses conditional forwarding, which is why IoT devices were named
+    correctly the whole time the zone was broken.
+
   Not done, deliberately: the two resolvers each log what they answered and a
   client using both is counted in both, so `All` sums rather than
   de-duplicates. De-duplicating would need a query-side join on

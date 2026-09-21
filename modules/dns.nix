@@ -251,16 +251,91 @@ upstreams = {
         "terra.home.theshire.io" = "10.0.1.215";
       };
 
-      # Forward home.theshire.io and reverse-DNS queries to UDM Pro for DHCP hostname resolution
+      # Forward home.theshire.io and reverse-DNS queries to UDM Pro for DHCP
+      # hostname resolution.
+      #
+      # The reverse zone is the whole of 10.0.0.0/16, not just the main VLAN.
+      # It used to read "1.0.10.in-addr.arpa", which covers 10.0.1.0/24 alone,
+      # so every other VLAN had no reverse resolution through Blocky at all:
+      # `dig -x 10.0.12.114` returned nothing here while the UDM Pro answered
+      # THERMADOR-PRD486WIGU-68A40E2C6376 for the same query. Blocky matches
+      # conditional entries by domain suffix, so this one entry replaces what
+      # would otherwise be 1.0, 12.0, 13.0, 14.0, 15.0 and 99.0.
+      #
+      # clientLookup below does NOT go through this — it queries its own
+      # upstream directly — which is why the IoT devices were still named
+      # correctly in the query log the whole time this was broken.
       conditional.mapping = {
-        "home.theshire.io"     = "10.0.1.1";
-        "1.0.10.in-addr.arpa" = "10.0.1.1";
+        "home.theshire.io"  = "10.0.1.1";
+        "0.10.in-addr.arpa" = "10.0.1.1";
       };
 
       # Resolve client IPs to hostnames for Grafana panels and query logs.
-      # UDM Pro has PTR records for all DHCP leases.
+      #
+      # Blocky resolves a client name in three steps (client_names_resolver.go):
+      # the static `clients` map first, then in-memory reverse data (hosts file,
+      # customDNS), then a PTR query to `upstream`. First hit wins, and a miss
+      # falls back to the bare IP string.
+      #
+      # THE RESULT IS CACHED FOR ONE HOUR EITHER WAY, and that hour is
+      # hardcoded — there is no config knob for it. So a single failed PTR does
+      # not cost one log line, it costs every line that client writes for the
+      # next hour. That is why the DNS dashboard showed one device as both
+      # "iPhone.home.theshire.io" and "10.0.1.184", in hour-long blocks, on the
+      # same day.
+      #
+      # The PTRs fail because UniFi's DNS holds ONE record per hostname and
+      # several devices here answer to the same one. Three iPads all call
+      # themselves "iPad", so iPad.home.theshire.io points at whichever of them
+      # renewed its lease last and the other two get NXDOMAIN — until the
+      # winner changes and the naming flips. Nothing on this side can fix that:
+      # the fix is to give those devices distinct names, which also un-merges
+      # them in the dashboard, where all three iPads are one bar today.
+      #
+      # `clients` is the escape hatch, and it is used only for machines whose
+      # address is a DHCP reservation or a static assignment, so pinning a name
+      # to an IP states a fact rather than a guess. Matching is exact per
+      # address — no CIDR — and IPv6 is fine. Do NOT add an entry for anything
+      # on a dynamic lease: the name would outlive the device's hold on the
+      # address and mislabel whoever gets it next.
       clientLookup = {
         upstream = "10.0.1.1";
+
+        clients =
+          let
+            # The homelab machines, by reservation. They do have PTRs, so this
+            # is not about making them resolvable — it takes them out of the
+            # one-hour poisoning above, and they are precisely the clients this
+            # dashboard gets read for. orthanc also answered as
+            # "orthanc.theshire.io" rather than ".home.theshire.io"; this
+            # normalises that too.
+            machines = {
+              mirkwood   = [ "10.0.1.8"  "fd0a:7e1:5e:1::8" ];
+              rivendell  = [ "10.0.1.9"  "fd0a:7e1:5e:1::9" ];
+              orthanc    = [ "10.0.1.10" ];
+              erebor     = [ "10.0.1.22" ];
+              pirateship = [ "10.0.1.35" ];
+            };
+
+            self = config.networking.hostName;
+          in
+          machines // {
+            # Loopback is this resolver talking to itself, so it folds into
+            # whichever of the two machines above this host is rather than
+            # becoming a separate name. Everything the host originates — the
+            # unbound probe, flake-freshness, Alloy, the upgrade path — arrives
+            # this way, and logged as a literal "127.0.0.1" until now. It is
+            # the second-busiest client on mirkwood.
+            ${self} = machines.${self} ++ [ "127.0.0.1" "::1" ];
+
+            # Tailnet. A tailnet address is issued once per node and does not
+            # move, but it lives in CGNAT space the UDM Pro knows nothing
+            # about, so these can never get a PTR. Without this the phone is a
+            # third distinct client in every panel — its LAN name, its LAN IP,
+            # and this.
+            "mirkwood (tailnet)"  = [ "100.79.85.116" ];
+            "iphone171 (tailnet)" = [ "100.127.74.71" ];
+          };
       };
 
       # Keep frequently-queried entries warm: Blocky re-resolves popular names
