@@ -133,7 +133,17 @@
     "/var/lib/prowlarr/config"
     "/var/lib/lidarr/config"
     "/var/lib/sabnzbd/config"
-    "/var/lib/jellyfin/config"
+
+    # NO jellyfin path here. Jellyfin moved to orthanc (native, modules/jellyfin.nix)
+    # on 2026-04-03 and its state is backed up there as /var/lib/jellyfin. The
+    # container-era directory was left behind on this host and kept being
+    # archived to BOTH repos nightly — 530MB and ~5,000 entries of data last
+    # written the day of the migration.
+    #
+    # Removed from the backup set 2026-09-20. The directory ITSELF is still on
+    # disk — nothing on this host recreates it, nothing holds it open, and it is
+    # no longer archived, so it is inert. Reclaim the space by hand when
+    # convenient: sudo rm -rf /var/lib/jellyfin
     "/var/lib/bazarr"
     "/var/lib/navidrome"   # music library DB + user accounts/playlists
   ];

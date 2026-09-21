@@ -117,17 +117,29 @@
 # entry, because zero audio streams is exactly how Piped died and a status-only
 # check calls that healthy.
 #
-# STILL OPEN: nothing backs up the native PostgreSQL, and SUBSCRIPTIONS LIVE
-# THERE. A restic snapshot of a live data dir is not crash-consistent, so this
-# wants a pg_dump pre-hook rather than a raw path in homelab.backup.paths.
-# Piped's own database was never backed up either, so this is not a regression
-# from the migration — it is an inherited gap that now holds the only copy of
-# the subscription list.
+# Backups: CLOSED 2026-09-20. Nothing backed up the native PostgreSQL for the
+# first two months of this module's life, and SUBSCRIPTIONS LIVE THERE — 53 of
+# them, in one row of `users`, with no second copy anywhere. Piped's database
+# was never backed up either, so it was an inherited gap rather than a
+# regression, but it was the only genuine data-loss exposure left in the lab.
+# `backup-invidious` below dumps the database to backupDir at 02:30 and restic's
+# 03:00 local run picks that directory up. The live data dir is deliberately NOT
+# in homelab.backup.paths: a restic snapshot of running PostgreSQL is not
+# crash-consistent, so it would restore to a torn WAL rather than a database.
+# Same shape as backup-vaultwarden in modules/vaultwarden.nix.
 
 { config, pkgs, lib, ... }:
 
 let
   companionPort = 8282;
+
+  ntfyUrl = "http://10.0.1.9:2586/homelab";
+  host    = config.networking.hostName;
+
+  # Local disk. A SIBLING of /var/backup/erebor, never inside it — that path is
+  # the NFS mount in modules/backup.nix, and dumping the database onto the
+  # backup share would make the snapshot depend on erebor being up.
+  backupDir = "/var/backup/invidious";
 in
 
 {
@@ -294,6 +306,10 @@ in
   systemd.tmpfiles.rules = [
     "d /var/lib/invidious-companion       0755 root root -"
     "d /var/lib/invidious-companion/cache 0777 root root -"
+
+    # 0700 postgres: the dump is written by backup-invidious running AS
+    # postgres. restic runs as root, so it reads this regardless.
+    "d ${backupDir} 0700 postgres postgres -"
   ];
 
   # Only Invidious is reachable off-host, and only so Caddy can proxy it.
@@ -303,5 +319,109 @@ in
   # module sets RuntimeMaxSec=1h with a randomized 5min offset, so this service
   # is SUPPOSED to restart roughly hourly. Upstream requires it. A rising
   # restart count is normal here and is not a crash loop.
+  # ---------------------------------------------------------------------------
+  # Database snapshot for restic
+  #
+  # restic must never be pointed at PostgreSQL's live data directory: it walks
+  # the tree file by file while the server is writing to it, so the result is a
+  # torn copy that looks like a successful backup and restores as a corrupt
+  # cluster. A logical dump is the only consistent thing to archive, and
+  # pg_dump takes its own MVCC snapshot, so this needs no downtime.
+  #
+  # The dump is written to a temp file and renamed into place. Without that,
+  # restic's 03:00 run could catch a half-written dump and archive it — the
+  # failure would be invisible until a restore was attempted, which is the
+  # specific way #569 stayed green for four months.
+  #
+  # Roles are deliberately NOT dumped (no pg_dumpall --globals-only): the
+  # `invidious` role and database are recreated declaratively by
+  # database.createLocally on any fresh deploy, so a globals dump would restore
+  # state that Nix already owns.
+  #
+  # Restore:
+  #   systemctl stop invidious
+  #   sudo -u postgres dropdb invidious
+  #   sudo -u postgres createdb -O invidious invidious
+  #   gzip -dc /var/backup/invidious/invidious.sql.gz | sudo -u postgres psql invidious
+  #   systemctl start invidious
+  # ---------------------------------------------------------------------------
+
+  systemd.services.backup-invidious = {
+    description = "Dump the Invidious database for restic";
+    requires = [ "postgresql.service" ];
+    after    = [ "postgresql.service" ];
+
+    # Both markers, for the reason spelled out at length in modules/music-sync.nix:
+    # switch-to-configuration starts timer-driven oneshots mid-activation, and a
+    # dump attempted while postgresql is still restarting fails the unit, fails
+    # s-t-c, and pushes a false "Upgrade FAILED". restartIfChanged only covers
+    # ACTIVE units; a timer oneshot is inactive, so X-OnlyManualStart is the one
+    # that actually makes s-t-c skip it. The timer is the only legitimate trigger.
+    restartIfChanged = false;
+    unitConfig = {
+      X-OnlyManualStart = true;
+      OnFailure = "backup-invidious-notify-failure.service";
+    };
+
+    serviceConfig = {
+      Type  = "oneshot";
+      # Peer auth over the unix socket — no password anywhere, matching
+      # database.createLocally. postgres is superuser, so it can dump any db.
+      User  = "postgres";
+      Group = "postgres";
+      UMask = "0077";
+    };
+
+    script = ''
+      set -euo pipefail
+
+      tmp="${backupDir}/invidious.sql.gz.tmp"
+      dst="${backupDir}/invidious.sql.gz"
+
+      # pipefail is what makes a pg_dump failure fail the unit — without it the
+      # exit status would be gzip's, which reports success on a truncated
+      # stream and would publish an empty dump over a good one.
+      ${config.services.postgresql.package}/bin/pg_dump \
+        --no-owner --no-privileges invidious \
+        | ${pkgs.gzip}/bin/gzip -9 > "$tmp"
+
+      ${pkgs.coreutils}/bin/mv -f "$tmp" "$dst"
+    '';
+  };
+
+  systemd.timers.backup-invidious = {
+    description = "Nightly Invidious database snapshot";
+    wantedBy = [ "timers.target" ];
+    # Ahead of restic's local run (03:00 plus up to 1h jitter, see
+    # modules/backup.nix), so the archived dump is at most ~1.5h old.
+    # Persistent so a host that was down at 02:30 dumps on the next boot
+    # rather than silently skipping a day.
+    timerConfig = {
+      OnCalendar = "02:30";
+      Persistent = true;
+    };
+  };
+
+  # A failing dump would otherwise be silent: restic would keep archiving the
+  # last good file forever, and the restic freshness check in modules/backup.nix
+  # only proves restic itself ran.
+  systemd.services.backup-invidious-notify-failure = {
+    description = "Notify ntfy that the Invidious database snapshot failed";
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = ''
+        ${pkgs.curl}/bin/curl -s --connect-timeout 5 --max-time 30 \
+          --retry 3 --retry-delay 10 --retry-all-errors \
+          -H 'Title: Invidious snapshot FAILED' \
+          -H 'Priority: 4' \
+          -H 'Tags: warning' \
+          -d '${host}: backup-invidious failed, restic is archiving a stale database — check journalctl -u backup-invidious' \
+          ${ntfyUrl}
+      '';
+    };
+  };
+
+  homelab.backup.paths = [ backupDir ];
+
   homelab.postUpgradeCheck.services = [ "invidious" "podman-invidious-companion" ];
 }
