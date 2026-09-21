@@ -16,6 +16,23 @@
 
 { config, pkgs, lib, ... }:
 
+let
+  # The homelab machines, by DHCP reservation. Used twice below: forward
+  # records in customDNS.mapping, and client-name resolution in
+  # clientLookup.clients. One list so the two can never disagree.
+  machines = {
+    mirkwood   = [ "10.0.1.8"  "fd0a:7e1:5e:1::8" ];
+    rivendell  = [ "10.0.1.9"  "fd0a:7e1:5e:1::9" ];
+    orthanc    = [ "10.0.1.10" ];
+    erebor     = [ "10.0.1.22" ];
+    pirateship = [ "10.0.1.35" ];
+  };
+
+  # IPv4 only, on purpose — see the customDNS comment block.
+  machinesV4 = lib.mapAttrs
+    (_: ips: lib.findFirst (ip: !lib.hasInfix ":" ip) null ips)
+    machines;
+in
 {
   # Static user+group for Blocky. See the comment block on
   # systemd.services.blocky below — this exists so its query log can be read
@@ -247,9 +264,38 @@ upstreams = {
 
       # Static entries for machines with DHCP reservations — resolves immediately
       # without waiting for UDM Pro to have an active lease (e.g. after WoL).
+      #
+      # The five homelab hosts are here for a second reason: THE UDM PRO SERVES
+      # EVERY RECORD WITH TTL 0, so Blocky can never cache a conditionally
+      # forwarded answer. Blocky's caching resolver only stores an entry when
+      # the adjusted TTL is > 0, so with no `caching.minTime` floor every single
+      # internal lookup was a fresh round trip to 10.0.1.1. Measured in Loki on
+      # 2026-09-20 over five hours: 8,525 CONDITIONAL queries, of which 6,528
+      # (77%) were just these five names — pirateship alone 3,032, re-resolved
+      # by Caddy and Gatus roughly every 12 seconds, and never once CACHED.
+      # A customDNS entry is answered in-process, so those become CUSTOM DNS at
+      # 0ms and the UDM Pro sees none of them.
+      #
+      # Preferred over a global `caching.minTime`, which would have fixed this
+      # too but by putting a TTL floor under PUBLIC answers as well — pinning
+      # stale CDN addresses to calm down a purely internal problem.
+      #
+      # IPv4 ONLY, deliberately. The UDM Pro answers AAAA for none of these
+      # (verified with `dig +short @10.0.1.1 <host>.home.theshire.io AAAA` for
+      # all five — all empty), so publishing the ULA addresses here would be a
+      # new behaviour, not a faster version of the current one. Mapping only A
+      # keeps the answers identical: Blocky's `filterUnmappedTypes` defaults to
+      # true, so an AAAA query for a mapped name returns the same empty NOERROR
+      # the UDM Pro gives today, without leaving the box. That half of the
+      # traffic is not a rounding error — every one of these names is asked as
+      # an A/AAAA pair.
+      #
+      # Only `.home.theshire.io` belongs here. Bare `*.theshire.io` is Unbound's
+      # split-horizon redirect zone and must keep pointing at Caddy on 10.0.1.9
+      # — mapping `orthanc.theshire.io` to 10.0.1.10 would bypass the proxy.
       customDNS.mapping = {
         "terra.home.theshire.io" = "10.0.1.215";
-      };
+      } // lib.mapAttrs' (name: ip: lib.nameValuePair "${name}.home.theshire.io" ip) machinesV4;
 
       # Forward home.theshire.io and reverse-DNS queries to UDM Pro for DHCP
       # hostname resolution.
@@ -303,20 +349,13 @@ upstreams = {
 
         clients =
           let
-            # The homelab machines, by reservation. They do have PTRs, so this
-            # is not about making them resolvable — it takes them out of the
+            # `machines` is defined at the top of this file — the same list
+            # that feeds customDNS.mapping above. They do have PTRs, so this is
+            # not about making them resolvable — it takes them out of the
             # one-hour poisoning above, and they are precisely the clients this
             # dashboard gets read for. orthanc also answered as
             # "orthanc.theshire.io" rather than ".home.theshire.io"; this
             # normalises that too.
-            machines = {
-              mirkwood   = [ "10.0.1.8"  "fd0a:7e1:5e:1::8" ];
-              rivendell  = [ "10.0.1.9"  "fd0a:7e1:5e:1::9" ];
-              orthanc    = [ "10.0.1.10" ];
-              erebor     = [ "10.0.1.22" ];
-              pirateship = [ "10.0.1.35" ];
-            };
-
             self = config.networking.hostName;
           in
           machines // {
