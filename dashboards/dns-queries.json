@@ -341,7 +341,7 @@
       "id": 7,
       "type": "stat",
       "title": "p95 lookup",
-      "description": "95th percentile of Blocky's own duration column, over real lookups only — blocked and cached answers are 0 ms and would flatter it.",
+      "description": "95th percentile of Blocky's own duration column, over real lookups only \u2014 blocked and cached answers are 0 ms and would flatter it.",
       "datasource": {
         "type": "loki",
         "uid": "homelab-loki"
@@ -412,7 +412,7 @@
       "id": 9,
       "type": "timeseries",
       "title": "Where answers came from",
-      "description": "Every query bucketed by what actually produced the answer. 'Cached' and 'Recursive (Unbound)' are the two that matter for cache-vs-real-lookup: anything that is not cached, blocked or conditional left the house. 'Upstream DoH (fallback)' should normally be empty — Blocky's upstream strategy is `strict`, so traffic only lands there when Unbound is failing, and a persistent band is worth chasing.",
+      "description": "Every query bucketed by what actually produced the answer. 'Cached' and 'Recursive (Unbound)' are the two that matter for cache-vs-real-lookup: anything that is not cached, blocked or conditional left the house. 'Upstream DoH (fallback)' should normally be empty \u2014 Blocky's upstream strategy is `strict`, so traffic only lands there when Unbound is failing, and a persistent band is worth chasing.",
       "datasource": {
         "type": "loki",
         "uid": "homelab-loki"
@@ -922,7 +922,7 @@
       "id": 12,
       "type": "bargauge",
       "title": "Blocked vs allowed, by resolver",
-      "description": "Per DNS host. These are two independent resolvers, not a cluster — a client configured with both appears in both, so the two bars are not shares of one pie.",
+      "description": "Per DNS host. These are two independent resolvers, not a cluster \u2014 a client configured with both appears in both, so the two bars are not shares of one pie.",
       "datasource": {
         "type": "loki",
         "uid": "homelab-loki"
@@ -941,37 +941,17 @@
             "uid": "homelab-loki"
           },
           "editorMode": "code",
-          "expr": "sum by (host, status) (count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` | label_format status=`{{ if hasPrefix \"BLOCKED\" .reason }}Blocked{{ else }}Allowed{{ end }}` [$__range]))",
+          "expr": "sort_desc(sum by (host, status) (count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` | label_format status=`{{ if hasPrefix \"BLOCKED\" .reason }}Blocked{{ else }}Allowed{{ end }}` [$__range])))",
           "queryType": "instant",
-          "legendFormat": "{{host}} — {{status}}"
+          "legendFormat": "{{host}} \u2014 {{status}}"
         }
       ],
-      "transformations": [
-        {
-          "id": "reduce",
-          "options": {
-            "reducers": [
-              "lastNotNull"
-            ],
-            "mode": "seriesToRows"
-          }
-        },
-        {
-          "id": "sortBy",
-          "options": {
-            "fields": {},
-            "sort": [
-              {
-                "field": "Last *",
-                "desc": true
-              }
-            ]
-          }
-        }
-      ],
+      "transformations": [],
       "options": {
         "reduceOptions": {
-          "calcs": [],
+          "calcs": [
+            "lastNotNull"
+          ],
           "fields": "",
           "values": true
         },
@@ -996,7 +976,6 @@
           "unit": "short",
           "decimals": 0,
           "mappings": [],
-          "noValue": "0",
           "color": {
             "mode": "fixed",
             "fixedColor": "text"
@@ -1031,7 +1010,7 @@
       "id": 14,
       "type": "bargauge",
       "title": "Noisiest clients",
-      "description": "Ranked by total queries. NOT affected by the client filter — this is the panel you pick a client from.",
+      "description": "Ranked by total queries. NOT affected by the client filter \u2014 this is the panel you pick a client from.",
       "datasource": {
         "type": "loki",
         "uid": "homelab-loki"
@@ -1050,37 +1029,17 @@
             "uid": "homelab-loki"
           },
           "editorMode": "code",
-          "expr": "topk(15, sum by (client_name) (count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" [$__range])))",
+          "expr": "sort_desc(topk(15, sum by (client_name) (count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" [$__range]))))",
           "queryType": "instant",
           "legendFormat": "{{client_name}}"
         }
       ],
-      "transformations": [
-        {
-          "id": "reduce",
-          "options": {
-            "reducers": [
-              "lastNotNull"
-            ],
-            "mode": "seriesToRows"
-          }
-        },
-        {
-          "id": "sortBy",
-          "options": {
-            "fields": {},
-            "sort": [
-              {
-                "field": "Last *",
-                "desc": true
-              }
-            ]
-          }
-        }
-      ],
+      "transformations": [],
       "options": {
         "reduceOptions": {
-          "calcs": [],
+          "calcs": [
+            "lastNotNull"
+          ],
           "fields": "",
           "values": true
         },
@@ -1105,7 +1064,6 @@
           "unit": "short",
           "decimals": 0,
           "mappings": [],
-          "noValue": "0",
           "color": {
             "mode": "fixed",
             "fixedColor": "blue"
@@ -1146,37 +1104,17 @@
             "uid": "homelab-loki"
           },
           "editorMode": "code",
-          "expr": "topk(15, sum by (client_name) (count_over_time({job=\"blocky\", host=~\"$host\"} |= \"BLOCKED\" | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | reason =~ `BLOCKED.*` [$__range])))",
+          "expr": "sort_desc(topk(15, sum by (client_name) (count_over_time({job=\"blocky\", host=~\"$host\"} |= \"BLOCKED\" | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | reason =~ `BLOCKED.*` [$__range]))))",
           "queryType": "instant",
           "legendFormat": "{{client_name}}"
         }
       ],
-      "transformations": [
-        {
-          "id": "reduce",
-          "options": {
-            "reducers": [
-              "lastNotNull"
-            ],
-            "mode": "seriesToRows"
-          }
-        },
-        {
-          "id": "sortBy",
-          "options": {
-            "fields": {},
-            "sort": [
-              {
-                "field": "Last *",
-                "desc": true
-              }
-            ]
-          }
-        }
-      ],
+      "transformations": [],
       "options": {
         "reduceOptions": {
-          "calcs": [],
+          "calcs": [
+            "lastNotNull"
+          ],
           "fields": "",
           "values": true
         },
@@ -1201,7 +1139,6 @@
           "unit": "short",
           "decimals": 0,
           "mappings": [],
-          "noValue": "0",
           "color": {
             "mode": "fixed",
             "fixedColor": "red"
@@ -1223,7 +1160,7 @@
       "id": 16,
       "type": "bargauge",
       "title": "Block rate by client",
-      "description": "Blocked as a share of that client's own queries — the third view of the same row: how many, how many blocked, and how heavily. Clients with 20 or fewer queries in the range are excluded, because one blocked query out of two is 50% and would otherwise top the chart. Ignores the client filter, like the two panels beside it.",
+      "description": "Blocked as a share of that client's own queries \u2014 the third view of the same row: how many, how many blocked, and how heavily. Clients with 20 or fewer queries in the range are excluded, because one blocked query out of two is 50% and would otherwise top the chart. Ignores the client filter, like the two panels beside it.",
       "datasource": {
         "type": "loki",
         "uid": "homelab-loki"
@@ -1242,37 +1179,17 @@
             "uid": "homelab-loki"
           },
           "editorMode": "code",
-          "expr": "topk(15, (sum by (client_name) (count_over_time({job=\"blocky\", host=~\"$host\"} |= \"BLOCKED\" | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | reason =~ `BLOCKED.*` [$__range])) / sum by (client_name) (count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" [$__range])) * 100) and (sum by (client_name) (count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" [$__range])) > 20))",
+          "expr": "sort_desc(topk(15, (sum by (client_name) (count_over_time({job=\"blocky\", host=~\"$host\"} |= \"BLOCKED\" | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | reason =~ `BLOCKED.*` [$__range])) / sum by (client_name) (count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" [$__range])) * 100) and (sum by (client_name) (count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" [$__range])) > 20)))",
           "queryType": "instant",
           "legendFormat": "{{client_name}}"
         }
       ],
-      "transformations": [
-        {
-          "id": "reduce",
-          "options": {
-            "reducers": [
-              "lastNotNull"
-            ],
-            "mode": "seriesToRows"
-          }
-        },
-        {
-          "id": "sortBy",
-          "options": {
-            "fields": {},
-            "sort": [
-              {
-                "field": "Last *",
-                "desc": true
-              }
-            ]
-          }
-        }
-      ],
+      "transformations": [],
       "options": {
         "reduceOptions": {
-          "calcs": [],
+          "calcs": [
+            "lastNotNull"
+          ],
           "fields": "",
           "values": true
         },
@@ -1297,7 +1214,6 @@
           "unit": "percent",
           "decimals": 1,
           "mappings": [],
-          "noValue": "0",
           "color": {
             "mode": "fixed",
             "fixedColor": "red"
@@ -1437,37 +1353,17 @@
             "uid": "homelab-loki"
           },
           "editorMode": "code",
-          "expr": "topk(20, sum by (question) (count_over_time({job=\"blocky\", host=~\"$host\"} |= \"BLOCKED\" | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` | reason =~ `BLOCKED.*` [$__range])))",
+          "expr": "sort_desc(topk(20, sum by (question) (count_over_time({job=\"blocky\", host=~\"$host\"} |= \"BLOCKED\" | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` | reason =~ `BLOCKED.*` [$__range]))))",
           "queryType": "instant",
           "legendFormat": "{{question}}"
         }
       ],
-      "transformations": [
-        {
-          "id": "reduce",
-          "options": {
-            "reducers": [
-              "lastNotNull"
-            ],
-            "mode": "seriesToRows"
-          }
-        },
-        {
-          "id": "sortBy",
-          "options": {
-            "fields": {},
-            "sort": [
-              {
-                "field": "Last *",
-                "desc": true
-              }
-            ]
-          }
-        }
-      ],
+      "transformations": [],
       "options": {
         "reduceOptions": {
-          "calcs": [],
+          "calcs": [
+            "lastNotNull"
+          ],
           "fields": "",
           "values": true
         },
@@ -1492,7 +1388,6 @@
           "unit": "short",
           "decimals": 0,
           "mappings": [],
-          "noValue": "0",
           "color": {
             "mode": "fixed",
             "fixedColor": "red"
@@ -1533,37 +1428,17 @@
             "uid": "homelab-loki"
           },
           "editorMode": "code",
-          "expr": "topk(20, sum by (question) (count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` | reason !~ `BLOCKED.*` [$__range])))",
+          "expr": "sort_desc(topk(20, sum by (question) (count_over_time({job=\"blocky\", host=~\"$host\"} | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` | reason !~ `BLOCKED.*` [$__range]))))",
           "queryType": "instant",
           "legendFormat": "{{question}}"
         }
       ],
-      "transformations": [
-        {
-          "id": "reduce",
-          "options": {
-            "reducers": [
-              "lastNotNull"
-            ],
-            "mode": "seriesToRows"
-          }
-        },
-        {
-          "id": "sortBy",
-          "options": {
-            "fields": {},
-            "sort": [
-              {
-                "field": "Last *",
-                "desc": true
-              }
-            ]
-          }
-        }
-      ],
+      "transformations": [],
       "options": {
         "reduceOptions": {
-          "calcs": [],
+          "calcs": [
+            "lastNotNull"
+          ],
           "fields": "",
           "values": true
         },
@@ -1588,7 +1463,6 @@
           "unit": "short",
           "decimals": 0,
           "mappings": [],
-          "noValue": "0",
           "color": {
             "mode": "fixed",
             "fixedColor": "green"
@@ -1610,7 +1484,7 @@
       "id": 21,
       "type": "bargauge",
       "title": "Blocklist rules doing the work",
-      "description": "The matched rule rather than the domain — `ads: *.doubleclick.net` is one rule catching many names. Useful for spotting which list earns its place, and for finding the rule to allowlist when something legitimate breaks.",
+      "description": "The matched rule rather than the domain \u2014 `ads: *.doubleclick.net` is one rule catching many names. Useful for spotting which list earns its place, and for finding the rule to allowlist when something legitimate breaks.",
       "datasource": {
         "type": "loki",
         "uid": "homelab-loki"
@@ -1629,37 +1503,17 @@
             "uid": "homelab-loki"
           },
           "editorMode": "code",
-          "expr": "topk(15, sum by (rule) (count_over_time({job=\"blocky\", host=~\"$host\"} |= \"BLOCKED\" | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` | reason =~ `BLOCKED.*` | label_format rule=`{{ regexReplaceAll \"^BLOCKED \\\\((.*)\\\\)$\" .reason \"${1}\" }}` [$__range])))",
+          "expr": "sort_desc(topk(15, sum by (rule) (count_over_time({job=\"blocky\", host=~\"$host\"} |= \"BLOCKED\" | pattern \"<_>\t<client_ip>\t<client_name>\t<duration_ms>\t<reason>\t<question>\t<_>\" | client_name =~ `(?i).*$client.*` | reason =~ `BLOCKED.*` | label_format rule=`{{ regexReplaceAll \"^BLOCKED \\\\((.*)\\\\)$\" .reason \"${1}\" }}` [$__range]))))",
           "queryType": "instant",
           "legendFormat": "{{rule}}"
         }
       ],
-      "transformations": [
-        {
-          "id": "reduce",
-          "options": {
-            "reducers": [
-              "lastNotNull"
-            ],
-            "mode": "seriesToRows"
-          }
-        },
-        {
-          "id": "sortBy",
-          "options": {
-            "fields": {},
-            "sort": [
-              {
-                "field": "Last *",
-                "desc": true
-              }
-            ]
-          }
-        }
-      ],
+      "transformations": [],
       "options": {
         "reduceOptions": {
-          "calcs": [],
+          "calcs": [
+            "lastNotNull"
+          ],
           "fields": "",
           "values": true
         },
@@ -1684,7 +1538,6 @@
           "unit": "short",
           "decimals": 0,
           "mappings": [],
-          "noValue": "0",
           "color": {
             "mode": "fixed",
             "fixedColor": "orange"
@@ -1778,7 +1631,7 @@
               "showLineNumbers": false,
               "showMiniMap": false
             },
-            "content": "**Source.** Blocky's own query log, shipped to Loki by Alloy (`modules/alloy.nix`).\nRetention is Loki's 14 days, not Blocky's 30 on disk.\n\n**The two resolvers are independent.** mirkwood and rivendell each log what\n*they* answered. A client configured with both is counted in both, so `All`\nsums rather than de-duplicates. Pick a single host for exact per-resolver\nnumbers.\n\n**Only the left-hand columns are parsed, on purpose.** The log is tab-separated,\nbut the `answer` column is CSV-quoted and can itself contain tabs — an HTTPS/SVCB\nrecord serialises with them. Parsing positionally past `answer` therefore\nmis-assigns columns on ~1.5% of lines (it reads `IN` as the response type). Every\nquery here stops at `question`, which is lossless. Query type and response code\nlive past that break: get them from the **Blocky** dashboard, which reads\nPrometheus.\n\n**Client filter** is a case-insensitive substring — `ipad` matches\n`iPad.home.theshire.io`. The three client ranking panels deliberately ignore\nit, so there is always something to pick from.\n\n**Every ranked panel is sorted high to low.** Loki returns series in arbitrary\norder, so each of those panels reduces its series to rows and then sorts —\nwhich is also why they are set to \"All values\" rather than \"Calculate\". Both\nare load-bearing; switching either one back breaks the ordering or collapses\nthe panel to a single bar.\n\n**Counts are queries, not devices.** A page load is many queries, and a client\nthat retries a blocked name inflates its own bar — which is the honest number\nfor \"who is making the most requests\", but not for \"who is busiest\"."
+            "content": "**Source.** Blocky's own query log, shipped to Loki by Alloy (`modules/alloy.nix`).\nRetention is Loki's 14 days, not Blocky's 30 on disk.\n\n**The two resolvers are independent.** mirkwood and rivendell each log what\n*they* answered. A client configured with both is counted in both, so `All`\nsums rather than de-duplicates. Pick a single host for exact per-resolver\nnumbers.\n\n**Only the left-hand columns are parsed, on purpose.** The log is tab-separated,\nbut the `answer` column is CSV-quoted and can itself contain tabs \u2014 an HTTPS/SVCB\nrecord serialises with them. Parsing positionally past `answer` therefore\nmis-assigns columns on ~1.5% of lines (it reads `IN` as the response type). Every\nquery here stops at `question`, which is lossless. Query type and response code\nlive past that break: get them from the **Blocky** dashboard, which reads\nPrometheus.\n\n**Client filter** is a case-insensitive substring \u2014 `ipad` matches\n`iPad.home.theshire.io`. The three client ranking panels deliberately ignore\nit, so there is always something to pick from.\n\n**Every ranked panel is sorted high to low in LogQL, not in Grafana.** Loki\nreturns series in arbitrary order, so each of those queries is wrapped in\n`sort_desc(...)` and the panel simply renders them in the order Loki hands\nback. They are also set to \"All values\" rather than \"Calculate\", which draws\none bar per series instead of collapsing them to a single number.\n\n**Do not add a `reduce` transformation to sort these instead.** An instant\nquery returns one frame per series carrying `meta.type: numeric-multi`, and\n`reduce` spreads that meta onto its own reshaped output. The frame then lies\nabout its shape, the panel finds no numeric field, and every bar renders as\nno-value \u2014 silently, with no error. That shipped once and looked like the\npanels were reporting zero.\n\n**Counts are queries, not devices.** A page load is many queries, and a client\nthat retries a blocked name inflates its own bar \u2014 which is the honest number\nfor \"who is making the most requests\", but not for \"who is busiest\"."
           }
         }
       ],
@@ -1886,7 +1739,7 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "DNS — Query Analytics",
+  "title": "DNS \u2014 Query Analytics",
   "uid": "homelab-dns-queries",
   "version": 1,
   "weekStart": ""
