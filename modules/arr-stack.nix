@@ -52,6 +52,104 @@
 
 { config, pkgs, lib, ... }:
 
+let
+  # ---------------------------------------------------------------------------
+  # Servarr local-address auth bypass
+  #
+  # All four apps are reached through Caddy on rivendell, from the LAN or the
+  # tailnet, and none of them is published to the internet — the Cloudflare
+  # Tunnel on orthanc carries only `stream` and `vault`. The login form was
+  # therefore pure friction, so AuthenticationRequired is flipped to
+  # DisabledForLocalAddresses: a request whose peer address is RFC1918 skips
+  # the login page, anything else still gets Forms auth.
+  #
+  # AuthenticationMethod STAYS `Forms`. It is the fallback for a non-local
+  # request; setting it to `None` would disable authentication unconditionally,
+  # which is a different and much broader change.
+  #
+  # TrustedNetworks IS MANDATORY HERE, not optional hardening — without it
+  # DisabledForLocalAddresses does nothing at all behind a reverse proxy.
+  # It is Servarr's trusted-*proxy* list: an address in it is permitted to
+  # assert a client IP via X-Forwarded-For.
+  #
+  # CVE-2026-30975 (GHSA-h5qx-5hjf-7c9r) was DisabledForLocalAddresses with no
+  # trusted-proxy list — older builds honoured X-Forwarded-For from anyone, so
+  # a caller could send `X-Forwarded-For: 127.0.0.1` and skip auth. The fix
+  # FAILS CLOSED: on a patched build, a request that carries X-Forwarded-For
+  # from a peer that is not in TrustedNetworks is treated as NON-local, even
+  # though the peer itself is RFC1918. Measured on pirateship 2026-09-20,
+  # against Radarr with an empty TrustedNetworks:
+  #   curl 127.0.0.1:7878/                               -> 200 (bypassed)
+  #   curl 127.0.0.1:7878/ -H 'X-Forwarded-For: 10.0.1.50' -> 302 /login
+  # Caddy always sends X-Forwarded-For, so an empty list means every request
+  # through the proxy — i.e. every real request — still gets the login form.
+  # Lidarr 3.1.0 predates the fix and bypassed regardless; do not let that
+  # mislead you into thinking the list is unnecessary.
+  #
+  # The two addresses are the two forms Caddy's connection can arrive in:
+  # rivendell itself (10.0.1.9), and the podman bridge gateway (10.88.0.1) for
+  # anything originating on pirateship, since the WebUIs live in gluetun's
+  # netns and a host-side connection is SNAT'd. Both are the proxy, never a
+  # client. Keep this list to proxies: any address added here is trusted to
+  # name whichever client IP it likes.
+  #
+  # KNOWN LIMIT: with the proxy trusted, Servarr judges the REAL client, and
+  # "local" means RFC1918. A tailnet client is 100.64.0.0/10, which is not,
+  # so Tailscale users still get the login form. That is Servarr's own notion
+  # of local and it is not configurable. The only way to cover the tailnet
+  # would be to stop Caddy sending X-Forwarded-For to these vhosts, which
+  # would make every client look like the proxy — deliberately not done.
+  #
+  # Re-asserted on every container start because the apps rewrite config.xml
+  # themselves — on any settings change in the UI, and again on shutdown. Same
+  # reason the qBittorrent preStart further down rewrites its values every time.
+  # ---------------------------------------------------------------------------
+  arrAuthPreStart = service: ''
+    ${pkgs.python3}/bin/python3 - << 'PYEOF'
+import os, re
+
+path = "/var/lib/${service}/config/config.xml"
+
+# A fresh install has no config.xml until the app has run once. Leave it alone
+# rather than writing a half-formed one; the next start picks it up.
+if not os.path.exists(path):
+    print("config.xml not present yet - leaving auth settings to the app")
+    raise SystemExit(0)
+
+with open(path) as f:
+    content = f.read()
+
+
+def set_element(text, name, value):
+    pat = re.compile("<" + name + ">.*?</" + name + ">", re.DOTALL)
+    repl = "<" + name + ">" + value + "</" + name + ">"
+    if pat.search(text):
+        return pat.sub(lambda m: repl, text, count=1)
+    return text.replace("</Config>", "  " + repl + "\n</Config>", 1)
+
+
+new = set_element(content, "AuthenticationRequired", "DisabledForLocalAddresses")
+new = set_element(new, "TrustedNetworks", "10.0.1.9,10.88.0.1")
+
+if new == content:
+    print("auth settings already applied")
+    raise SystemExit(0)
+
+# The container runs as PUID/PGID 1000 and rewrites this file itself, so the
+# replacement has to keep the original owner and mode. A root-owned config.xml
+# would leave the app silently unable to save any setting.
+st = os.stat(path)
+tmp = path + ".auth-tmp"
+with open(tmp, "w") as f:
+    f.write(new)
+os.chown(tmp, st.st_uid, st.st_gid)
+os.chmod(tmp, st.st_mode & 0o7777)
+os.replace(tmp, path)
+print("set AuthenticationRequired=DisabledForLocalAddresses, TrustedNetworks=10.0.1.9,10.88.0.1")
+PYEOF
+  '';
+in
+
 {
   virtualisation.oci-containers.containers = {
 
@@ -216,6 +314,14 @@
 
   };
 
+  # Drop the login prompt for local clients on each Servarr app. See the
+  # arrAuthPreStart comment at the top of this file — especially the paragraph
+  # on why TrustedNetworks stays empty — before changing any of this.
+  systemd.services.podman-radarr.preStart   = arrAuthPreStart "radarr";
+  systemd.services.podman-sonarr.preStart   = arrAuthPreStart "sonarr";
+  systemd.services.podman-prowlarr.preStart = arrAuthPreStart "prowlarr";
+  systemd.services.podman-lidarr.preStart   = arrAuthPreStart "lidarr";
+
   # Seed qBittorrent.conf before the container starts, then wait for gluetun's
   # VPN tunnel to be established.
   #
@@ -270,6 +376,34 @@ pw_hash = "@ByteArray(" + base64.b64encode(salt).decode() + ":" + base64.b64enco
 pw_line   = 'WebUI\\Password_PBKDF2="' + pw_hash + '"'
 user_line = "WebUI\\Username=" + username
 auth_line = "WebUI\\LocalHostAuth=false"
+
+# No login prompt for local clients.
+#
+# qBittorrent matches the PEER address against this list, and the peer is
+# always one of two things: Caddy on rivendell (10.0.1.9) for anything arriving
+# via dl.theshire.io, or the podman bridge gateway for a connection made from
+# pirateship itself — the WebUI lives in gluetun's netns, so a host-side
+# connection is SNAT'd to 10.88.0.1. 127.0.0.1/32 is belt-and-braces alongside
+# LocalHostAuth=false above.
+#
+# Deliberately NOT 100.64.0.0/10: a tailnet client reaches this through Caddy
+# like every other client, so the tailnet never needs to be trusted here.
+# qBittorrent's reverse-proxy support stays OFF, so a client-supplied
+# X-Forwarded-For is never consulted and none of this can be spoofed.
+webui_subnets = "10.0.1.0/24, 10.88.0.0/16, 127.0.0.1/32"
+subnet_lines = [
+    "WebUI\\AuthSubnetWhitelistEnabled=true",
+    "WebUI\\AuthSubnetWhitelist=" + webui_subnets,
+]
+
+
+def ensure_pref(content, line):
+    """Set a [Preferences] key, replacing any existing value for it."""
+    key = line.split("=", 1)[0]
+    pat = re.compile("^" + re.escape(key) + "=.*$", re.MULTILINE)
+    if pat.search(content):
+        return pat.sub(lambda m: line, content, count=1)
+    return content.replace("[Preferences]\n", "[Preferences]\n" + line + "\n", 1)
 
 # Resolve tun0's IP address for libtorrent binding.
 #
@@ -328,6 +462,8 @@ if not os.path.exists(conf_path):
         f.write(auth_line + "\n")
         f.write(user_line + "\n")
         f.write(pw_line + "\n")
+        for line in subnet_lines:
+            f.write(line + "\n")
         if iface_line:
             f.write("\n[BitTorrent]\n")
             f.write(iface_line)
@@ -365,6 +501,13 @@ else:
     # Ensure localhost auth bypass (prevents arr apps from triggering bans)
     if not re.search(r"^WebUI\\LocalHostAuth=", content, re.MULTILINE):
         content = content.replace("[Preferences]\n", "[Preferences]\n" + auth_line + "\n", 1)
+
+    # Always re-assert the WebUI auth whitelist. qBittorrent 5.x rewrites its
+    # preferences on a graceful shutdown, so a value set here can be replaced
+    # by whatever the running instance held — the same reason the password and
+    # interface are re-written above rather than seeded once.
+    for line in subnet_lines:
+        content = ensure_pref(content, line)
 
     with open(conf_path, "w") as f:
         f.write(content)
