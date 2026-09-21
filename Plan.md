@@ -555,13 +555,14 @@ erebor is online (10G SFP+ at 10.0.1.22, 1G ethernet at 10.0.1.21 for management
   Prometheus-fed "Blocky" dashboard, which is deliberately kept: the two are
   not redundant, and the split is now load-bearing (see the parsing note
   below). 18 panels over five rows — overview stats, answer-source breakdown,
-  blocked vs allowed, client ranking + per-client table, top domains and
+  blocked vs allowed, three client rankings (volume, blocked, block rate),
+  top domains and
   blocklist rules, and a formatted query log. Variables: resolver (multi),
   a case-insensitive client substring, and a blocked/allowed filter for the
   log panel.
 
   The original premise held — `blocky_query_total` carries only `client` and
-  `type`, so none of this was expressible in Prometheus. Four things found
+  `type`, so none of this was expressible in Prometheus. Five things found
   while building it that are not obvious from the data:
 
   - **Only the six LEFT-HAND columns of the query log are parseable.** It is
@@ -588,6 +589,25 @@ erebor is online (10G SFP+ at 10.0.1.22, 1G ethernet at 10.0.1.21 for management
     NEGATIVE`, `CUSTOM DNS` (with a space) and `Special-Use Domain Name` all
     appear. Matching `reason == "CACHED"` silently undercounts the cache hit
     rate; the dashboard matches `CACHED.*`.
+
+  - **Sort ranked panels in LogQL with `sort_desc()`, never with a `reduce`
+    transformation.** A Loki instant query returns one frame per series tagged
+    `meta.type: numeric-multi`, so `sortBy` alone has nothing to reorder — it
+    sorts rows *within* a frame. The obvious fix, `reduce` in `seriesToRows`
+    mode, is worse than useless: it builds its output with `{...frame}` and so
+    copies that `numeric-multi` meta onto a frame that is no longer that shape.
+    Downstream the panel finds no numeric field and renders every bar as
+    no-value, with no error anywhere. Shipped once and, because these panels
+    also carried `noValue: "0"`, it read as "every widget says zero" rather
+    than "every widget is broken" — `noValue` is now off on the ranked panels
+    for that reason. `sort_desc()` around the existing `topk()` fixes the order
+    server-side and needs no transformation at all.
+
+    Verified by driving headless Firefox over Marionette against the live
+    Grafana and reading the rendered DOM — transformations run only in the
+    browser, so nothing short of a real browser can check them, and mirkwood
+    has no renderer plugin. That harness is the only way any of this was
+    settled; assume the same is needed for the next transformation change.
 
   Not done, deliberately: the two resolvers each log what they answered and a
   client using both is counted in both, so `All` sums rather than
