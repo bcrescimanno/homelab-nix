@@ -48,6 +48,26 @@ let
   # 10.0.12.2 (IoT VLAN) -- see the ExecStartPre block below.
   publishIp = "10.0.1.9";
   webPort   = 8095;
+
+  # MA 2.10's wiim provider imports `pywiim` at module load, and nixpkgs does
+  # not package it -- providers.nix lists only `wiim` for it, annotated
+  # "# missing pywiim". The provider therefore failed to import, and the MA 2.10
+  # frontend renders any provider that failed to load as needing "Reconfigure".
+  # wiim has no setup flow, so that button leads nowhere; the real symptom is
+  # every WiiM missing from Players (found 2026-09-21, after the 2026-09-19
+  # lock bump brought in 2.10.3).
+  #
+  # Appended to the unit's PYTHONPATH rather than overlaid onto the package:
+  # the module builds PYTHONPATH from package.passthru.pythonPath, so this
+  # needs no MA rebuild. It is deliberately NOT in flake.nix's
+  # overlayWorkarounds -- that probe retires an entry when the unpatched build
+  # succeeds, and this bug never breaks the build, only the runtime import.
+  # Instead it switches itself off once nixpkgs lists pywiim for the provider.
+  ma = config.services.music-assistant;
+  maPython = ma.package.pythonPackages;
+  upstreamHasPywiim = lib.any (p: (p.pname or "") == "pywiim")
+    (ma.package.providerPackages.wiim maPython);
+  pywiim = maPython.callPackage ../pkgs/pywiim.nix { };
 in
 {
   services.music-assistant = {
@@ -96,6 +116,16 @@ in
       + "/var/lib/music-assistant/settings.json "
       + "${publishIp} http://${publishIp}:${toString webPort}")
   ];
+
+  # See `pywiim` above. mkForce because PYTHONPATH is a single string the
+  # upstream module already sets; the upstream value is kept and extended.
+  systemd.services.music-assistant.environment.PYTHONPATH =
+    lib.mkIf (lib.elem "wiim" ma.providers && !upstreamHasPywiim) (lib.mkForce
+      ((ma.package.override { inherit (ma) providers; }).pythonPath
+        + ":" + maPython.makePythonPath [ pywiim ]));
+
+  warnings = lib.optional upstreamHasPywiim
+    "music-assistant: nixpkgs now packages pywiim; delete pkgs/pywiim.nix and its wiring in modules/music-assistant.nix.";
 
   networking.firewall.allowedTCPPorts = [ webPort 8097 7000 8927 ];
   networking.firewall.allowedUDPPorts = [ 1900 ];
