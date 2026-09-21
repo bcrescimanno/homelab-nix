@@ -672,16 +672,42 @@ let
           {
             # Fires on the write path returning anything non-2xx, which is what
             # the 2026-09-20 schema bug looked like from the client side long
-            # before any entry was actually dropped. Alloy retries with backoff,
-            # so a handful of these during a Loki restart is normal — hence the
-            # 15m `for`.
+            # before any entry was actually dropped.
+            #
+            # THE LOOKBACK MUST BE SHORTER THAN THE `for`, OR THE `for` DOES
+            # NOTHING. This first shipped as increase(...[30m]) > 0 with a 15m
+            # `for`, commented "a handful of these during a Loki restart is
+            # normal — hence the 15m `for`", which is exactly backwards: one
+            # failed push holds increase() over 30m above zero for a full 30
+            # minutes, so the condition outlived the `for` on its own and every
+            # Loki restart paged on every host that had noticed it.
+            #
+            # Observed the day it shipped (2026-09-20): orthanc was redeployed
+            # at 19:05 and loki.service was down for about a second. Each Alloy
+            # logged a couple of status_code="-1" pushes — a refused connection,
+            # not a rejection — and at 19:20 three of the four hosts alerted,
+            # while the same expression over a 5m window was already flat zero
+            # everywhere and loki_write_dropped_entries_total was 0 on all four.
+            # Nothing was wrong by the time it fired.
+            #
+            # 10m window against a 30m `for`: a restart burst falls out of the
+            # window inside 10m and never survives to 30m, while a Loki that is
+            # genuinely down or rejecting keeps the window occupied and pages at
+            # 30m. The window must stay comfortably above Alloy's retry backoff,
+            # whose max_backoff_period defaults to 5m and is not overridden in
+            # modules/alloy.nix — at [5m] a slow retry late in a real outage
+            # could empty the window and silently restart the `for`.
+            #
+            # This rule does not guard against data loss and does not need to be
+            # fast: AlloyDroppingLogs below is critical, has no `for` at all, and
+            # fires on the first entry actually given up on.
             alert = "AlloyWriteErrors";
-            expr = ''increase(loki_write_request_duration_seconds_count{status_code!~"2.."}[30m]) > 0'';
-            "for" = "15m";
+            expr = ''increase(loki_write_request_duration_seconds_count{status_code!~"2.."}[10m]) > 0'';
+            "for" = "30m";
             labels.severity = "warning";
             annotations = {
               summary = "Alloy on {{ $labels.instance }} is getting errors from Loki";
-              description = "Loki has been returning {{ $labels.status_code }} to Alloy on {{ $labels.instance }} for 15m. Logs are being retried and will be dropped if this persists.";
+              description = "Loki has been returning {{ $labels.status_code }} to Alloy on {{ $labels.instance }} for 30m straight, so this is not a deploy or a reboot. Logs are being retried and will be dropped if it persists.";
             };
           }
           {
