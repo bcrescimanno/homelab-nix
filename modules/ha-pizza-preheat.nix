@@ -144,6 +144,17 @@ in
 
     # The numeric id of the member to tag. Discord: enable Developer Mode
     # (Settings > Advanced), then right-click the member > Copy User ID.
+    #
+    # QUOTE IT in the yaml — ha_discord_pizza_user_id: "123456789012345678".
+    # A bare snowflake is a YAML *integer*, and sops-install-secrets takes
+    # strings only. Unquoted, activation dies with
+    #   secret ha_discord_pizza_user_id in …rivendell.yaml is not valid:
+    #   the value of key '' is not a string
+    # which names the secret but describes the problem as an empty key, so it
+    # reads like a malformed file rather than a type. deploy-rs rolls the host
+    # back, so the cost is one wasted deploy. Checked, after the fact, with:
+    #   sops -d secrets/rivendell.yaml \
+    #     | grep -E '^ha_discord_pizza_user_id: "[0-9]+"$'
     ha_discord_pizza_user_id = { };
   };
 
