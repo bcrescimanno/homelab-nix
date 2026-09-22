@@ -151,6 +151,13 @@ in
   # container-era file held one unused key and was dropped on migration (see
   # modules/homeassistant.nix); this brings it back as a rendered secret.
   # Further HA secrets belong in this template, not in a second file.
+  #
+  # That old file is still ON DISK — /var/lib/homeassistant/config/secrets.yaml,
+  # dated 2024-08-09, holding `some_password` and nothing else, which is exactly
+  # the dead key the migration notes describe. sops-install-secrets replaces a
+  # non-matching path rather than failing on it (createSymlink → os.Remove), so
+  # the first deploy deletes it and symlinks this template in its place. That is
+  # the intent; it is written down because the deletion is silent.
   sops.templates."ha-secrets.yaml" = {
     owner = "hass";
     mode = "0400";
