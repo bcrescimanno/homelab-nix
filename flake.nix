@@ -205,6 +205,7 @@
           ./modules/ha-bathroom-lights.nix
           ./modules/ha-hood-light.nix
           ./modules/ha-hvac-openings.nix
+          ./modules/ha-pizza-preheat.nix
           ./modules/caddy.nix
           ./modules/materialious.nix
           ./modules/monitoring.nix
