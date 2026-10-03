@@ -179,7 +179,6 @@ let
         (tile "binary_sensor.office_office_door_door" { name = "Door"; })
         (tile "sensor.office_temperature_2" { name = "Temperature"; })
         (tile "binary_sensor.office_motion" { name = "Motion"; })
-        (tile "media_player.lg_webos_tv_oled42c4pua" { name = "Monitor"; })
         (speaker "media_player.office_music_2" "Speaker")
       ])
 
