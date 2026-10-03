@@ -245,7 +245,8 @@
       # created them fresh, so every bridge had to be paired again in Home.
       # Never create a HomeKit bridge in the UI again; add it here.
       #
-      # Ports: 21064 Office, 21065 Kitchen, 21066 Hall, 21067 Boys Bathroom.
+      # Ports: 21064 Office, 21065 Kitchen, 21066 Hall, 21067 Boys Bathroom,
+      # 21068 Outside.
       #
       # Only explicit include_entities, never include_domains. The old
       # domain-wide filter exposed about 40 accessories: Music Assistant
@@ -294,6 +295,18 @@
           ])
           (bridge "HASS Boys Bathroom" 21067 [
             "light.boys_bathroom_boys_bathroom_lights"
+          ])
+          (bridge "HASS Outside" 21068 [
+            "sensor.eve_weather_temperature"
+            "sensor.eve_weather_humidity"
+            # No battery entry needed: HomeKit links sensor.eve_weather_battery
+            # to both on its own (same device, _async_configure_linked_sensors)
+            # and raises Low Battery below 20%.
+            #
+            # Not sensor.eve_weather_pressure or _weather_trend: HAP has no
+            # pressure or trend service, so the bridge would skip them anyway.
+            # Eve's own app shows pressure through a vendor characteristic HA
+            # cannot emit.
           ])
         ];
     };
