@@ -180,7 +180,7 @@ in
     content = ''
       # Rendered by modules/ha-pizza-preheat.nix — do not edit on the host.
       ha_discord_pizza_webhook: ${config.sops.placeholder.ha_discord_pizza_webhook}
-      ha_discord_pizza_payload: '{"content": "<@${config.sops.placeholder.ha_discord_pizza_user_id}> :pizza: The wall oven is up to temperature on the pizza setting.", "allowed_mentions": {"parse": [], "users": ["${config.sops.placeholder.ha_discord_pizza_user_id}"]}}'
+      ha_discord_pizza_payload: '{"content": "<@${config.sops.placeholder.ha_discord_pizza_user_id}> :pizza: Yo! The oven is preheated!", "allowed_mentions": {"parse": [], "users": ["${config.sops.placeholder.ha_discord_pizza_user_id}"]}}'
     '';
   };
 
