@@ -101,9 +101,10 @@
 # homekit_controller) and an Eve Door & Window on the office door (Matter). As
 # window sensors are added:
 #
-#   - Adding a sensor is adding `entity = "Label";` to `openings`. The pause
-#     and reminder notifications, the any-open/all-closed logic, and the
-#     unavailable alert all follow it; nothing else changes.
+#   - Adding a sensor is adding `entity = "Label";` to lib/ha-openings.nix. The
+#     pause and reminder notifications, the any-open/all-closed logic, and the
+#     unavailable alert all follow it, and so does the window prompts' "already
+#     closed/open" suppression in ha-window-notifications.nix.
 #   - Windows are not "opened briefly" the way a door is, so they may want a
 #     shorter delay. Make each `openings` value { label; openFor; } and emit
 #     one pause trigger per distinct duration. (Decided 2026-09-15: one 60s
@@ -124,19 +125,9 @@
 let
   # ---- Configuration ------------------------------------------------------
 
-  # Contact sensors (device_class opening/door/window; `on` = open).
-  #
-  # binary_sensor.front_door_contact is deliberately NOT here. The front door
-  # isn't kept open when the house is opened up for cooling, so it must not
-  # pause the HVAC. Not an omission — don't add it.
-  #
-  # entity → the name used in notifications. Labels live here rather than
-  # coming from friendly_name, which Matter builds from device + room + entity
-  # (hence entity IDs like office_office_door_door).
-  openings = {
-    "binary_sensor.kitchen_door_contact" = "Kitchen door";
-    "binary_sensor.office_office_door_door" = "Office door";
-  };
+  # Contact sensors, entity → label. Shared with ha-window-notifications.nix;
+  # see lib/ha-openings.nix (including why the front door is not in it).
+  openings = import ../lib/ha-openings.nix;
 
   thermostat = "climate.main_floor";
 

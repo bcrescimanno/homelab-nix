@@ -2,10 +2,16 @@
 #
 # Three household notifications, driven by the outdoor temperature at the house:
 #
-#   1. Morning  — outdoor temp climbs above 68°F  → "close the windows"
-#   2. Evening  — outdoor temp falls below 72°F   → "open the windows"
+#   1. Morning  — outdoor temp climbs above 68°F (before noon)
+#                 → "close the windows"
+#   2. Evening  — outdoor temp falls below 72°F (16:00–21:00; no crossing by
+#                 21:00 means no prompt that night) → "open the windows"
 #   3. If today's forecast high is below 75°F, 1 and 2 are suppressed entirely
 #      and a single 08:00 notification says "Today is a windows open day!"
+#
+# 1 and 2 are also held back while the house is ALREADY in the state they would
+# ask for — every sensor in lib/ha-openings.nix reporting closed (1) or open
+# (2). See `notAlready` below.
 #
 # "Today's forecast high" is sensor.forecast_high_today, which LATCHES the day's
 # maximum rather than reading met.no live — met.no's daily figure decays to the
@@ -164,9 +170,12 @@ let
   openAllDayBelowF = 75;  # forecast high under this → skip 1 & 2 entirely
 
   # Sun-relative morning, clock-bounded evening.
+  # Local time (America/Los_Angeles). eveningEndsAt moved 22:00 -> 21:00 on
+  # 2026-10-03: an evening that is still above openBelowF at 9pm is not worth
+  # opening up for.
   morningEndsAt = "12:00:00";
   eveningStartsAt = "16:00:00";
-  eveningEndsAt = "22:00:00";
+  eveningEndsAt = "21:00:00";
   openDayAnnouncementAt = "08:00:00";
 
   # A threshold has to hold this long before firing, so a sensor that jitters
@@ -218,6 +227,10 @@ let
   infraNotify = "notify.homelab_alerts";
 
   forecastEntity = "weather.forecast_home";  # met.no
+
+  # The contact sensors that say whether the house is open. Shared with
+  # ha-hvac-openings.nix so the two never disagree about what counts.
+  openings = import ../lib/ha-openings.nix;
 
   # ---- Derived ------------------------------------------------------------
 
@@ -271,6 +284,28 @@ let
     condition = "template";
     value_template =
       "{{ states('sensor.forecast_high_today') | float(999) >= ${toString openAllDayBelowF} }}";
+  };
+
+  # "The house is not already <state>" — passes when at least one opening is
+  # NOT reporting `state` (`off` = closed, `on` = open). Added 2026-10-03: a
+  # morning with everything already shut (nobody opened up because the house
+  # was about to be empty) should not get "close the windows".
+  #
+  # Anything other than the exact target state counts as "not there yet",
+  # including `unavailable`/`unknown` and an entity that does not exist
+  # (states() returns 'unknown'). So a dark sensor never suppresses a prompt:
+  # same failure direction as closeAboveF and the latch — a redundant prompt
+  # costs nothing, a missed one costs a hot house.
+  #
+  # A failing condition does not burn the day. oncePerDay keys on
+  # last_triggered, which only advances when the actions run, so the /30 poll
+  # keeps re-checking: open a window at 10:00 on a warm morning and the close
+  # prompt follows within 30 min. A template rather than `condition: not` over
+  # a state condition, for the reason given on notAnOpenDay below.
+  notAlready = state: {
+    condition = "template";
+    value_template =
+      "{{ ${builtins.toJSON (builtins.attrNames openings)} | map('states') | reject('eq', '${state}') | list | length > 0 }}";
   };
 
   outdoorTemperatureSensor =
@@ -456,6 +491,7 @@ let
           { condition = "sun"; after = "sunrise"; }
           { condition = "time"; before = morningEndsAt; }
           notAnOpenDay
+          (notAlready "off")
           oncePerDay
         ];
         actions = notify "Close the windows"
@@ -494,6 +530,7 @@ let
           }
           { condition = "time"; after = eveningStartsAt; before = eveningEndsAt; }
           notAnOpenDay
+          (notAlready "on")
           oncePerDay
         ];
         actions = notify "Open the windows"
