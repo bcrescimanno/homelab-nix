@@ -53,7 +53,7 @@
 #
 #   1. It cannot carry the two shaka patches below. Neither
 #      `preferredVideoCodecs` nor `defaultBandwidthEstimate` is exposed upstream
-#      in any configurable form — re-verified against 1.18.7: no VITE_ variable,
+#      in any configurable form — re-verified against 1.18.8: no VITE_ variable,
 #      no settings entry, no UI toggle, and zero hits for either identifier
 #      anywhere under src/ or the new shared/. They exist ONLY because the source
 #      is patched before building. A prebuilt image gives up the measured
@@ -79,18 +79,18 @@
 
 buildNpmPackage rec {
   pname = "materialious";
-  version = "1.18.7";
+  version = "1.18.8";
 
   src = fetchFromGitHub {
     owner = "Materialious";
     repo = "Materialious";
     tag = version;
-    hash = "sha256-C5SINWHgOFlCky+JKplTj4Tw5Es9Z8/gawSD3E7LDUc=";
+    hash = "sha256-3+GwBMIyQ+WOMFR7IatadeBhMGwFnEyyw5tdKKBFJCY=";
   };
 
   sourceRoot = "${src.name}/materialious";
 
-  npmDepsHash = "sha256-NFwQFumzpbZb1omi/eL7AkFpkuta3BEmgjo1jTcvoPY=";
+  npmDepsHash = "sha256-yipSBg3m1ytl21WG5/DhPkdJ2pJUEEj/S5mrti2IwII=";
 
   # WORKAROUND 1 — `sharp` (a devDependency reached via @capacitor/assets, and
   # used only to generate mobile app icons) has a postinstall that downloads a
@@ -126,7 +126,7 @@ buildNpmPackage rec {
   # and it is strictly better than the one carried here: it awaits `pageStream`
   # only when `data.video` is still unset, catches a failed page load instead
   # of hanging on it, and re-guards `data.video &&` afterwards. Verified
-  # present at 1.17.11 in +page.svelte. Both local substitutions are therefore
+  # present at 1.18.8 in +page.svelte. Both local substitutions are therefore
   # deleted rather than re-anchored — keeping them would now redeclare
   # `pageStream`, which upstream already declares.
   #
@@ -179,13 +179,22 @@ buildNpmPackage rec {
   '';
 
   preBuild = ''
-    # WORKAROUND 2 — `npm run build` runs scripts/githubContributors.mjs,
-    # which fetches api.github.com for the About page's contributor list.
-    # Impossible in the sandbox. The script swallows its own error rather than
-    # exiting non-zero, so the build survives, but it leaves the file absent
-    # and the page fetching a 404. Seed valid empty JSON instead.
+    # WORKAROUND 2 — `npm run build` runs scripts/githubContributors.mjs
+    # (`patch:github`), which fetches api.github.com for the About page's
+    # contributor list. Impossible in the sandbox; the script catches its own
+    # error and exits 0, so the build survives with the file untouched.
+    #
+    # SEED ONLY IF ABSENT. Upstream has COMMITTED static/localApi/
+    # ghContributors.json since 1.12.9 and refreshes it each release, so the
+    # file is already there and the failed fetch simply leaves it alone. This
+    # used to overwrite it unconditionally with `[]` — the premise that it
+    # would otherwise be missing was never true at any version pinned here,
+    # and the only effect was an empty contributor list on the About page.
+    # The guard keeps a valid file there should upstream ever stop committing
+    # it (About.svelte fetches /localApi/ghContributors.json).
     mkdir -p static/localApi
-    echo '[]' > static/localApi/ghContributors.json
+    [ -s static/localApi/ghContributors.json ] \
+      || echo '[]' > static/localApi/ghContributors.json
 
     # Upstream's Dockerfile writes placeholder values here and seds the real
     # ones in at container start. We have the real values at build time, so
@@ -196,7 +205,7 @@ buildNpmPackage rec {
     # so every variable below is still honoured — but only as the second choice,
     # and the names are built by string concatenation. That means grepping the
     # tree for a literal `VITE_DEFAULT_SETTINGS` finds NOTHING and proves
-    # nothing; at 1.18.7 the only literal VITE_ hit in the whole source is
+    # nothing; at 1.18.8 the only literal VITE_ hit in the whole source is
     # VITE_DEFAULT_INVIDIOUS_INSTANCE. Confirm a variable is still consumed by
     # grepping for its name minus the prefix (e.g. `DEFAULT_SPONSERBLOCK_INSTANCE`)
     # against getPublicEnv callers instead.
