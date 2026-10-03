@@ -96,12 +96,12 @@ fi
 for name in $names; do
   [[ -n "$ONLY" && "$ONLY" != "$name" ]] && continue
 
-  want="$(nix eval --raw ".#overlayWorkarounds.${name}.arch" 2>/dev/null)"
-  note="$(nix eval --raw ".#overlayWorkarounds.${name}.note" 2>/dev/null)"
+  want="$(nix eval --raw ".#overlayWorkarounds.\"${name}\".arch" 2>/dev/null)"
+  note="$(nix eval --raw ".#overlayWorkarounds.\"${name}\".note" 2>/dev/null)"
   # Mandatory, and read as a string so an absent field fails rather than
   # defaulting to "not flaky" — a default here would silently reinstate the
   # single-trial bug this field exists to prevent.
-  flaky="$(nix eval --raw ".#overlayWorkarounds.${name}.flaky" \
+  flaky="$(nix eval --raw ".#overlayWorkarounds.\"${name}\".flaky" \
              --apply 'v: if v then "yes" else "no"' 2>/dev/null)"
   if [[ -z "$want" || -z "$flaky" ]]; then
     echo "  ${RED}✗${NC} ${name} — could not read its arch; treating as unprobed"
@@ -111,7 +111,7 @@ for name in $names; do
   PROBED=$((PROBED + 1))
 
   # A probe on the wrong arch answers a different question than the one the
-  # overlay exists for — three of these four reproduce only on aarch64, so a
+  # overlay exists for — every current entry reproduces only on aarch64, so a
   # clean x86_64 build would say nothing at all about whether the patch is
   # still load-bearing. Skipping loudly beats a false all-clear.
   if [[ "$want" != "any" && "$want" != "$ARCH" ]]; then
