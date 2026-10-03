@@ -31,6 +31,20 @@
 #   - Outdoor temperature reads sensor.outdoor_temperature, the same template
 #     indirection the window notifications use, so a sensor swap is one edit in
 #     modules/ha-window-notifications.nix and this page follows.
+#
+# Matter devices added 2026-09-15/16, re-checked against the registry
+# 2026-10-03. Their entity IDs do not follow one pattern — Matter derives them
+# from device + room + entity at pairing time, so read them, don't guess them:
+#   - Office door (Eve Door, node 9): binary_sensor.office_office_door_door.
+#     One of the HVAC `openings`, so it sits beside the kitchen door on Home.
+#   - Boys Bathroom door (Eve Door, node 10): binary_sensor.boys_bathroom_door.
+#     `on` = open. The occupancy proxy for modules/ha-bathroom-lights.nix.
+#   - Office Plug (Eve Energy, node 11): switch.office_office_plug, plus
+#     sensor.office_office_plug_power. It is also a Thread router that nodes 9
+#     and 10 parent through, so switching it off makes both re-parent.
+#   - media_player.television (Music Assistant, created 2026-09-29) is left
+#     off: TVs are deliberately disabled in Music Assistant, so it is always
+#     unavailable. It is a husk, not a missing device.
 
 { config, lib, pkgs, ... }:
 
@@ -68,6 +82,7 @@ let
       { type = "entity"; entity = "sensor.outdoor_temperature"; name = "Outside"; show_name = true; }
       { type = "entity"; entity = "binary_sensor.front_door_contact"; name = "Front door"; show_name = true; }
       { type = "entity"; entity = "binary_sensor.kitchen_door_contact"; name = "Kitchen door"; show_name = true; }
+      { type = "entity"; entity = "binary_sensor.office_office_door_door"; name = "Office door"; show_name = true; }
     ];
 
     sections = [
@@ -109,6 +124,8 @@ let
       (section "Doors & motion" "mdi:door" [
         (tile "binary_sensor.front_door_contact" { name = "Front door"; })
         (tile "binary_sensor.kitchen_door_contact" { name = "Kitchen door"; })
+        (tile "binary_sensor.office_office_door_door" { name = "Office door"; })
+        (tile "binary_sensor.boys_bathroom_door" { name = "Boys bathroom door"; })
         (tile "binary_sensor.main_floor_motion" { name = "Hall motion"; })
         (tile "binary_sensor.front_door_motion" { name = "Entry motion"; })
       ])
@@ -157,6 +174,9 @@ let
 
       (section "Office" "mdi:desk" [
         (tile "light.desktop_key_light" { name = "Key light"; })
+        (tile "switch.office_office_plug" { name = "Plug"; })
+        (tile "sensor.office_office_plug_power" { name = "Plug power"; })
+        (tile "binary_sensor.office_office_door_door" { name = "Door"; })
         (tile "sensor.office_temperature_2" { name = "Temperature"; })
         (tile "binary_sensor.office_motion" { name = "Motion"; })
         (tile "media_player.lg_webos_tv_oled42c4pua" { name = "Monitor"; })
@@ -188,6 +208,7 @@ let
 
       (section "Boys Bathroom" "mdi:shower" [
         (tile "light.boys_bathroom_boys_bathroom_lights" { name = "Lights"; })
+        (tile "binary_sensor.boys_bathroom_door" { name = "Door"; })
       ])
     ];
   };
