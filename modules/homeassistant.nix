@@ -112,8 +112,6 @@
       "sonos"
       "sun"
       "thread"
-      "wake_on_lan"
-      "webostv"
 
       # Source 2 — integrations HA loads for DISCOVERY, which have no config
       # entry and are therefore invisible to the jq above.
