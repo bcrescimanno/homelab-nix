@@ -85,8 +85,68 @@
         });
       };
 
+      # numkong 7.8.3 (usearch → music-assistant, so rivendell) does not compile
+      # on aarch64 under GCC 16: GCC inlines the streaming-SVE helpers into SME
+      # kernels whose target pragma is only "+sme", then rejects the SVE
+      # intrinsics ("ACLE function 'svwhilelt_b64_u64' requires ISA extension
+      # 'sve'"). GCC 15 accepted it. Not LTO — it fails with IPO off too.
+      # Backports the upstream fix (ashvardanian/NumKong#389, released in
+      # v7.8.4). Pi-only: x86_64 never compiles these kernels. Remove once
+      # nixpkgs ships numkong >= 7.8.4 — the patch will then fail to apply,
+      # which is the intended signal.
+      #
+      # The patch goes on `src`, not `patches`: python3Packages.numkong builds
+      # from `pkgs.numkong.src` and usearch symlinks `numkong.src` in as its
+      # vendored copy, so a `patches` override leaves both of those broken.
+      numkongOverlay = final: prev: {
+        numkong = prev.numkong.overrideAttrs (oldAttrs: {
+          src = final.applyPatches {
+            src = oldAttrs.src;
+            patches = [
+              (final.fetchpatch {
+                name = "numkong-gcc16-sme-out-of-line.patch";
+                url = "https://github.com/ashvardanian/NumKong/commit/de1da85240e4ff4b29890cfb290103ddee5bf9c2.patch";
+                hash = "sha256-EQM3TRs4B4vUHhE3xD2IHHpaV3pz1+dpPRrFxhRqzes=";
+              })
+            ];
+          };
+        });
+      };
+
+      # torchaudio (beat-this → music-assistant, so rivendell) is not cached
+      # for aarch64: every Hydra build since the GCC 16 bump (2026-09-29 on)
+      # ended "Log limit exceeded", so rivendell compiles it itself. The
+      # compile is fine; the pytest suite climbs past 5 GB RSS and is
+      # OOM-killed on an 8 GB Pi. Skip the tests. Droppable once Hydra caches
+      # it again — the unpatched build then substitutes instead of building.
+      torchaudioOverlay = final: prev: {
+        pythonPackagesExtensions = prev.pythonPackagesExtensions ++ [
+          (pyFinal: pyPrev: {
+            torchaudio = pyPrev.torchaudio.overridePythonAttrs { doCheck = false; };
+          })
+        ];
+      };
+
+      # Two music-assistant AirPlay tests assume a 176400-byte write overflows
+      # the pipe buffer. That holds on 4K-page kernels (64 KiB buffer), but the
+      # Pi 5 kernel uses 16K pages, the buffer is 256 KiB, the write fits, and
+      # both fail with `assert True is False`. Deterministic, not a race, and
+      # Hydra's 4K-page builders never see it — it only surfaces when the
+      # numkong/torchaudio overlays above force a local build. Remove when
+      # those two go and music-assistant substitutes from cache again.
+      # overrideAttrs, NOT overridePythonAttrs: the latter drops `.override`,
+      # which the upstream module (finalPackage) and ours (PYTHONPATH) call.
+      musicAssistantOverlay = final: prev: {
+        music-assistant = prev.music-assistant.overrideAttrs (oldAttrs: {
+          disabledTests = (oldAttrs.disabledTests or []) ++ [
+            "test_pipe_write_reports_a_stalled_reader_without_raising"
+            "test_pipe_write_resets_fd_when_the_reader_closes_during_a_stall"
+          ];
+        });
+      };
+
       commonOverlays = [ glancesOverlay ];
-      piOverlays = commonOverlays;
+      piOverlays = commonOverlays ++ [ numkongOverlay torchaudioOverlay musicAssistantOverlay ];
 
       # Every overlay above is a workaround for an upstream bug, and every one
       # of their comments ends with some form of "remove once nixpkgs fixes it".
@@ -123,6 +183,21 @@
           arch = "aarch64";
           flaky = false;
           note = "sandbox + network-dependent tests; psutil topology returns None on aarch64";
+        };
+        numkong = {
+          arch = "aarch64";
+          flaky = false;
+          note = "GCC 16 rejects SVE intrinsics inlined into +sme kernels; backports NumKong#389 (v7.8.4) onto numkong.src, which python3Packages.numkong and usearch also consume";
+        };
+        "python3Packages.torchaudio" = {
+          arch = "aarch64";
+          flaky = false;
+          note = "no Hydra cache since GCC 16 (log limit exceeded); local pytest OOMs rivendell; tests skipped";
+        };
+        music-assistant = {
+          arch = "aarch64";
+          flaky = false;
+          note = "2 AirPlay pipe-stall tests assume 64 KiB pipes; Pi 5 16K pages give 256 KiB; only bites on a local build";
         };
       };
 
