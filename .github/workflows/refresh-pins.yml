@@ -90,7 +90,22 @@ jobs:
 
           # Force-push a stable branch so a second run updates the open PR rather
           # than stacking a duplicate.
-          git push --force-with-lease origin "$BRANCH"
+          #
+          # The lease value MUST be explicit. actions/checkout clones main only,
+          # so the configured fetch refspec does not cover $BRANCH and a bare
+          # --force-with-lease has no tracking ref to compare against: it REFUSES
+          # ("stale info") whenever the remote branch exists. Fetching the branch
+          # first does not help — git only honours a tracking ref that the
+          # refspec maps to. The branch exists whenever an earlier PR was closed
+          # rather than merged (#651), and the job then failed on every run that
+          # had something to push (09-09, 09-16, 10-03) while staying green on
+          # the weeks with nothing to do.
+          #
+          # ls-remote gives the current tip, or nothing when the branch is absent;
+          # `--force-with-lease=ref:` with an empty value means "must not exist",
+          # so both cases push, and a branch moved in between is still refused.
+          EXPECT=$(git ls-remote origin "refs/heads/$BRANCH" | cut -f1)
+          git push --force-with-lease="$BRANCH:$EXPECT" origin "$BRANCH"
 
           OPEN=$(nix run nixpkgs#gh -- pr list --head "$BRANCH" --state open --json number --jq 'length')
           if [ "$OPEN" = "0" ]; then
