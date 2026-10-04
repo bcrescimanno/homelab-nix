@@ -455,6 +455,62 @@ def unsummarized_news(cfg, candidates):
 
 
 # ---------------------------------------------------------------------------
+# Open signups (opensignup.xyz RSS — only entries no digest has shown yet)
+# ---------------------------------------------------------------------------
+
+def load_seen(path):
+    """guid → ISO date of the digest that first showed it. None if no state."""
+    try:
+        return json.loads(Path(path).read_text())
+    except FileNotFoundError:
+        return None
+
+
+def fetch_open_signups(cfg, today):
+    """New entries for today's digest, and the state to save once it is written.
+
+    An entry belongs to the digest that first showed it, so a same-day rebuild
+    (`daily-digest@today`) shows it again and the next day's digest does not.
+    With no state file yet, everything currently in the feed is recorded as
+    already shown: the feed's back catalogue is not news.
+    """
+    ocfg = cfg["openSignups"]
+    parsed = feedparser.parse(http_get(ocfg["url"], NWS_UA))
+    if parsed.bozo and not parsed.entries:
+        raise ValueError(parsed.bozo_exception)
+
+    seen = load_seen(ocfg["stateFile"])
+    baseline = seen is None
+    seen = seen or {}
+    stamp = today.isoformat()
+    # Baseline entries are dated yesterday: never today's, and pruned normally.
+    first = (today - dt.timedelta(days=1)).isoformat() if baseline else stamp
+    items, current = [], set()
+    for entry in parsed.entries:
+        key = entry.get("id") or entry.get("link")
+        title = clean(entry.get("title"))
+        if not key or not title:
+            continue
+        current.add(key)
+        if key not in seen:
+            seen[key] = first
+        if seen[key] == stamp:
+            items.append({
+                "title": title,
+                "description": clean(entry.get("summary"), 300),
+                "link": entry.get("link") or "",
+            })
+    if baseline:
+        log.info("open signups: no state yet; recorded %d existing entries", len(seen))
+
+    # Forget old entries so the file stays small — but never one still in the
+    # feed, or a quiet feed would re-announce its whole contents.
+    cutoff = (today - dt.timedelta(days=ocfg["retainDays"])).isoformat()
+    seen = {k: v for k, v in seen.items() if v >= cutoff or k in current}
+    return items, seen
+
+
+# ---------------------------------------------------------------------------
 # Rendering
 # ---------------------------------------------------------------------------
 
@@ -476,7 +532,7 @@ def describe_event(e, today):
     return when
 
 
-def push_message(weather, events, chores, markets, problems):
+def push_message(weather, events, chores, markets, signups, problems):
     parts = []
     if weather:
         w = weather["short"]
@@ -498,6 +554,8 @@ def push_message(weather, events, chores, markets, problems):
     spx = next((m for m in markets or [] if m["symbol"] == "^GSPC"), None)
     if spx:
         parts.append(f"S&P {spx['pct']:+.1f}%")
+    if signups:
+        parts.append(f"{len(signups)} open signup{'s' if len(signups) > 1 else ''}")
     msg = " · ".join(parts) or "Your digest is ready"
     if problems:
         msg += f"\n⚠ {len(problems)} problem{'s' if len(problems) > 1 else ''}"
@@ -645,6 +703,17 @@ def render_html(ctx):
             out.append("</ul>")
         out.append("</section>")
 
+    # Last, and only when there is something new: no empty-state card.
+    if ctx["signups"]:
+        out.append("<section><h2>Open Signups</h2><ul class=news>")
+        for it in ctx["signups"]:
+            desc = f"<p>{e(it['description'])}</p>" if it["description"] else ""
+            out.append(
+                f"<li><a href='{e(it['link'])}'>{e(it['title'])}</a>"
+                f"<div class=src>OpenSignup</div>{desc}</li>"
+            )
+        out.append("</ul></section>")
+
     gen = ctx["generated_at"]
     out.append(
         f"<footer>Generated {e(gen.strftime('%a %b %-d'))} at {e(fmt_time(gen))}"
@@ -725,6 +794,10 @@ def main():
                 problems.append("News not summarized or filtered (Claude unavailable)")
                 news = unsummarized_news(cfg, candidates)
 
+    signups, signups_seen = guarded(
+        problems, "Open signups", fetch_open_signups, cfg, today
+    ) or (None, None)
+
     ctx = {
         "today": today,
         "tz": tz,
@@ -735,6 +808,7 @@ def main():
         "chores": chores,
         "markets": markets,
         "news": news,
+        "signups": signups,
         "sections": cfg["news"]["sections"],
     }
     out_dir = Path(args.out or cfg["outputDir"])
@@ -747,9 +821,18 @@ def main():
         "generated_at": ctx["generated_at"].isoformat(),
         "url": cfg["url"],
         "push_title": f"Daily Digest · {today.strftime('%A, %B %-d')}",
-        "push_message": push_message(weather, events, chores, markets, problems),
+        "push_message": push_message(weather, events, chores, markets, signups, problems),
         "problems": problems,
     }, ensure_ascii=False, indent=2))
+    # Only once the page is out: an entry counts as shown when a digest
+    # carrying it exists. Not under --out, which is a test run.
+    if signups_seen is not None and not args.out:
+        try:
+            write_atomic(Path(cfg["openSignups"]["stateFile"]),
+                         json.dumps(signups_seen, indent=2, sort_keys=True))
+        except Exception:
+            # The page is written; the cost is a repeat tomorrow, not a failure.
+            log.exception("could not save open-signup state")
     log.info("wrote digest for %s (%s) with %d problem(s)", today, kind, len(problems))
     return 0
 
