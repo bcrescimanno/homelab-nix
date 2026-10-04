@@ -4,3 +4,8 @@ result
 # Stray debug output — caddy8.log (a failed nohup message) was committed
 # by accident in #526 and lived in the tree for weeks.
 *.log
+
+# Python bytecode — modules/__pycache__ came in with #815 from a local
+# import of daily-digest.py.
+__pycache__/
+*.pyc
