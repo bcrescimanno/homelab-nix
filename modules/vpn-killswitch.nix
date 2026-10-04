@@ -50,7 +50,7 @@
 #   Clear with:  sudo rm /var/lib/vpn-killswitch/tripped
 #                sudo systemctl start podman-gluetun podman-qbittorrent \
 #                  podman-sabnzbd podman-radarr podman-sonarr \
-#                  podman-prowlarr podman-lidarr
+#                  podman-prowlarr podman-lidarr podman-flaresolverr
 #
 # Starting podman-gluetun alone is NOT enough and this was verified the hard
 # way: Requires= propagates downward (stopping gluetun stops the consumers,
@@ -76,6 +76,7 @@ let
   stackUnits = [
     "podman-qbittorrent" "podman-sabnzbd"  "podman-radarr"
     "podman-sonarr"      "podman-prowlarr" "podman-lidarr"
+    "podman-flaresolverr"
     "podman-gluetun"
   ];
 
