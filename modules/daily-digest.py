@@ -209,6 +209,27 @@ def fetch_calendars(cfg, today, tz, problems):
 
 
 # ---------------------------------------------------------------------------
+# Chores (Home Assistant's sensor.chores — see modules/ha-chores.nix)
+# ---------------------------------------------------------------------------
+
+def fetch_chores(cfg):
+    ccfg = cfg["chores"]
+    req = urllib.request.Request(ccfg["url"], headers={
+        "Authorization": f"Bearer {os.environ[ccfg['tokenEnv']]}",
+        "Accept": "application/json",
+    })
+    with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as resp:
+        state = json.loads(resp.read())
+    # The sensor latches over its sources' outages, so its own state is only
+    # unavailable when the template itself is broken. That is a problem, not
+    # an empty list.
+    chores = state.get("attributes", {}).get("chores")
+    if state.get("state") in ("unavailable", "unknown") or not isinstance(chores, list):
+        raise ValueError(f"sensor.chores is {state.get('state')!r}")
+    return [str(c) for c in chores]
+
+
+# ---------------------------------------------------------------------------
 # Markets (Yahoo chart endpoint — unofficial, keyless)
 # ---------------------------------------------------------------------------
 
@@ -455,7 +476,7 @@ def describe_event(e, today):
     return when
 
 
-def push_message(weather, events, markets, problems):
+def push_message(weather, events, chores, markets, problems):
     parts = []
     if weather:
         w = weather["short"]
@@ -472,6 +493,8 @@ def push_message(weather, events, markets, problems):
             )
         else:
             parts.append(f"{len(events)} all-day on the calendar")
+    if chores:
+        parts.append(f"{len(chores)} chore{'s' if len(chores) > 1 else ''}")
     spx = next((m for m in markets or [] if m["symbol"] == "^GSPC"), None)
     if spx:
         parts.append(f"S&P {spx['pct']:+.1f}%")
@@ -503,7 +526,9 @@ h2{margin:0 0 10px;font-size:.8rem;text-transform:uppercase;letter-spacing:.08em
 .wx-short{font-size:1.1rem}
 .muted{color:var(--muted)}
 .small{font-size:.9rem}
-ul.events,ul.news{list-style:none;margin:0;padding:0}
+ul.events,ul.news,ul.chores{list-style:none;margin:0;padding:0}
+ul.chores li{padding:6px 0;border-top:1px solid var(--line)}
+ul.chores li:first-child{border-top:0;padding-top:0}
 ul.events li{display:flex;gap:12px;padding:8px 0;border-top:1px solid var(--line)}
 ul.events li:first-child{border-top:0;padding-top:0}
 .when{flex:0 0 7.5rem;color:var(--muted);font-variant-numeric:tabular-nums}
@@ -572,6 +597,16 @@ def render_html(ctx):
                     f"<li><span class=when>{e(describe_event(ev, today))}</span>"
                     f"<span>{e(ev['title'])}<span class=tag>{e(ev['calendar'])}</span>{loc}</span></li>"
                 )
+            out.append("</ul>")
+        out.append("</section>")
+
+    if ctx["chores"] is not None:
+        out.append("<section><h2>Chores</h2>")
+        if not ctx["chores"]:
+            out.append("<p class=muted>Nothing to do.</p>")
+        else:
+            out.append("<ul class=chores>")
+            out += [f"<li>{e(c)}</li>" for c in ctx["chores"]]
             out.append("</ul>")
         out.append("</section>")
 
@@ -673,6 +708,7 @@ def main():
     problems = []
     weather = guarded(problems, "Weather", fetch_weather, cfg, today)
     events = guarded(problems, "Calendar", fetch_calendars, cfg, today, tz, problems)
+    chores = guarded(problems, "Chores", fetch_chores, cfg)
     # Stocks are a workday thing; markets are closed on most of these days anyway.
     markets = fetch_markets(cfg, problems) if kind == "weekday" else None
 
@@ -696,6 +732,7 @@ def main():
         "problems": problems,
         "weather": weather,
         "events": events,
+        "chores": chores,
         "markets": markets,
         "news": news,
         "sections": cfg["news"]["sections"],
@@ -710,7 +747,7 @@ def main():
         "generated_at": ctx["generated_at"].isoformat(),
         "url": cfg["url"],
         "push_title": f"Daily Digest · {today.strftime('%A, %B %-d')}",
-        "push_message": push_message(weather, events, markets, problems),
+        "push_message": push_message(weather, events, chores, markets, problems),
         "problems": problems,
     }, ensure_ascii=False, indent=2))
     log.info("wrote digest for %s (%s) with %d problem(s)", today, kind, len(problems))
