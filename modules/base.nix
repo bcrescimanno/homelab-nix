@@ -69,6 +69,16 @@ in
   # This lets containers and services reference each other without the full suffix.
   networking.search = [ "home.theshire.io" ];
 
+  # network-online.target must mean "IPv4 works". dhcpcd's default (`waitip`
+  # with no family) forks — and so reaches network-online — on the FIRST
+  # address of any kind, and the router advertisement's ULA routinely beats
+  # the DHCPv4 ACK by several seconds. Everything this lab reaches over the
+  # network is IPv4 (erebor's NFS, GitHub for the nightly upgrade, upsd by IP),
+  # so in that window it fails with "Network is unreachable". Seen on orthanc
+  # 2026-10-04: network-online at 04:02:27, Jellyfin tripped the media
+  # automount at :30, IPv4 lease at :33 — var-lib-media.mount left failed.
+  networking.dhcpcd.wait = "ipv4";
+
   networking.firewall = {
     enable = true;
     # Open additional ports as needed. For example, if you want to access
