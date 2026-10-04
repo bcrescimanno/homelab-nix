@@ -553,6 +553,7 @@ in
         Home = [
           { "Home Assistant" = { href = "https://ha.theshire.io"; description = "Home automation"; icon = "home-assistant.png"; }; }
           { Vaultwarden = { href = "https://vault.theshire.io"; description = "Password manager"; icon = "vaultwarden.png"; }; }
+          { "Daily Digest" = { href = "https://digest.theshire.io"; description = "News, weather, calendar"; icon = "mdi-newspaper-variant-outline"; }; }
         ];
       }
       {

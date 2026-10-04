@@ -281,6 +281,7 @@
           ./modules/ha-hood-light.nix
           ./modules/ha-hvac-openings.nix
           ./modules/ha-pizza-preheat.nix
+          ./modules/ha-daily-digest.nix
           ./modules/caddy.nix
           ./modules/materialious.nix
           ./modules/monitoring.nix
@@ -291,6 +292,7 @@
           ./modules/pr-automerge-watch.nix
           ./modules/music-assistant.nix
           ./modules/vaultwarden.nix
+          ./modules/daily-digest.nix
           # github-runners.nix is not in nixos-raspberrypi's default module set
           "${nixpkgs}/nixos/modules/services/continuous-integration/github-runners.nix"
         ];
