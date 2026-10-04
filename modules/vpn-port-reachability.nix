@@ -107,6 +107,7 @@ let
   consumerUnits = [
     "podman-qbittorrent" "podman-sabnzbd"  "podman-radarr"
     "podman-sonarr"      "podman-prowlarr" "podman-lidarr"
+    "podman-flaresolverr"
   ];
 
   strikesToHeal = 3;       # 3 verdicts x 10min timer = 30min of confirmed loss

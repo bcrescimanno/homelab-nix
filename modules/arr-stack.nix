@@ -280,6 +280,42 @@ in
       ];
     };
 
+    # Cloudflare challenge solver for Prowlarr (today: EZTV and 1337x).
+    #
+    # MUST live in gluetun's netns, which is why it is a container and not the
+    # native services.flaresolverr. FlareSolverr fetches the tracker page itself
+    # in a headless Chromium. Running it on the host would (a) solve the
+    # challenge from the home WAN IP, so Prowlarr's follow-up requests — which
+    # leave through the VPN — would present a cf_clearance cookie bound to a
+    # different IP and be challenged again, and (b) show the tracker the home
+    # IP, which no check in vpn-killswitch.nix would see because the traffic
+    # never originates in the netns it watches.
+    #
+    # Deliberately NOT published on gluetun's `ports`: Prowlarr reaches it at
+    # http://localhost:8191 inside the shared netns, and FlareSolverr has no
+    # authentication — anything that can reach 8191 gets a VPN-egressing
+    # browser.
+    #
+    # No memory limit, and that is not an oversight: pirateship's kernel has
+    # no memory cgroup controller (cgroup.controllers lacks `memory`), so
+    # `--memory` and MemoryMax are both inert there. v3 starts a browser per
+    # request and closes it afterwards, so idle cost is the Python process only.
+    #
+    # Prowlarr side is UI state (its DB), set once: Settings → Indexers →
+    # Indexer Proxies → FlareSolverr, Host http://localhost:8191/, tag
+    # `flaresolverr`; then add that tag to each Cloudflare-fronted indexer.
+    # Prowlarr only routes TAGGED indexers through the proxy.
+    flaresolverr = {
+      image = "ghcr.io/flaresolverr/flaresolverr:latest@sha256:c80ae007ce2ccdcd217a12426e4f039ef763ff90738c808d38810c3e59323767";
+      autoStart = true;
+      dependsOn = [ "gluetun" ];
+      extraOptions = [ "--network=container:gluetun" ];
+      environment = {
+        TZ = "America/Los_Angeles";
+        LOG_LEVEL = "info";
+      };
+    };
+
     lidarr = {
       image = "lscr.io/linuxserver/lidarr:latest@sha256:044d616beb43c5e7810991242c6a9c42b93ff238c8c0850684939634ea751208";
       autoStart = true;
@@ -865,6 +901,6 @@ PYEOF
   homelab.postUpgradeCheck.services = [
     "podman-gluetun" "podman-qbittorrent" "podman-radarr"
     "podman-sonarr"  "podman-prowlarr"    "podman-lidarr"
-    "podman-sabnzbd" "qbittorrent-port-sync"
+    "podman-sabnzbd" "podman-flaresolverr" "qbittorrent-port-sync"
   ];
 }

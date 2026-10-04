@@ -442,7 +442,7 @@ let
             labels.severity = "critical";
             annotations = {
               summary = "arr stack latched OFF after a confirmed VPN leak";
-              description = "pirateship stopped the entire arr stack because traffic was escaping the VPN. It will not restart until the latch is cleared. Read the reason with `cat /var/lib/vpn-killswitch/tripped`, then `sudo rm /var/lib/vpn-killswitch/tripped && sudo systemctl start podman-gluetun podman-qbittorrent podman-sabnzbd podman-radarr podman-sonarr podman-prowlarr podman-lidarr` — starting gluetun alone does not bring the consumers back.";
+              description = "pirateship stopped the entire arr stack because traffic was escaping the VPN. It will not restart until the latch is cleared. Read the reason with `cat /var/lib/vpn-killswitch/tripped`, then `sudo rm /var/lib/vpn-killswitch/tripped && sudo systemctl start podman-gluetun podman-qbittorrent podman-sabnzbd podman-radarr podman-sonarr podman-prowlarr podman-lidarr podman-flaresolverr` — starting gluetun alone does not bring the consumers back.";
             };
           }
           {
