@@ -274,12 +274,17 @@ def fetch_candidates(cfg, problems):
     for section in ncfg["sections"]:
         n = 0
         for feed in section["feeds"]:
-            try:
-                parsed = feedparser.parse(http_get(feed["url"], YAHOO_UA))
-                if parsed.bozo and not parsed.entries:
-                    raise ValueError(parsed.bozo_exception)
-            except Exception:
-                log.warning("feed failed: %s", feed["url"], exc_info=True)
+            parsed = None
+            for attempt in (1, 2):  # one retry; feeds time out transiently
+                try:
+                    parsed = feedparser.parse(http_get(feed["url"], YAHOO_UA))
+                    if parsed.bozo and not parsed.entries:
+                        raise ValueError(parsed.bozo_exception)
+                    break
+                except Exception as exc:
+                    log.warning("feed attempt %d failed: %s: %s", attempt, feed["url"], exc)
+                    parsed = None
+            if parsed is None:
                 problems.append(f"Feed unavailable: {feed['name']}")
                 continue
             kept = 0
@@ -644,6 +649,16 @@ def main():
     ap.add_argument("--no-llm", action="store_true", help="skip Claude (testing)")
     args = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    # caldav warns when iCloud's iCalendar text differs from its re-serialized
+    # form (a trailing space in a SUMMARY is enough) and the warning carries a
+    # diff of the WHOLE EVENT. Calendar contents do not belong in the journal.
+    # Filtered at the handler: caldav.lib.error calls setLevel(WARNING) on the
+    # "caldav" logger when it is lazily imported, which overrides any level set
+    # here first.
+    for handler in logging.getLogger().handlers:
+        handler.addFilter(
+            lambda r: not (r.name.startswith("caldav") and r.levelno < logging.ERROR)
+        )
 
     cfg = json.loads(Path(args.config).read_text())
     tz = ZoneInfo(cfg["timezone"])
