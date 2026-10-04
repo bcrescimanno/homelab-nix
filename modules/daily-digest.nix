@@ -1,8 +1,8 @@
 # modules/daily-digest.nix — the morning digest page on rivendell
 #
 # One static page at https://digest.theshire.io: weather, today's calendar,
-# chores, markets (workdays only) and five Claude-summarized stories each of US, world
-# and tech news. Built by modules/daily-digest.py on a timer, served by Caddy,
+# chores, markets (workdays only), five Claude-summarized stories each of US, world
+# and tech news, and private-tracker open signups when there are new ones. Built by modules/daily-digest.py on a timer, served by Caddy,
 # and announced by a Home Assistant push (modules/ha-daily-digest.nix).
 #
 # SCHEDULE
@@ -62,6 +62,18 @@
 # the list of chores and the latching that rides out the Roborock's cloud
 # flaps. This script only renders what that sensor says; an HA it cannot reach
 # is a problem line, never an empty list.
+#
+# OPEN SIGNUPS
+#
+# opensignup.xyz's RSS feed, rendered as fetched (never sent to Claude) as the
+# LAST section, and only entries no earlier digest has shown. No new entries →
+# no section at all. `stateFile` maps each entry's guid to the date of the
+# digest that first carried it, so `daily-digest@today` re-run the same day
+# shows the same entries again, and the next morning's digest does not. It is
+# saved only after the page is written. With no state file (first run, or after
+# deleting it) everything currently in the feed is recorded as already seen and
+# nothing is shown. The site sits behind Cloudflare, which 403s Python's default
+# User-Agent; the script sends its identifying one.
 #
 # Required sops secrets (secrets/rivendell.yaml), all env-file format:
 #   digest_anthropic_env   ANTHROPIC_API_KEY=sk-ant-...
@@ -145,6 +157,13 @@ let
     chores = {
       url = "http://127.0.0.1:8123/api/states/sensor.chores";
       tokenEnv = "HA_TOKEN";
+    };
+
+    openSignups = {
+      url = "https://opensignup.xyz/rss.xml";
+      # Outside www/, which Caddy serves.
+      stateFile = "/var/lib/daily-digest/opensignup-seen.json";
+      retainDays = 180;
     };
 
     markets = {
