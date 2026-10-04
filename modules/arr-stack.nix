@@ -772,18 +772,35 @@ PYEOF
   # behind the VPN. Config is now fully declarative; API keys are injected via
   # systemd LoadCredential from sops (genJqSecretsReplacement resolves _secret).
   #
-  # One "(Combined)" guide profile per app, not a stack of per-resolution ones.
-  # The single-resolution TRaSH profiles (e.g. "Remux + WEB 2160p") allow ONLY
-  # their own tier, so a title with no 2160p release available never gets
-  # grabbed at all. The combined profiles span both resolutions in one ordered
+  # One multi-resolution guide profile per app, not a stack of per-resolution
+  # ones. The single-resolution TRaSH profiles (e.g. "Remux + WEB 2160p") allow
+  # ONLY their own tier, so a title with no 2160p release available never gets
+  # grabbed at all. These profiles span both resolutions in one ordered
   # cascade, and because Radarr/Sonarr's DownloadDecisionComparer ranks by
   # quality-profile index BEFORE custom format score, that ordering is what
   # actually decides grabs — CF scores only break ties within a tier:
   #
-  #   Radarr  Remux-2160p > Bluray-2160p > WEB 2160p > Remux-1080p
+  #   Radarr  Remux 2160p (Combined)
+  #             Remux-2160p > Bluray-2160p > WEB 2160p > Remux-1080p
   #             > Bluray-1080p > WEB 1080p        (nothing below 1080p allowed)
-  #   Sonarr  WEB 2160p > WEB 1080p     (WEB-only: 4K TV remuxes are rare on
-  #                                      indexers and ruinously large)
+  #   Sonarr  Remux 2160p (Alternative)
+  #             Remux-2160p > WEB 2160p > Bluray-2160p > Remux-1080p
+  #             > WEB 1080p > Bluray-1080p > HDTV-1080p
+  #             > WEB 720p > Bluray-720p > HDTV-720p
+  #
+  # Sonarr is NOT on WEB-2160p (Combined) any more, which allowed WEB only. Two
+  # things were wrong with that. Older shows often have no WEB release at all,
+  # only Bluray or HDTV, so they were never grabbed. Worse, every disallowed
+  # quality sorts BELOW the allowed ones in Sonarr's profile, so a WEB-1080p
+  # counted as an UPGRADE over an existing Bluray-1080p Remux — 153 Brooklyn
+  # Nine-Nine remux episodes were one RSS hit from being swapped for WEB.
+  # (Combined) is no good either: it drops Bluray encodes and HDTV entirely.
+  # Bluray-2160p sits below WEB 2160p because TRaSH scores no encode groups
+  # for Sonarr, while a 4K WEB-DL is the untouched stream. The 720p and HDTV
+  # tiers are fallbacks for shows that never had anything better.
+  #
+  # The cost is size: a 4K TV remux season runs to hundreds of GB, and with
+  # the cutoff at Remux-2160p one that appears in RSS replaces a 4K WEB-DL.
   #
   # Both profiles ship upgradeAllowed=true with cutoff at their top tier and
   # cutoffFormatScore=10000, so a title grabbed at a lower tier stays eligible
@@ -822,8 +839,8 @@ PYEOF
         delete_old_custom_formats = true;
         quality_definition.type = "series";
         quality_profiles = [
-          { # WEB-2160p (Combined)
-            trash_id = "c4cadd6b35b95f62c3d47a408e53e2f7";
+          { # Remux 2160p (Alternative)
+            trash_id = "361717d531db5a6002e0f547ace46551";
             reset_unmatched_scores.enabled = true;
             min_upgrade_format_score = 500;
           }

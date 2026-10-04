@@ -136,7 +136,7 @@ All arr containers share gluetun's network namespace (`--network=container:gluet
 - **qbittorrent**: torrent client (port 9091 via gluetun); image `lscr.io/linuxserver/qbittorrent:libtorrentv1`; `dl.theshire.io` via Caddy
 - **sabnzbd**: Usenet client (port 8080 via gluetun)
 - **radarr/sonarr/prowlarr/lidarr**: media managers (ports 7878/8989/9696/8686 via gluetun)
-- **recyclarr**: native NixOS service (not a container), daily, syncs TRaSH quality profiles + custom formats to radarr/sonarr; API keys via sops secrets `recyclarr_radarr_api_key`/`recyclarr_sonarr_api_key`. Exactly **one guide "(Combined)" profile per app** — Radarr `Remux 2160p (Combined)`, Sonarr `WEB-2160p (Combined)`. See the comment block in `arr-stack.nix` for why single-resolution profiles were dropped.
+- **recyclarr**: native NixOS service (not a container), daily, syncs TRaSH quality profiles + custom formats to radarr/sonarr; API keys via sops secrets `recyclarr_radarr_api_key`/`recyclarr_sonarr_api_key`. Exactly **one multi-resolution guide profile per app** — Radarr `Remux 2160p (Combined)`, Sonarr `Remux 2160p (Alternative)`. Sonarr is deliberately not on `WEB-2160p (Combined)`: under a WEB-only profile Sonarr ranks an existing Remux below WEB and will "upgrade" it away. See the comment block in `arr-stack.nix` for that and for why single-resolution profiles were dropped.
 - **navidrome**: music streaming server (port 4533, native NixOS service — not a container, not through VPN); declared in `modules/navidrome.nix`. Public at `stream.theshire.io` via orthanc's Cloudflare Tunnel
 - **bazarr**: subtitles (port 6767, native, not through VPN); declared in `modules/bazarr.nix`
 
