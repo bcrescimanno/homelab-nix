@@ -82,19 +82,27 @@ let
 
     holidays = {
       country = "US";
-      # Which python-holidays names count as a day off, matched as substrings
-      # so "Independence Day (observed)" follows "Independence Day". The full
-      # US list also has Martin Luther King Jr. Day, Washington's Birthday,
-      # Juneteenth National Independence Day, Columbus Day and Veterans Day;
-      # add any that are actually days off.
+      # Which python-holidays names count as a day off. Exact names; each also
+      # matches its "(observed)" variant (a Saturday July 4th is observed on
+      # Friday the 3rd). Every US
+      # federal holiday except Columbus Day, which is a workday.
       observe = [
         "New Year's Day"
+        "Martin Luther King Jr. Day"
+        "Washington's Birthday"           # Presidents Day
         "Memorial Day"
+        "Juneteenth National Independence Day"
         "Independence Day"
         "Labor Day"
+        "Veterans Day"
         "Thanksgiving Day"
         "Christmas Day"
       ];
+      # Days off relative to a holiday whose date moves: the Wednesday before
+      # and the Friday after Thanksgiving.
+      adjacent = {
+        "Thanksgiving Day" = [ (-1) 1 ];
+      };
       # Extra days off that follow the weekend schedule (company holidays,
       # PTO). ISO dates. Past dates are harmless; prune whenever.
       extra = [ ];

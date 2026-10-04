@@ -64,14 +64,26 @@ def day_kind(day, cfg):
     if day.weekday() >= 5:
         return "weekend"
     hcfg = cfg["holidays"]
-    # Only the holidays named in `observe` count. python-holidays lists every
-    # federal holiday, and most employers work Columbus Day and Veterans Day.
-    # Substring match so "(observed)" variants follow their holiday.
-    name = holidays.country_holidays(hcfg["country"], years=day.year).get(day)
-    if name and any(o in name for o in hcfg["observe"]):
-        return "weekend"
     if day.isoformat() in hcfg.get("extra", []):
         return "weekend"
+    # Only the holidays named in `observe` count; python-holidays lists every
+    # federal holiday. A name matches itself and its "(observed)" variant —
+    # never a substring, or "Independence Day" would also match "Juneteenth
+    # National Independence Day". `adjacent` adds days relative to a holiday
+    # whose date moves (the days around Thanksgiving). Neighbouring years are
+    # included so an offset can cross New Year.
+    def named(name, wanted):
+        return name == wanted or name.startswith(wanted + " (")
+
+    calendar = holidays.country_holidays(
+        hcfg["country"], years=[day.year - 1, day.year, day.year + 1]
+    )
+    for date, name in calendar.items():
+        if date == day and any(named(name, o) for o in hcfg["observe"]):
+            return "weekend"
+        for holiday, offsets in hcfg.get("adjacent", {}).items():
+            if named(name, holiday) and any(date + dt.timedelta(days=o) == day for o in offsets):
+                return "weekend"
     return "weekday"
 
 
