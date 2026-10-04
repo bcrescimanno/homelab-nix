@@ -101,6 +101,15 @@ in
 
       # rivendell backends (continued)
       "listen.theshire.io".extraConfig = proxy "127.0.0.1:8095";
+      # Daily digest (modules/daily-digest.nix) — a static page rebuilt every
+      # morning under the same URL, so no-cache keeps a phone from showing
+      # yesterday's. Home Assistant reads latest.json from here too.
+      "digest.theshire.io".extraConfig = ''
+        root * /var/lib/daily-digest/www
+        file_server
+        header Cache-Control "no-cache"
+        ${tlsConfig}
+      '';
       # Vaultwarden (modules/vaultwarden.nix). WebSocket notifications share
       # the HTTP port since 1.29, and reverse_proxy upgrades them untouched.
       #
