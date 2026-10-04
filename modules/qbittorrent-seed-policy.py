@@ -110,17 +110,30 @@ def main():
     # through to the public branch and be deleted with its content at ratio 1.0.
     # Refuse the whole run rather than risk that: seeding too long is
     # recoverable, a deleted private torrent and the ratio hit is not.
-    unknown = [t for t in torrents if not isinstance(t.get("private"), bool)]
+    #
+    # A magnet that has not fetched its metadata yet is the one legitimate
+    # exception: the private flag lives in the info dict, so until it arrives
+    # qBittorrent reports `private: null` with `has_metadata: false`. A queued
+    # magnet never fetches it at all -- a Sonarr season pack of 11 episodes
+    # queued behind max_active_downloads = 10 failed this unit every 5 minutes.
+    # Those are skipped, not classified: they stay on the global action (Stop,
+    # ratio limit off, set below), which is the safe default, and the first
+    # run after their metadata lands picks them up. The guard still fires for
+    # a missing field, or a non-boolean one on a torrent that HAS metadata.
+    unknown = [t for t in torrents
+               if not isinstance(t.get("private"), bool)
+               and not (t.get("private") is None and t.get("has_metadata") is False)]
     if unknown:
         log("FATAL: %d/%d torrents have no boolean `private` field; refusing to "
             "apply any policy. First: %r" % (len(unknown), len(torrents),
                                              unknown[0].get("name", "?")[:60]))
         return 1
 
-    private = [t for t in torrents if t["private"]]
-    public = [t for t in torrents if not t["private"]]
-    log("torrents: %d total  %d private  %d public"
-        % (len(torrents), len(private), len(public)))
+    pending = [t for t in torrents if not isinstance(t.get("private"), bool)]
+    private = [t for t in torrents if t.get("private") is True]
+    public = [t for t in torrents if t.get("private") is False]
+    log("torrents: %d total  %d private  %d public  %d awaiting metadata"
+        % (len(torrents), len(private), len(public), len(pending)))
 
     # ----------------------------------------------------------- preferences
     prefs = json.loads(qb.get("/api/v2/app/preferences"))
