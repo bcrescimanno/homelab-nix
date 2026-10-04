@@ -1,7 +1,7 @@
 # modules/daily-digest.nix — the morning digest page on rivendell
 #
 # One static page at https://digest.theshire.io: weather, today's calendar,
-# markets (workdays only) and five Claude-summarized stories each of US, world
+# chores, markets (workdays only) and five Claude-summarized stories each of US, world
 # and tech news. Built by modules/daily-digest.py on a timer, served by Caddy,
 # and announced by a Home Assistant push (modules/ha-daily-digest.nix).
 #
@@ -21,7 +21,7 @@
 # WHAT LEAVES THE LAB
 #
 # Only news headlines and RSS descriptions go to the Claude API. The calendar,
-# weather and markets are rendered as fetched, so calendar contents never reach
+# chores, weather and markets are rendered as fetched, so calendar contents never reach
 # a model. Claude returns candidate IDs, not URLs, and the script maps each ID
 # back to its feed link, so a summary cannot carry an invented link.
 #
@@ -56,8 +56,18 @@
 # day. If it breaks for good, a free Finnhub key with SPY/QQQ/DIA as proxies
 # gives the same percentage moves without the levels.
 #
-# Required sops secrets (secrets/rivendell.yaml), both env-file format:
+# CHORES
+#
+# Read from Home Assistant's sensor.chores (modules/ha-chores.nix), which owns
+# the list of chores and the latching that rides out the Roborock's cloud
+# flaps. This script only renders what that sensor says; an HA it cannot reach
+# is a problem line, never an empty list.
+#
+# Required sops secrets (secrets/rivendell.yaml), all env-file format:
 #   digest_anthropic_env   ANTHROPIC_API_KEY=sk-ant-...
+#   digest_ha_env          HA_TOKEN=<long-lived access token>
+#     (HA profile → Security → Long-lived access tokens; it acts as the user
+#     who created it, so read-only use is a matter of what this script does)
 #   digest_icloud_env      ICLOUD_USERNAME=<Apple ID email>
 #                          ICLOUD_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx
 #     (an app-specific password from account.apple.com → Sign-In and
@@ -131,6 +141,11 @@ let
         ];
       }
     ];
+
+    chores = {
+      url = "http://127.0.0.1:8123/api/states/sensor.chores";
+      tokenEnv = "HA_TOKEN";
+    };
 
     markets = {
       indexes = [
@@ -218,6 +233,7 @@ in
 
   sops.secrets.digest_anthropic_env = { };
   sops.secrets.digest_icloud_env = { };
+  sops.secrets.digest_ha_env = { };
 
   # Template unit: %i is the slot (weekday|weekend|today). Static user rather than
   # DynamicUser: a DynamicUser StateDirectory lives under /var/lib/private,
@@ -238,6 +254,7 @@ in
       EnvironmentFile = [
         config.sops.secrets.digest_anthropic_env.path
         config.sops.secrets.digest_icloud_env.path
+        config.sops.secrets.digest_ha_env.path
       ];
       ExecStart = "${python}/bin/python3 ${./daily-digest.py} --config ${configFile} %i";
 

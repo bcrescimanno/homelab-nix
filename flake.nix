@@ -282,6 +282,7 @@
           ./modules/ha-hvac-openings.nix
           ./modules/ha-pizza-preheat.nix
           ./modules/ha-daily-digest.nix
+          ./modules/ha-chores.nix
           ./modules/caddy.nix
           ./modules/materialious.nix
           ./modules/monitoring.nix
