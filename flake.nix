@@ -85,34 +85,6 @@
         });
       };
 
-      # numkong 7.8.3 (usearch → music-assistant, so rivendell) does not compile
-      # on aarch64 under GCC 16: GCC inlines the streaming-SVE helpers into SME
-      # kernels whose target pragma is only "+sme", then rejects the SVE
-      # intrinsics ("ACLE function 'svwhilelt_b64_u64' requires ISA extension
-      # 'sve'"). GCC 15 accepted it. Not LTO — it fails with IPO off too.
-      # Backports the upstream fix (ashvardanian/NumKong#389, released in
-      # v7.8.4). Pi-only: x86_64 never compiles these kernels. Remove once
-      # nixpkgs ships numkong >= 7.8.4 — the patch will then fail to apply,
-      # which is the intended signal.
-      #
-      # The patch goes on `src`, not `patches`: python3Packages.numkong builds
-      # from `pkgs.numkong.src` and usearch symlinks `numkong.src` in as its
-      # vendored copy, so a `patches` override leaves both of those broken.
-      numkongOverlay = final: prev: {
-        numkong = prev.numkong.overrideAttrs (oldAttrs: {
-          src = final.applyPatches {
-            src = oldAttrs.src;
-            patches = [
-              (final.fetchpatch {
-                name = "numkong-gcc16-sme-out-of-line.patch";
-                url = "https://github.com/ashvardanian/NumKong/commit/de1da85240e4ff4b29890cfb290103ddee5bf9c2.patch";
-                hash = "sha256-EQM3TRs4B4vUHhE3xD2IHHpaV3pz1+dpPRrFxhRqzes=";
-              })
-            ];
-          };
-        });
-      };
-
       # torchaudio (beat-this → music-assistant, so rivendell) is not cached
       # for aarch64: every Hydra build since the GCC 16 bump (2026-09-29 on)
       # ended "Log limit exceeded", so rivendell compiles it itself. The
@@ -132,8 +104,8 @@
       # Pi 5 kernel uses 16K pages, the buffer is 256 KiB, the write fits, and
       # both fail with `assert True is False`. Deterministic, not a race, and
       # Hydra's 4K-page builders never see it — it only surfaces when the
-      # numkong/torchaudio overlays above force a local build. Remove when
-      # those two go and music-assistant substitutes from cache again.
+      # torchaudio overlay above forces a local build. Remove when it goes and
+      # music-assistant substitutes from cache again.
       # overrideAttrs, NOT overridePythonAttrs: the latter drops `.override`,
       # which the upstream module (finalPackage) and ours (PYTHONPATH) call.
       musicAssistantOverlay = final: prev: {
@@ -146,7 +118,7 @@
       };
 
       commonOverlays = [ glancesOverlay ];
-      piOverlays = commonOverlays ++ [ numkongOverlay torchaudioOverlay musicAssistantOverlay ];
+      piOverlays = commonOverlays ++ [ torchaudioOverlay musicAssistantOverlay ];
 
       # Every overlay above is a workaround for an upstream bug, and every one
       # of their comments ends with some form of "remove once nixpkgs fixes it".
@@ -183,11 +155,6 @@
           arch = "aarch64";
           flaky = false;
           note = "sandbox + network-dependent tests; psutil topology returns None on aarch64";
-        };
-        numkong = {
-          arch = "aarch64";
-          flaky = false;
-          note = "GCC 16 rejects SVE intrinsics inlined into +sme kernels; backports NumKong#389 (v7.8.4) onto numkong.src, which python3Packages.numkong and usearch also consume";
         };
         "python3Packages.torchaudio" = {
           arch = "aarch64";
