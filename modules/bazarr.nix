@@ -6,10 +6,19 @@
 # Runs as the `brian` user (uid 1000) to match the PUID=1000 used by the arr
 # containers, ensuring it can read/write subtitle files on the erebor NFS mount.
 #
-# Bazarr keeps all of its configuration in /var/lib/bazarr (config.yaml + a
-# SQLite DB) and rewrites both at runtime, so none of it can be expressed in
-# Nix — it is set through the web UI or the REST API. Documented here so the
-# settings that matter are recoverable.
+# Bazarr keeps its configuration in /var/lib/bazarr (config.yaml + a SQLite DB)
+# and rewrites both at runtime. Until the 2026-10-07 lock none of it could be
+# expressed in Nix. nixpkgs now has `services.bazarr.settings`: each value is
+# exported as a DYNACONF_* environment variable at startup and OVERRIDES
+# whatever the web UI wrote to config.yaml. A setting declared there therefore
+# reverts on restart if edited in the UI. Secrets go through `_secret` (systemd
+# LoadCredential), never a literal.
+#
+# Through that option the module itself now pins analytics.enabled = false and
+# general.auto_update = false. Nothing below has been moved into `settings` yet;
+# the steps are still the UI, and documented here so they are recoverable. The
+# Sonarr/Radarr connections, path mappings and language profile defaults are
+# the candidates for moving (API keys via sops + `_secret`).
 #
 # One-time web UI setup required after first deploy:
 #   1. Open subtitles.theshire.io → Settings → Sonarr
@@ -53,7 +62,7 @@
     # Run as brian (uid 1000) to match arr container PUID — required for NFS write access
     user = "brian";
     group = "users";
-    listenPort = 6767;
+    settings.general.port = 6767;
     openFirewall = true;
   };
 }
