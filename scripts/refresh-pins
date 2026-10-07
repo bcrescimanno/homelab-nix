@@ -14,9 +14,12 @@
 #                      release. This one is NOT silently invisible any more:
 #                      since #609 the native build is a required check, so a
 #                      lock update that invalidates the hash fails CI and cannot
-#                      merge. What it does instead is BLOCK that PR. Running
-#                      this script on the blocked branch is the one-command fix,
-#                      in place of transcribing "got:" out of a CI log.
+#                      merge. What it does instead is BLOCK that PR — so
+#                      .github/workflows/lock-pin-fixup.yml runs
+#                      `refresh-pins caddy` on every Renovate lock PR and pushes
+#                      the fix onto it. By hand, run this script on the blocked
+#                      branch. The weekly run against main cannot see this case:
+#                      main's lock still matches main's hash.
 #
 # Usage:
 #   scripts/refresh-pins             update both in place

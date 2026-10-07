@@ -1,0 +1,88 @@
+name: Lock PR pin fixup
+
+# Recomputes the caddy-cloudflare FOD hash ON a Renovate lock PR and pushes the
+# fix onto that PR's branch, so the PR can go green and automerge on its own.
+#
+# WHY THIS EXISTS. The hash tracks the Go module graph (see the header of
+# pkgs/caddy-cloudflare.nix), so it goes stale exactly when flake.lock moves.
+# refresh-pins.yml cannot catch that: it runs against MAIN's lock, where the old
+# hash is still correct, so it sees nothing to do. Meanwhile the lock PR fails
+# the required aarch64 pre-build and sits BLOCKED with automerge armed until a
+# human transcribes the "got:" line (#821, 2026-10-07). The hash belongs to the
+# lock that invalidated it, so it is fixed in the same PR.
+#
+# Caddy only, never materialious: that pin is independent of the lock and a
+# bump needs a human to re-read its workarounds (see pkgs/materialious.nix).
+#
+# RUNS ON ORTHANC. The FOD is vendored Go source, so the hash is arch-
+# independent; computing it here takes ~30s instead of waiting out rivendell.
+#
+# Loop safety: the push re-triggers this workflow, and the second run finds the
+# hash current and pushes nothing. The push also cancels the doomed pre-build
+# run through pre-build.yml's concurrency group.
+#
+# Renovate keeps ownership of the branch because renovate.json lists this
+# commit's author under gitIgnoredAuthors. Without that, Renovate treats the
+# branch as human-edited and stops rebasing it. With it, a rebase drops the
+# fixup and this workflow simply adds it back.
+#
+# THE TOKEN MUST BE THE PAT (RENOVATE_TOKEN), for the same reason as in
+# refresh-pins.yml: a push made with GITHUB_TOKEN triggers no workflows, so the
+# required checks would never re-run on the fixed commit.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - flake.lock
+
+concurrency:
+  group: lock-pin-fixup-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  fixup:
+    name: Refresh caddy hash on lock PR
+    # Renovate branches only: never rewrite a human's PR behind their back.
+    if: >
+      startsWith(github.head_ref, 'renovate/') &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Linux, X64, nix-builder]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          token: ${{ secrets.RENOVATE_TOKEN }}
+
+      - name: Refresh caddy hash
+        run: ./scripts/refresh-pins caddy
+
+      - name: Push the fix onto the PR branch
+        env:
+          BRANCH: ${{ github.head_ref }}
+          EXPECT: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet -- pkgs/caddy-cloudflare.nix; then
+            echo "Caddy hash is current for this lock — nothing to do."
+            exit 0
+          fi
+
+          git --no-pager diff -- pkgs/caddy-cloudflare.nix
+
+          # The author email must match gitIgnoredAuthors in renovate.json.
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "fix(caddy): refresh plugin FOD hash for this lock" \
+                     -m "Recomputed by .github/workflows/lock-pin-fixup.yml." \
+                     -- pkgs/caddy-cloudflare.nix
+
+          # Leased to the sha this run was triggered for: if Renovate rebased
+          # the branch in the meantime, the push is refused and the run that
+          # rebase triggered does the work instead.
+          git push --force-with-lease="$BRANCH:$EXPECT" origin "HEAD:$BRANCH"

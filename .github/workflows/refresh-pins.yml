@@ -5,9 +5,12 @@ name: Refresh manual pins
 # PR when either moved. See scripts/refresh-pins for what each one is and why it
 # was manual.
 #
-# Wednesday, deliberately: lockFileMaintenance lands Tuesday, and the Caddy hash
-# tracks the Go module graph, so the day after a lock update is when it can have
-# gone stale. Materialious is independent of the lock and any weekly slot suits.
+# This job is NOT what keeps the Caddy hash in step with lock updates. It runs
+# against main's lock, and a lock that moves the hash cannot reach main until the
+# hash is fixed — so this run sees "current" while the lock PR sits blocked
+# (#821). lock-pin-fixup.yml fixes the hash on the lock PR itself. For Caddy
+# this weekly run is only a backstop for hand-edited locks; it remains the only
+# thing that moves materialious.
 #
 # RUNS ON ORTHANC, not the Pi. The Caddy FOD is vendored Go source rather than
 # compiled output, so its hash is architecture-independent and an x86_64 result

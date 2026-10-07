@@ -3,6 +3,7 @@
   "extends": ["config:recommended"],
   "dependencyDashboardApproval": false,
   "prHourlyLimit": 10,
+  "gitIgnoredAuthors": ["41898282+github-actions[bot]@users.noreply.github.com"],
   "enabledManagers": ["nix", "custom.regex"],
   "nix": {
     "enabled": true
@@ -21,7 +22,12 @@
       "a native build of all four host closures. Measured cost of a real nixpkgs",
       "bump: 42 min on rivendell's aarch64 runner, 13s on orthanc. Twice weekly",
       "caps that at ~84 min/week on a host that is also serving Caddy, HA, DNS",
-      "and ntfy while it builds."
+      "and ntfy while it builds.",
+      "",
+      "A lock that moves the Go module graph invalidates the caddy-cloudflare",
+      "FOD hash. lock-pin-fixup.yml recomputes it on this PR and pushes the fix",
+      "as github-actions[bot]; gitIgnoredAuthors (top level) is what keeps",
+      "Renovate treating the branch as its own afterwards."
     ],
     "enabled": true,
     "schedule": ["on tuesday", "on saturday"],
