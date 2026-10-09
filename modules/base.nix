@@ -10,6 +10,7 @@ let
     rivendell  = "04:20";
     mirkwood   = "04:40";
     pirateship = "05:00";
+    terra      = "05:20"; # last; nothing else pulls from what it builds
   }.${config.networking.hostName} or "04:00";
 in
 {
