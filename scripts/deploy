@@ -12,6 +12,8 @@
 #   deploy rivendell
 #   deploy pirateship
 #   deploy orthanc
+#   deploy terra              Single-host only, never part of `all`: terra is a
+#                             games console that is usually asleep (WoL it first).
 #
 # NOTE: For DNS changes (modules/dns.nix), always deploy rivendell before
 # mirkwood manually — this script does not enforce that ordering.
@@ -36,7 +38,7 @@ run_deploy() {
 }
 
 case "${1:-all}" in
-  mirkwood|rivendell|pirateship|orthanc)
+  mirkwood|rivendell|pirateship|orthanc|terra)
     run_deploy "$1"
     ;;
   all)
@@ -75,7 +77,7 @@ case "${1:-all}" in
     exit $status
     ;;
   *)
-    echo "Usage: deploy [mirkwood|rivendell|pirateship|orthanc]" >&2
+    echo "Usage: deploy [mirkwood|rivendell|pirateship|orthanc|terra]" >&2
     exit 1
     ;;
 esac

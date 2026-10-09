@@ -1,7 +1,10 @@
 # modules/attic.nix — attic self-hosted Nix binary cache server
 #
-# Runs atticd on orthanc at port 8080. Served publicly as cache.theshire.io
-# via Caddy on rivendell (TLS termination + reverse proxy).
+# Runs atticd on orthanc at port 8080. Served as cache.theshire.io via Caddy
+# on rivendell (TLS termination + reverse proxy) — LAN and tailnet only. Public
+# DNS resolves the name to the WAN IP, but nothing forwards 443 to Caddy (it
+# lands on the UDM itself), which is what makes pushing unfree closures (terra's
+# NVIDIA driver, Steam) acceptable. Never publish this through the tunnel.
 #
 # Storage: SQLite DB + NAR storage on orthanc's NVMe at /var/lib/atticd/.
 # GC evicts cache entries by `default-retention-period` below, which is the one

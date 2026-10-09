@@ -1,6 +1,6 @@
 # modules/tailscale.nix — tailnet membership for every host.
 #
-# Imported by base.nix, so all four hosts join. This is the replacement for the
+# Imported by base.nix, so every host joins. This is the replacement for the
 # WireGuard server on the UDM Pro, not a second door beside it; see Plan.md
 # "Remote access consolidation" for the decision and the break-glass window.
 #
