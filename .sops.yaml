@@ -3,7 +3,11 @@ keys:
   - &rivendell age1v6fjpzeu847h3qj7wnxwhdvyjsl42hj2uams8r5p9tjj246v9a3q6va7s7
   - &mirkwood age1wgxr6uc3hh52kh7pfju9hyxdvrn45dcqs705zdplvzpduxknnp9s3085tg
   - &orthanc age170fgg0z30vu0as5q08eawyy0n30k6lnswq7ufe9zutfzwftxfs5s0dsvvu
+  - &terra age1lxtggudpt3j3273ptex3xcl5xmfzsgmsyc4778axqn00x98404hselhpkt
+  # Admin recipients. liquidark is the working key; backup's private half is
+  # held off-machine (Bitwarden), so losing liquidark never strands a secret.
   - &liquidark age1tl6nxc9gl080x7vxy8l9mc5eps0sp33rwdlylt2uvhkuy6l6hvsqmcx0av
+  - &backup age140azlzem0cltf0r49u25q455smmq8lfpghxu55vftnzu2qq7tsnq845vzn
 
 creation_rules:
   - path_regex: secrets/pirateship.yaml$
@@ -11,18 +15,28 @@ creation_rules:
       - age:
         - *pirateship
         - *liquidark
+        - *backup
   - path_regex: secrets/rivendell.yaml$
     key_groups:
       - age:
         - *rivendell
         - *liquidark
+        - *backup
   - path_regex: secrets/mirkwood.yaml$
     key_groups:
       - age:
         - *mirkwood
         - *liquidark
+        - *backup
   - path_regex: secrets/orthanc.yaml$
     key_groups:
       - age:
         - *orthanc
         - *liquidark
+        - *backup
+  - path_regex: secrets/terra.yaml$
+    key_groups:
+      - age:
+        - *terra
+        - *liquidark
+        - *backup
