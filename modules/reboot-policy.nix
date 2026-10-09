@@ -66,6 +66,10 @@ let
   # Kernel path we last rebooted to reach. Present only between the reboot
   # command and the post-boot report (or the loop guard tripping).
   attemptFile = "${stateDir}/attempted-kernel";
+  # node_exporter textfile collector (modules/monitoring.nix). Read by the
+  # HostRebooted rule in grafana.nix to tell a planned reboot from the rest.
+  textfileDir   = "/var/lib/prometheus-textfiles";
+  plannedMarker = "${textfileDir}/homelab_reboot.prom";
 
   svcList = config.homelab.postUpgradeCheck.services;
 
@@ -139,8 +143,21 @@ let
       ''}
 
       echo "$CURRENT" > ${attemptFile}
+
+      # Mark the reboot as planned so HostRebooted stays quiet for it (see
+      # the rule in grafana.nix). It must be a timestamp, not a flag: the
+      # file outlives the boot, and the rule only honours it for a boot that
+      # follows it closely.
+      tmp=$(${coreutils}/mktemp -p ${textfileDir})
+      printf '%s\n' \
+        "# HELP homelab_reboot_planned_timestamp_seconds When homelab-reboot-check last rebooted this host on purpose." \
+        "# TYPE homelab_reboot_planned_timestamp_seconds gauge" \
+        "homelab_reboot_planned_timestamp_seconds $(${coreutils}/date +%s)" > "$tmp"
+      ${coreutils}/chmod 0644 "$tmp"
+      ${coreutils}/mv "$tmp" ${plannedMarker}
+
       notify 3 arrows_counterclockwise "Rebooting for new kernel" \
-        "${hostName}: $RUNNING -> $WANTED. Expect a HostRebooted alert; a follow-up confirms the host came back."
+        "${hostName}: $RUNNING -> $WANTED. A follow-up confirms the host came back."
       ${pkgs.systemd}/bin/systemctl reboot
     ''}
   '';

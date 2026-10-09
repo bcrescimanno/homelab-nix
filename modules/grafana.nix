@@ -102,12 +102,32 @@ let
             };
           }
           {
+            # Unexplained reboots only. A reboot that homelab-reboot-check
+            # performed already gets two pushes of its own — "Rebooting for new
+            # kernel" before and "Reboot complete"/"services DOWN" after — so
+            # this alert (and its Resolved) added two more saying nothing new.
+            #
+            # The check script writes homelab_reboot_planned_timestamp_seconds
+            # to the textfile collector just before `systemctl reboot`
+            # (modules/reboot-policy.nix). That file is on disk, so node_exporter
+            # serves it again after boot, from the same scrape as the boot time.
+            # A boot within 15 minutes AFTER that stamp is the planned one;
+            # anything else — manual, crash, power cut, or the stamp left over
+            # from an older reboot — still alerts. 15m covers a slow POST plus
+            # the 90s shutdown timeout with margin.
             alert = "HostRebooted";
-            expr = ''time() - node_boot_time_seconds < 600'';
+            expr = ''
+              (time() - node_boot_time_seconds < 600)
+              unless on(instance)
+              (
+                    node_boot_time_seconds - homelab_reboot_planned_timestamp_seconds > 0
+                and node_boot_time_seconds - homelab_reboot_planned_timestamp_seconds < 900
+              )
+            '';
             labels.severity = "info";
             annotations = {
               summary = "{{ $labels.instance }} rebooted";
-              description = "{{ $labels.instance }} booted less than 10 minutes ago. Expected after a deploy; investigate if unexplained.";
+              description = "{{ $labels.instance }} booted less than 10 minutes ago and it was not a policy-driven kernel reboot. Expected after a manual reboot; investigate if unexplained.";
             };
           }
         ];
@@ -877,6 +897,20 @@ in
 
   services.grafana = {
     enable = true;
+
+    # Grafana 13.2 split the Prometheus and Loki datasources out of core into
+    # plugins. Undeclared, Grafana is meant to download them into
+    # /var/lib/grafana/plugins at startup. After the 2026-10-07 lock it did
+    # not: both datasources answered `plugin.notRegistered` and every
+    # dashboard and Explore query was empty, while Gatus' status-only Grafana
+    # check stayed green.
+    #
+    # Declaring them pins them in the store and removes the runtime fetch from
+    # grafana.com. The flip side is that this list becomes the WHOLE plugin
+    # set, so anything a dashboard needs beyond core panels must be added here
+    # (today: none — dashboards/ uses only core panel types).
+    declarativePlugins = with pkgs.grafanaPlugins; [ prometheus loki ];
+
     settings = {
       server = {
         http_addr = "0.0.0.0";

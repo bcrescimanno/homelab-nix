@@ -14,19 +14,33 @@
 let
   githubRepo = "bcrescimanno/homelab-nix";
 
-  mkHttp = { name, url, group }: {
+  # Alert for an endpoint served by a host that reboots ITSELF (orthanc, the
+  # only host with homelab.reboot.auto — modules/reboot-policy.nix). Its kernel
+  # reboot on 2026-10-08 took Jellyfin and Invidious down for exactly three
+  # 1-minute probes (04:01:41 → 04:04:41), which is exactly the default
+  # failure-threshold, so a routine planned reboot paged twice — and with no
+  # Resolved to follow, since send-on-resolved is off.
+  #
+  # 6 alerts after ~6 minutes of a real outage: double the measured reboot,
+  # for a slow POST or a fsck. Only for 1-minute checks; at 5m/15m intervals the
+  # default 3 already spans 15+ minutes and the reboot cost those one probe.
+  # Gatus has no dynamic silence, and a static maintenance window over
+  # 03:00–07:00 would hide real outages every night, so this is the lever.
+  rebootTolerantAlert = { type = "ntfy"; "failure-threshold" = 6; };
+
+  mkHttp = { name, url, group, rebootTolerant ? false }: {
     inherit name url group;
     interval = "1m";
     conditions = [ "[STATUS] == 200" ];
-    alerts = [{ type = "ntfy"; }];
+    alerts = [ (if rebootTolerant then rebootTolerantAlert else { type = "ntfy"; }) ];
   };
 
-  mkTcp = { name, host, group }: {
+  mkTcp = { name, host, group, rebootTolerant ? false }: {
     inherit name group;
     url = "tcp://${host}:22";
     interval = "1m";
     conditions = [ "[CONNECTED] == true" ];
-    alerts = [{ type = "ntfy"; }];
+    alerts = [ (if rebootTolerant then rebootTolerantAlert else { type = "ntfy"; }) ];
   };
 
   # DNS resolution check — verifies the resolver can actually resolve, not just that port 53 is open.
@@ -179,7 +193,7 @@ in
         (mkTcp { name = "pirateship"; host = "pirateship"; group = "Infrastructure"; })
         (mkTcp { name = "rivendell";  host = "rivendell";  group = "Infrastructure"; })
         (mkTcp { name = "mirkwood";   host = "mirkwood";   group = "Infrastructure"; })
-        (mkTcp { name = "orthanc";    host = "orthanc";    group = "Infrastructure"; })
+        (mkTcp { name = "orthanc";    host = "orthanc";    group = "Infrastructure"; rebootTolerant = true; })
 
         # DNS — resolution checks (port 53 open is not enough; verify actual recursive resolution)
         (mkDns { name = "mirkwood DNS"; host = "mirkwood"; group = "Infrastructure"; })
@@ -200,7 +214,7 @@ in
         (mkHttp { name = "Vaultwarden";    url = "https://vault.theshire.io/alive"; group = "Home"; })
 
         # Media
-        (mkHttp { name = "Jellyfin";    url = "https://jellyfin.theshire.io"; group = "Media"; })
+        (mkHttp { name = "Jellyfin";    url = "https://jellyfin.theshire.io"; group = "Media"; rebootTolerant = true; })
         # TCP check on gluetun's control port. This is a LIVENESS check for the
         # container and nothing more — it is NOT a tunnel check, despite the name.
         # gluetun's control server listens on `:::8000` inside the netns and does
@@ -253,7 +267,7 @@ in
         # come back empty. That is the same "healthy while broken" shape as the
         # alertmanager /alert 404 and the NUT /metrics path. So the probe below
         # asserts on the streams themselves.
-        (mkHttp { name = "Invidious"; url = "https://invidious.theshire.io"; group = "Media"; })
+        (mkHttp { name = "Invidious"; url = "https://invidious.theshire.io"; group = "Media"; rebootTolerant = true; })
         {
           name = "Invidious playback";
           # Stable, not age- or region-restricted. If this video ever goes away
