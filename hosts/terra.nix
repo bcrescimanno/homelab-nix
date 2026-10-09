@@ -16,6 +16,12 @@
 # session (upstream gamescope PR #2094), and a one-minute black screen that
 # turned out to be bluez timing out with no adapter present (Jovian #542).
 #
+# FIRST THING TO CHECK after install: on Arch with the 595.x driver, gamescope's
+# DRM backend flickered along the bottom of the screen on this card (NVIDIA bug
+# 5240452). This config runs gamescope again, on 615.x. If the flicker is back,
+# the fallback is greetd → Hyprland → `steam -gamepadui` with no gamescope —
+# i.e. replace jovian.steam.autoStart, not the whole host.
+#
 # ---------------------------------------------------------------------------
 # Initial installation via nixos-anywhere (same recipe as orthanc). This WIPES
 # the disk named in disko.devices below — check it against `lsblk` on terra.
@@ -23,6 +29,11 @@
 #   age-keygen -o /tmp/terra-age-key.txt          # public key → .sops.yaml
 #   mkdir -p /tmp/terra-extra/var/lib/sops-nix
 #   cp /tmp/terra-age-key.txt /tmp/terra-extra/var/lib/sops-nix/key.txt
+#
+#   # Bluetooth pairings, so controllers work at first boot. They are keyed by
+#   # the adapter's MAC, which the wipe does not change. Taken from Arch BEFORE
+#   # the wipe; root-owned 0700 on the target, as bluez expects.
+#   ssh brian@terra 'sudo tar -C / -cf - var/lib/bluetooth' | tar -C /tmp/terra-extra -xf -
 #
 #   nix run github:nix-community/nixos-anywhere -- \
 #     --flake .#terra \
@@ -311,9 +322,12 @@
   # failed upgrade, and post-upgrade-check rolls it back.
   homelab.postUpgradeCheck.services = [ "display-manager" ];
 
-  # Never reboot unattended (the default, stated for the reader): this machine
-  # is in use when it is on. A new kernel just waits for the next power-on.
-  homelab.reboot.auto = false;
+  # Reboot for a new kernel straight after the nightly upgrade (inside
+  # reboot-policy's 03:00–07:00 window). The alternative is a "reboot pending"
+  # push every night: terra suspends rather than powering off, so on its own it
+  # would never pick a kernel up. Nobody is on a living-room console at 05:30,
+  # and Gaming Mode autostarts again on the way back up.
+  homelab.reboot.auto = true;
 
   # ---------------------------------------------------------------------------
   # SOPS Secrets
