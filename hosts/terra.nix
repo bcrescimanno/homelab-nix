@@ -362,16 +362,9 @@
   # ---------------------------------------------------------------------------
   # Home Manager
   # ---------------------------------------------------------------------------
-  #
-  # Not `machines/terra.nix` from dotfiles yet: that profile is the Arch one and
-  # pulls in home/arch.nix (pacman aliases). Once terra is on NixOS, drop
-  # arch.nix there and switch this to the usual
-  # `imports = [ "${inputs.dotfiles}/machines/terra.nix" ];`.
+
   home-manager.users.brian = {
-    imports = [ "${inputs.dotfiles}/home/common.nix" ];
-    dotfiles.configName = "brian@terra";
-    home.username = "brian";
-    home.homeDirectory = "/home/brian";
+    imports = [ "${inputs.dotfiles}/machines/terra.nix" ];
   };
 
   system.stateVersion = "26.11";
