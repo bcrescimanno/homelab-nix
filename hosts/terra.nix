@@ -33,7 +33,9 @@
 #   # Bluetooth pairings, so controllers work at first boot. They are keyed by
 #   # the adapter's MAC, which the wipe does not change. Taken from Arch BEFORE
 #   # the wipe; root-owned 0700 on the target, as bluez expects.
-#   ssh brian@terra 'sudo tar -C / -cf - var/lib/bluetooth' | tar -C /tmp/terra-extra -xf -
+#   # (Arch's sudo wants a password, so -t; a tty mangles binary, so via a file)
+#   ssh -t brian@terra 'sudo tar -C / -cf /tmp/bt.tar var/lib/bluetooth && sudo chown brian /tmp/bt.tar'
+#   scp brian@terra:/tmp/bt.tar /tmp/bt.tar && tar -C /tmp/terra-extra -xf /tmp/bt.tar
 #
 #   nix run github:nix-community/nixos-anywhere -- \
 #     --flake .#terra \
@@ -65,6 +67,11 @@
   # for rollbacks, but don't sit on it.
   boot.loader.timeout = 1;
 
+  # Mainline, not the LTS default every server runs: terra is a desktop on an
+  # out-of-tree NVIDIA driver, and 7.x + 615.x is the pairing it ran on Arch.
+  # If nixpkgs moves _latest past what the driver supports, the nightly build
+  # fails before switching and terra stays on its current system.
+  boot.kernelPackages = pkgs.linuxPackages_latest;
   boot.kernelParams = [ "amd_pstate=active" ];
   hardware.cpu.amd.updateMicrocode = true;
 
