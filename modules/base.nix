@@ -221,6 +221,11 @@ in
     sqlite
     bind.dnsutils  # dig, nslookup
     usbutils       # lsusb
+    # Only the terminfo output (a cached download, no Ghostty build). Without it
+    # an SSH login from Ghostty prints "can't find terminal definition for
+    # xterm-ghostty" twice from set-environment's `export TERM=$TERM`; ncurses
+    # 6.6 ships `ghostty` but not the `xterm-ghostty` name Ghostty sends.
+    ghostty.terminfo
     ripgrep
   ];
 
