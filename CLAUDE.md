@@ -199,6 +199,8 @@ External access does **not** go through Caddy's ports: `stream` and `vault` are 
 
 Secrets use `sops-nix` with age encryption. Rendered at runtime to `/run/secrets/`.
 
+Every yaml is encrypted to **three** recipients (`.sops.yaml`): the host's own key (`/var/lib/sops-nix/key.txt`, not backed up), `&liquidark` (the working admin key) and `&backup`, whose private half lives only in Bitwarden. `backup` exists so that losing liquidark — or liquidark plus a host — never strands a secret; **every new creation rule must list all three**, then `sops updatekeys`. Never commit either admin private key.
+
 **Every host** (one copy per host's own yaml):
 - `restic_password` — restic repository password (shared value across hosts); declared by `backup.nix`
 - `restic_r2_env` — Cloudflare R2 credentials for the offsite repo; declared by `backup.nix`
