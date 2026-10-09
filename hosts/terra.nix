@@ -165,6 +165,36 @@
   # memory — half of terra's RAM). Both are Deck assumptions.
   jovian.steamos.enableDefaultCmdlineConfig = false;
 
+  # Steam's Settings → Software Updates asks Jovian's `steamos-update check`
+  # stub, which reports "restart pending" (exit 8) when the booted kernel and
+  # the system profile's kernel differ — compared with a bare `readlink`, i.e.
+  # by symlink TARGET. deploy-rs installs an `activatable-nixos-system-*`
+  # wrapper whose `kernel` points at the inner toplevel's `kernel`, not at the
+  # bzImage, so after any `deploy terra` the strings differ while the kernel is
+  # identical: a permanent yellow "!" that "Restart" (a real reboot) never
+  # clears. `readlink -f` compares what the links resolve to, which keeps the
+  # check honest for a real kernel update. Upstream: Jovian-NixOS
+  # pkgs/jovian-stubs/holo-update.
+  #
+  # Not in flake.nix's overlayWorkarounds: that probe builds a nixpkgs package
+  # unpatched, and this is neither. --replace-fail is the probe instead — once
+  # upstream changes the line, terra's build fails and this block goes, in the
+  # same PR as the jovian lock bump. mkAfter: it must apply after Jovian's own
+  # overlay, which is what defines jovian-stubs.
+  nixpkgs.overlays = lib.mkAfter [
+    (final: prev: {
+      jovian-stubs = prev.jovian-stubs.overrideAttrs (old: {
+        buildCommand = old.buildCommand + ''
+          for f in $out/bin/holo-update $out/bin/steamos-polkit-helpers/steamos-update; do
+            substituteInPlace "$f" \
+              --replace-fail '"$(readlink /run/booted-system/kernel)"' '"$(readlink -f /run/booted-system/kernel)"' \
+              --replace-fail '"$(readlink /nix/var/nix/profiles/system/kernel)"' '"$(readlink -f /nix/var/nix/profiles/system/kernel)"'
+          done
+        '';
+      });
+    })
+  ];
+
   # Steam runs as brian, so the couch session gets the same home-manager
   # profile as every other machine (the Arch install's separate `gamers`
   # account is retired). The trade-off is accepted knowingly: brian is in
