@@ -257,8 +257,13 @@
   # Sleep
   # ---------------------------------------------------------------------------
 
-  # Ported from Arch's logind.conf. Gaming Mode's own sleep handling on a
-  # non-Deck is unverified; this keeps the behaviour the Arch install had.
+  # IN GAMING MODE THIS DOES NOTHING. logind only acts on sessions that report
+  # an idle hint, and gamescope never does (IdleSinceHint=0 for the whole
+  # session, verified 2026-10-09). What actually sleeps terra there is Steam's
+  # own Settings → Power → Sleep → When Plugged In, set to 30 minutes. That
+  # lives in Steam's config under ~/.local/share/Steam, not here, so a
+  # reinstall must set it again. It is also what puts terra back to sleep after
+  # the 05:20 upgrade wake. Kept for Desktop Mode, where Plasma does report idle.
   services.logind.settings.Login = {
     IdleAction = "suspend";
     IdleActionSec = "30min";
