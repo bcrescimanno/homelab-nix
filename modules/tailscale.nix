@@ -143,6 +143,32 @@ in
     useRoutingFeatures = role.routing;
   };
 
+  # Start the daemon only once the host has an IPv4 lease (network-online is
+  # gated on one: networking.dhcpcd.wait = "ipv4" in base.nix).
+  #
+  # Upstream orders tailscaled after nothing network-related, on the theory
+  # that it copes with links coming and going. It does, but a cold boot costs
+  # it a login backoff. orthanc's 2026-10-08 kernel reboot: tailscaled started
+  # at 04:03:31, the lease and DNS landed at 04:03:46, and the two logins tried
+  # in between ("failed to resolve controlplane.tailscale.com") had pushed the
+  # next attempt out to 04:06:02. tailscaled-autoconnect, which waits for
+  # Running, hit its 90s timeout at 04:05:01 and failed — one minute before the
+  # node came up fine. That one failed unit produced a priority-5 "Rebooted —
+  # services DOWN" and a UnitFailed alert for a perfectly healthy reboot.
+  #
+  # After=, not Requires=: if wait-online ever times out, tailscaled still
+  # starts, just as it did before.
+  systemd.services.tailscaled = {
+    after = [ "network-online.target" ];
+    wants = [ "network-online.target" ];
+  };
+
+  # Belt and braces for a power-restore cold start, where the DNS servers on
+  # mirkwood and rivendell may themselves still be booting and login backs off
+  # regardless of the ordering above. This only waits for Running on an
+  # already-enrolled node; it is not a retry loop.
+  systemd.services.tailscaled-autoconnect.serviceConfig.TimeoutStartSec = "5min";
+
   # Roll the host back if the daemon does not come up after an unattended
   # upgrade. Deliberately tailscaled and not tailscaled-autoconnect: the daemon
   # being active is a real regression signal, whereas a failed autoconnect
