@@ -216,7 +216,12 @@
   # on every activation, so it — not a .link file like orthanc's — is the one
   # place that must say magic, or NM would quietly disarm it. Set as the global
   # default because the wired profile is NM's auto-created one.
-  networking.networkmanager.settings.connection."ethernet.wake-on-lan" = "magic";
+  #
+  # The value is the NM_SETTING_WIRED_WAKE_ON_LAN flag as an INTEGER (64 =
+  # magic). NetworkManager.conf parses this key numerically, unlike nmcli: the
+  # string "magic" fails to parse, falls back to `ignore` with nothing logged,
+  # and the first install booted with ethtool showing `Wake-on: d`.
+  networking.networkmanager.settings.connection."ethernet.wake-on-lan" = 64;
 
   # ---------------------------------------------------------------------------
   # Sleep
