@@ -228,6 +228,58 @@
   };
 
   # ---------------------------------------------------------------------------
+  # Emulation — ES-DE frontend, RetroArch cores
+  # ---------------------------------------------------------------------------
+  #
+  # ES-DE is a launcher only: per system it runs a command like
+  # `%EMULATOR_RETROARCH% -L %CORE_RETROARCH%/snes9x_libretro.so %ROM%`, and
+  # resolves CORE_RETROARCH from its bundled find rules, which already include
+  # /run/current-system/sw/lib/retroarch/cores. The wrapper below puts the
+  # cores there, so no ~/ES-DE/custom_systems override exists or is wanted.
+  #
+  # Launched from Gaming Mode as a non-Steam shortcut (Desktop Mode → Steam →
+  # Add a Non-Steam Game → ES-DE). That shortcut lives in Steam's data, not
+  # here, so a reinstall has to add it again.
+  #
+  # NOT in Nix, restored from erebor's backups share (terra/) 2026-10-09:
+  # ~/ROMs and ~/ES-DE (settings, gamelists, 19 GB of scraped media, themes,
+  # BIOS). Emulator saves are not backed up yet — they did not survive the
+  # Arch install.
+  #
+  # Cores: ES-DE's default for each system that has games, plus the PS1
+  # alternatives (Beetle PSX HW for upscaling, SwanStation). Adding a system
+  # means adding its default core — the first <command> for that system in
+  # ES-DE's resources/systems/linux/es_systems.xml.
+  #
+  # `settings` are passed as --appendconfig on EVERY launch, so they override
+  # RetroArch's own retroarch.cfg and a change made in RetroArch's menu to one
+  # of these keys does not stick. Keep this to what must be right; everything
+  # else (binds, shaders, video) belongs to the menu.
+  #
+  # system_directory: cores ask RetroArch, never ES-DE, where BIOS files are.
+  # Pointed at the restored ~/ES-DE/bios rather than the default
+  # ~/.config/retroarch/system so there is one BIOS folder. PS1 BIOS must sit
+  # at its top level as scph5500/5501/5502.bin — Beetle and SwanStation do not
+  # search subfolders.
+  environment.systemPackages = [
+    (pkgs.callPackage ../pkgs/es-de.nix { })
+    (pkgs.retroarch-bare.wrapper {
+      cores = with pkgs.libretro; [
+        beetle-psx
+        beetle-psx-hw
+        swanstation
+        mupen64plus
+        snes9x
+        mesen
+        genesis-plus-gx
+      ];
+      settings = {
+        system_directory = "/home/brian/ES-DE/bios";
+      };
+    })
+  ];
+
+  # ---------------------------------------------------------------------------
   # Networking
   # ---------------------------------------------------------------------------
   #
