@@ -1,0 +1,62 @@
+--- a/server/src/lib.rs	2026-10-09 21:31:39.938655964 -0700
++++ b/server/src/lib.rs	2026-10-09 21:32:00.008160836 -0700
+@@ -38,7 +38,7 @@
+     http::{Uri, uri::Scheme},
+ };
+ use sea_orm::{
+-    ConnectionTrait, Database, DatabaseConnection, DatabaseConnectionType, query::Statement,
++    ConnectionTrait, Database, DatabaseConnection, query::Statement,
+ };
+ use tokio::net::TcpListener;
+ use tokio::sync::OnceCell;
+@@ -109,30 +109,27 @@
+     async fn database(&self) -> ServerResult<&DatabaseConnection> {
+         self.database
+             .get_or_try_init(|| async {
+-                let db = Database::connect(&self.config.database.url)
+-                    .await
+-                    .map_err(ServerError::database_error);
+-                if let Ok(db_conn) = &db
+-                    && let DatabaseConnectionType::SqlxSqlitePoolConnection(conn) = &db_conn.inner
+-                {
+-                    // execute some sqlite-specific performance optimizations
+-                    // see https://phiresky.github.io/blog/2020/sqlite-performance-tuning/ for
+-                    // more details
+-                    // intentionally ignore errors from this: this is purely for performance,
+-                    // not for correctness, so we can live without this
+-                    _ = conn
+-                        .execute_unprepared(
+-                            "
+-                        pragma journal_mode=WAL;
+-                        pragma synchronous=normal;
+-                        pragma temp_store=memory;
+-                        pragma mmap_size = 30000000000;
+-                        ",
+-                        )
+-                        .await;
+-                }
++                // sqlite-specific performance optimizations, see
++                // https://phiresky.github.io/blog/2020/sqlite-performance-tuning/
++                //
++                // Set through the connect options so that EVERY pooled
++                // connection gets them: synchronous, temp_store and mmap_size
++                // are per-connection, and running them once with
++                // execute_unprepared configured only whichever connection the
++                // pool handed out, leaving the rest at synchronous=FULL (an
++                // fsync of the WAL on every commit). Ignored for PostgreSQL.
++                let mut opts = sea_orm::ConnectOptions::new(self.config.database.url.clone());
++                opts.map_sqlx_sqlite_opts(|o| {
++                    use sea_orm::sqlx::sqlite::{SqliteJournalMode, SqliteSynchronous};
++                    o.journal_mode(SqliteJournalMode::Wal)
++                        .synchronous(SqliteSynchronous::Normal)
++                        .pragma("temp_store", "memory")
++                        .pragma("mmap_size", "30000000000")
++                });
+ 
+-                db
++                Database::connect(opts)
++                    .await
++                    .map_err(ServerError::database_error)
+             })
+             .await
+     }

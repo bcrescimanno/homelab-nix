@@ -62,6 +62,33 @@
   services.atticd = {
     enable = true;
 
+    # attic-sqlite-pragmas.patch: atticd meant to run SQLite with
+    # synchronous=normal (plus temp_store/mmap_size), but applied the pragmas
+    # with one execute_unprepared on the POOL, which reaches a single pooled
+    # connection. The rest stayed on sqlx's default synchronous=FULL, so every
+    # chunk commit fsynced db.sqlite-wal: measured 2026-10-09 at ~150 fsyncs/s
+    # of ~6 ms each on the 970 EVO Plus, one thread ~93% blocked in fsync, and
+    # pushes crawling at ~2-4 MiB/s on gigabit (terra's first 2.4 GiB push).
+    # The patch sets them through SeaORM's connect options, so every
+    # connection gets them. NORMAL in WAL mode cannot corrupt the database; a
+    # power cut can lose the last commits, which for a cache is a re-push.
+    #
+    # Deliberately a package override here, not a flake overlay: the
+    # attic-client on every other host is untouched, and check-overlays'
+    # "builds unpatched → droppable" test would misread a performance fix
+    # that always builds. Instead the patch is its own expiry signal — it
+    # stops applying once upstream touches this block (lib.rs, State::database).
+    #
+    # Separately, the DB had never been ANALYZEd: with no sqlite_stat1 the
+    # planner served chunk-hash lookups from idx-chunk-state-holders (state='V'
+    # matches ~94% of rows), a near-full scan per chunk. `ANALYZE` was run by
+    # hand on 2026-10-09; the statistics live in db.sqlite, so a restored or
+    # recreated DB needs it again:
+    #   sudo sqlite3 /var/lib/private/atticd/db.sqlite 'ANALYZE;'
+    package = pkgs.attic-server.overrideAttrs (old: {
+      patches = (old.patches or [ ]) ++ [ ./attic-sqlite-pragmas.patch ];
+    });
+
     # JWT RS256 signing key — read from sops secret at runtime, never hits /nix/store.
     environmentFile = config.sops.secrets.attic_env.path;
 
