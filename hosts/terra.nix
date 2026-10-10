@@ -221,6 +221,26 @@
   # own "Always allow" checkbox writes. Accepted trade-off on a console: any
   # X11 app calling itself "steam" can inject input. System-level /etc/xdg so
   # a fresh home directory never sees the dialog; KWin reads it at startup.
+  # SteamOS puts a "Return to Gaming Mode" icon on the desktop; Jovian does not
+  # ship one, which left Desktop Mode with no way back (2026-10-09). Plasma's
+  # Log Out is NOT a substitute: "Switch to Desktop" leaves an SDDM one-shot
+  # (/etc/sddm.conf.d/zzt-holo-temp-login.conf, Session=plasma.desktop) that
+  # steamos-manager only cleans at the start of a graphical session, so a
+  # relogin can land straight back in Plasma. steamosctl is SteamOS's own path
+  # and handles that file. In the app launcher, and on the desktop (Plasma
+  # only shows a ~/Desktop launcher that is executable — hence the flag). The
+  # app-launcher entry is in environment.systemPackages, under Emulation.
+  home-manager.users.brian.home.file."Desktop/Return to Gaming Mode.desktop" = {
+    executable = true;
+    text = ''
+      [Desktop Entry]
+      Type=Application
+      Name=Return to Gaming Mode
+      Exec=steamosctl switch-to-game-mode
+      Icon=steam
+    '';
+  };
+
   environment.etc."xdg/kwinrc".text = ''
     [Xwayland]
     XwaylandEisNoPromptApps=steam
@@ -276,6 +296,14 @@
   # at its top level as scph5500/5501/5502.bin — Beetle and SwanStation do not
   # search subfolders.
   environment.systemPackages = [
+    # Desktop Mode's way back — see the "Return to Gaming Mode" comment above.
+    (pkgs.makeDesktopItem {
+      name = "return-to-gaming-mode";
+      desktopName = "Return to Gaming Mode";
+      exec = "steamosctl switch-to-game-mode";
+      icon = "steam";
+      categories = [ "Game" ];
+    })
     (pkgs.callPackage ../pkgs/es-de.nix { })
     (pkgs.retroarch-bare.wrapper {
       cores = with pkgs.libretro; [
