@@ -45,6 +45,57 @@
 
 { config, pkgs, lib, inputs, ... }:
 
+let
+  # Used by the Emulation section below; see the comments there.
+  es-de = pkgs.callPackage ../pkgs/es-de.nix { };
+
+  retroarchCoreOptions = {
+    beetle-psx-hw = {
+      beetle_psx_hw_internal_resolution = "8x";
+      beetle_psx_hw_pgxp_mode = "memory only";
+      beetle_psx_hw_pgxp_texture = "enabled";
+      beetle_psx_hw_dither_mode = "disabled";
+      beetle_psx_hw_depth = "32bpp";
+    };
+    mupen64plus = {
+      mupen64plus-rdp-plugin = "parallel";
+      mupen64plus-rsp-plugin = "parallel";
+      mupen64plus-parallel-rdp-upscaling = "4x";
+    };
+  };
+
+  retroarchCoreOptionsFile = pkgs.writeText "retroarch-core-options.cfg"
+    (lib.concatStrings (lib.mapAttrsToList (k: v: "${k} = \"${v}\"\n")
+      (lib.mergeAttrsList (lib.attrValues retroarchCoreOptions))));
+
+  # Fails the build if a core no longer has an option key declared above —
+  # RetroArch ignores an unknown key without a word.
+  retroarchCoreOptionsCheck = pkgs.runCommand "retroarch-core-options-check" { } (
+    lib.concatStrings (lib.mapAttrsToList (core: opts:
+      lib.concatMapStrings (key: ''
+        grep -qaF -- '${key}' ${pkgs.libretro.${core}}/lib/retroarch/cores/*.so \
+          || { echo "libretro.${core} has no core option '${key}'" >&2; exit 1; }
+      '') (lib.attrNames opts)) retroarchCoreOptions)
+    + "touch $out\n");
+
+  esdePsxSystem = pkgs.runCommand "es-de-psx-system.xml"
+    { nativeBuildInputs = [ pkgs.python3 ]; } ''
+    python3 - ${es-de.systems} > $out <<'EOF'
+    import sys, xml.etree.ElementTree as ET
+    bundled = ET.parse(sys.argv[1]).getroot()
+    psx = next(s for s in bundled.iter("system") if s.findtext("name") == "psx")
+    commands = psx.findall("command")
+    hw = next(c for c in commands if c.get("label") == "Beetle PSX HW")
+    psx.remove(hw)
+    psx.insert(list(psx).index(commands[0]), hw)
+    out = ET.Element("systemList")
+    out.append(psx)
+    ET.indent(out)
+    print('<?xml version="1.0"?>')
+    print(ET.tostring(out, encoding="unicode"))
+    EOF
+  '';
+in
 {
   # ---------------------------------------------------------------------------
   # Identity
@@ -269,7 +320,7 @@
   # `%EMULATOR_RETROARCH% -L %CORE_RETROARCH%/snes9x_libretro.so %ROM%`, and
   # resolves CORE_RETROARCH from its bundled find rules, which already include
   # /run/current-system/sw/lib/retroarch/cores. The wrapper below puts the
-  # cores there, so no ~/ES-DE/custom_systems override exists or is wanted.
+  # cores there, so finding cores needs no custom_systems override.
   #
   # Launched from Gaming Mode as a non-Steam shortcut (Desktop Mode → Steam →
   # Add a Non-Steam Game → ES-DE). That shortcut lives in Steam's data, not
@@ -287,8 +338,52 @@
   #
   # `settings` are passed as --appendconfig on EVERY launch, so they override
   # RetroArch's own retroarch.cfg and a change made in RetroArch's menu to one
-  # of these keys does not stick. Keep this to what must be right; everything
-  # else (binds, shaders, video) belongs to the menu.
+  # of these keys does not stick. Picture quality is declared; binds and
+  # shaders belong to the menu.
+  #
+  # Upscaling (PS1 and N64), declared rather than set in the menu:
+  #
+  # - PS1 runs on Beetle PSX HW, not ES-DE's default Beetle PSX, which is a
+  #   software renderer and cannot upscale. ES-DE uses a system's FIRST
+  #   <command>, so esdePsxSystem (top of file) regenerates the bundled psx
+  #   entry with Beetle PSX HW moved first, and home-manager installs it as
+  #   ~/ES-DE/custom_systems/es_systems.xml — a custom system of the same name
+  #   replaces the bundled one. It is derived at build time so a new ES-DE
+  #   keeps its own extensions and commands; the build fails if the psx system
+  #   or the "Beetle PSX HW" label disappears. A per-system or per-game
+  #   alternative emulator picked in ES-DE's UI is stored in gamelist.xml and
+  #   wins over this — there are none today.
+  #
+  # - Core options come from retroarchCoreOptions (top of file), one store
+  #   file for every core: global_core_options makes RetroArch read
+  #   core_options_path instead of ~/.config/retroarch/config/<core>/<core>.opt
+  #   (those files are ignored while it is on). RetroArch writes the file back
+  #   only when an option changed, and a failed write is just logged, so a
+  #   Quick Menu change lasts the session and reverts on the next launch —
+  #   same contract as `settings`. A per-GAME override (Quick Menu → Core
+  #   Options → Manage → Save Game Options) still lands in the writable config
+  #   dir and beats the global file. retroarchCoreOptionsCheck fails the build
+  #   if a core drops a declared key. Values must match the core's own strings
+  #   exactly ("memory only", "1x(native)") — an unknown value is ignored too.
+  #
+  # - Beetle PSX HW: 8x internal resolution (2560x1920 — about 4K's height);
+  #   PGXP "memory only" with perspective-correct textures, which removes the
+  #   PS1's polygon wobble and texture warping ("memory + CPU" is labelled
+  #   Buggy by the core); dithering off, since upscaled dither is a visible
+  #   mesh, and 32bpp so that does not band.
+  #
+  # - Mupen64Plus-Next: ParaLLEl-RDP (accurate, Vulkan) with the ParaLLEl RSP,
+  #   which it requires (LLE), at 4x — 8x is the next step if every game holds
+  #   full speed. GLideN64 is the alternative for widescreen hacks and HD
+  #   texture packs but needs video_driver = gl, so it is a per-game question.
+  #
+  # - video_driver = vulkan: Beetle's "hardware" renderer follows the video
+  #   driver, and ParaLLEl-RDP runs only on Vulkan. The other cores
+  #   (Snes9x/Mesen/Genesis Plus GX) are driver-agnostic.
+  #
+  # The frame rate is not raised: these games run their logic at 20–30 fps,
+  # and the levers that exist (emulated CPU overclock, 60 fps cheats) break
+  # some games, so they are per-game choices, not defaults here.
   #
   # system_directory: cores ask RetroArch, never ES-DE, where BIOS files are.
   # Pointed at the restored ~/ES-DE/bios rather than the default
@@ -317,7 +412,7 @@
       icon = "steam";
       categories = [ "Game" ];
     })
-    (pkgs.callPackage ../pkgs/es-de.nix { })
+    es-de
     (pkgs.retroarch-bare.wrapper {
       cores = with pkgs.libretro; [
         beetle-psx
@@ -333,9 +428,17 @@
         input_joypad_driver = "sdl2";
         input_menu_toggle_gamepad_combo = "2";
         input_quit_gamepad_combo = "4";
+        video_driver = "vulkan";
+        global_core_options = "true";
+        core_options_path = "${retroarchCoreOptionsFile}";
       };
     })
   ];
+
+  home-manager.users.brian.home.file."ES-DE/custom_systems/es_systems.xml".source =
+    esdePsxSystem;
+
+  system.checks = [ retroarchCoreOptionsCheck ];
 
   # ---------------------------------------------------------------------------
   # Networking

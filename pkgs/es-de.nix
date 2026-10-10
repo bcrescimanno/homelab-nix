@@ -43,5 +43,9 @@ appimageTools.wrapType2 {
     install -Dm444 ${contents}/org.es_de.frontend.svg -t $out/share/icons/hicolor/scalable/apps
   '';
 
+  # The bundled system definitions, so hosts/terra.nix can derive a
+  # custom_systems override from them rather than copying one by hand.
+  passthru.systems = "${contents}/usr/share/es-de/resources/systems/linux/es_systems.xml";
+
   meta.mainProgram = "es-de";
 }
