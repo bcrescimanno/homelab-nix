@@ -680,13 +680,51 @@ let
             # increase() over 1h rather than a short rate: a quiet Pi at 2MB of
             # journal a day can legitimately go minutes without a line, but not
             # a full hour.
+            #
+            # The `unless` arm is not optional. Alloy creates the
+            # loki_write_sent_entries_total series lazily, on the first entry
+            # it sends, so an Alloy that has never shipped anything since it
+            # started has NO series and the bare increase() == 0 evaluates over
+            # an empty set — it cannot fire. That is exactly how orthanc and
+            # pirateship shipped nothing from 2026-10-08 to 2026-10-10 with
+            # this rule silent (see AlloyJournalNotReading below).
             alert = "AlloyNotShipping";
-            expr = ''increase(loki_write_sent_entries_total[1h]) == 0'';
+            expr = ''
+              increase(loki_write_sent_entries_total[1h]) == 0
+                or (up{job="alloy"} == 1 unless on(instance) loki_write_sent_entries_total)
+            '';
             "for" = "30m";
             labels.severity = "warning";
             annotations = {
               summary = "{{ $labels.instance }} has shipped no logs for an hour";
               description = "Alloy on {{ $labels.instance }} is running but has not delivered a single log entry to Loki in an hour. Check `loki_source_journal_target_lines_total` to tell a dead reader from a rejecting writer.";
+            };
+          }
+          {
+            # The journal READER, watched on its own. AlloyNotShipping watches
+            # the writer, which is shared by every source on a host — on the
+            # two DNS hosts the Blocky query log keeps it moving while the
+            # journal source reads nothing at all.
+            #
+            # Observed 2026-10-08 → 2026-10-10 on all four servers: nixpkgs
+            # 39ad350 built grafana-alloy against systemdLibs, which is
+            # compiled withCompression = false, and every journal file here
+            # carries the COMPRESSED-ZSTD incompatible flag. libsystemd opened
+            # each file, refused it and closed it again, so the component
+            # reported "journal tailer is running" (healthy) with this counter
+            # at 0 for two days. nixpkgs 8edc0c7 overrides withCompression back
+            # on. The only symptom anywhere was this counter not moving.
+            #
+            # Unlike loki_write_sent_entries_total, this series exists from
+            # the moment the component starts (at 0), so a plain increase()
+            # sees it. Same 1h window as above: every host logs within an hour.
+            alert = "AlloyJournalNotReading";
+            expr = ''increase(loki_source_journal_target_lines_total[1h]) == 0'';
+            "for" = "30m";
+            labels.severity = "warning";
+            annotations = {
+              summary = "{{ $labels.instance }}: Alloy is reading nothing from the journal";
+              description = "Alloy's journal source on {{ $labels.instance }} has read no entries in an hour while the host is up, so its logs are not reaching Loki. Check `journalctl -u alloy` for cursor/position errors, and that Alloy's libsystemd supports the journal's compression (`journalctl --header | grep Incompatible`).";
             };
           }
           {
