@@ -301,6 +301,13 @@
   # RetroArch's default udev driver has no autoconfig profile for it, so the
   # pad was detected but bound to nothing — games ran with no input while
   # ES-DE (SDL) worked. The sdl2 profile set does carry one.
+  #
+  # Gamepad combos: terra has no keyboard, and RetroArch ships with no
+  # controller binding for its menu or for quit — without these the only way
+  # out of a game is Steam's Exit Game, which kills ES-DE with it. Values are
+  # RetroArch's input_combo_type enum (input/input_defines.h): 2 = L3+R3,
+  # 4 = Start+Select. Quit returns to ES-DE; quit_press_twice (default on)
+  # makes it ask for a second press.
   environment.systemPackages = [
     # Desktop Mode's way back — see the "Return to Gaming Mode" comment above.
     (pkgs.makeDesktopItem {
@@ -324,6 +331,8 @@
       settings = {
         system_directory = "/home/brian/ES-DE/bios";
         input_joypad_driver = "sdl2";
+        input_menu_toggle_gamepad_combo = "2";
+        input_quit_gamepad_combo = "4";
       };
     })
   ];
