@@ -338,7 +338,15 @@
         system = "x86_64-linux";
         modules = [
           "${nixpkgs}/nixos/modules/installer/cd-dvd/installation-cd-minimal.nix"
-          {
+          ({ lib, ... }: {
+            # The stock installer profile enables ZFS. Nothing in this lab uses
+            # it (every host evaluates boot.zfs.enabled = false; erebor is NFS),
+            # and since 26.11 it also warns that boot.zfs.forceImportRoot is
+            # still on its old default. Dropping it rather than setting that
+            # option also means a zfs-kernel lagging the latest kernel can
+            # never block this ISO's build.
+            boot.supportedFilesystems.zfs = lib.mkForce false;
+
             # SSH enabled with key auth so nixos-anywhere can connect remotely.
             services.openssh = {
               enable = true;
@@ -352,7 +360,7 @@
 
             # Suppress the "what are you trying to do?" nag on first boot.
             system.stateVersion = "25.11";
-          }
+          })
         ];
       };
     };
