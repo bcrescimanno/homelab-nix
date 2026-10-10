@@ -212,6 +212,20 @@
     LockOnResume=false
   '';
 
+  # Steam is an X11 client, and in Desktop Mode it drives the controller as a
+  # mouse/keyboard by injecting input through Xwayland. KWin 6 gates that
+  # behind kwin_eis_prompter's "steam is asking to control input devices"
+  # dialog — which the controller cannot answer, because the controller IS
+  # that input: it goes dead the moment the dialog appears (2026-10-09, first
+  # Desktop Mode launch). Pre-allowing the client name is what the dialog's
+  # own "Always allow" checkbox writes. Accepted trade-off on a console: any
+  # X11 app calling itself "steam" can inject input. System-level /etc/xdg so
+  # a fresh home directory never sees the dialog; KWin reads it at startup.
+  environment.etc."xdg/kwinrc".text = ''
+    [Xwayland]
+    XwaylandEisNoPromptApps=steam
+  '';
+
   # Steam's LAN game-transfer and Remote Play ports. Remote Play is currently
   # broken under NVIDIA gamescope anyway (see header); the transfer port is the
   # one that matters.
