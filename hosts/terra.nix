@@ -295,6 +295,12 @@
   # ~/.config/retroarch/system so there is one BIOS folder. PS1 BIOS must sit
   # at its top level as scph5500/5501/5502.bin — Beetle and SwanStation do not
   # search subfolders.
+  #
+  # input_joypad_driver: in Gaming Mode every game sees Steam Input's virtual
+  # pad (28de:11ff, "Steam Virtual Gamepad"), never the controller itself.
+  # RetroArch's default udev driver has no autoconfig profile for it, so the
+  # pad was detected but bound to nothing — games ran with no input while
+  # ES-DE (SDL) worked. The sdl2 profile set does carry one.
   environment.systemPackages = [
     # Desktop Mode's way back — see the "Return to Gaming Mode" comment above.
     (pkgs.makeDesktopItem {
@@ -317,6 +323,7 @@
       ];
       settings = {
         system_directory = "/home/brian/ES-DE/bios";
+        input_joypad_driver = "sdl2";
       };
     })
   ];
