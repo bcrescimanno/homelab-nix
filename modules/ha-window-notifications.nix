@@ -2,12 +2,18 @@
 #
 # Three household notifications, driven by the outdoor temperature at the house:
 #
-#   1. Morning  — outdoor temp climbs above 68°F (before noon)
-#                 → "close the windows"
-#   2. Evening  — outdoor temp falls below 72°F (16:00–21:00; no crossing by
-#                 21:00 means no prompt that night) → "open the windows"
+#   1. Warming  — outdoor temp climbs above 68°F after sunrise, while the day
+#                 has NOT yet peaked → "close the windows"
+#   2. Cooling  — outdoor temp falls below 72°F once the day HAS peaked (no
+#                 crossing by 21:00 means no prompt that night)
+#                 → "open the windows"
 #   3. If today's forecast high is below 75°F, 1 and 2 are suppressed entirely
 #      and a single 08:00 notification says "Today is a windows open day!"
+#
+# "Peaked" is binary_sensor.outdoor_past_peak, judged from the measured
+# temperature curve — see the comment on it. Until 2026-10-11 rules 1 and 2
+# were gated on clock windows instead (before 12:00 / 16:00–21:00), which were
+# a stand-in for "is it still warming up" from the met.no era.
 #
 # 1 and 2 are also held back while the house is ALREADY in the state they would
 # ask for — every sensor in lib/ha-openings.nix reporting closed (1) or open
@@ -76,7 +82,7 @@
 #
 # The trade-off the packages mechanism buys us: a package can declare `template:`
 # as well as `automation:`, which a bare automation include cannot. That matters
-# because both sensors below are templates.
+# because all four of its sensors are templates.
 #
 # HISTORY, because it explains why this file used to be much longer: under the
 # HA container this had to render the package to a store path, bind-mount it at
@@ -169,12 +175,39 @@ let
   openBelowF = 72;    # evening: cooler than this outside → let the night in
   openAllDayBelowF = 75;  # forecast high under this → skip 1 & 2 entirely
 
-  # Sun-relative morning, clock-bounded evening.
+  # "The day has peaked" = all three of:
+  #
+  #   - the sun is past solar noon (sun.sun `rising` is false). The daily
+  #     maximum lags solar noon, so a dip before it is a cloud, not a peak;
+  #   - the measured temperature is at least peakDropF below today's measured
+  #     high (sensor.outdoor_high_today);
+  #   - met.no's hourly forecast does not expect the rest of today to climb
+  #     more than forecastRiseF above its own current hour. This catches a
+  #     cloudy noon followed by a sunny afternoon, which the first two would
+  #     misread as the peak.
+  #
+  # The forecast check compares met.no WITH ITSELF, never with the Eve. On
+  # 2026-10-11 at 15:45 met.no's current hour said 74 while the Eve read 72.1;
+  # comparing across the two sources would turn their offset into a fake
+  # "still rising" signal. Its shape is trustworthy even where its level is
+  # not.
+  #
+  # Replaced the old clock windows (close before 12:00, open after 16:00) on
+  # 2026-10-11. Measured that day: peak 74.5°F at ~13:30, already 72.1 by 15:19,
+  # so the open prompt was held to 16:00 for no reason; and the close prompt
+  # fired at 11:49, 11 minutes before its cutoff would have dropped it.
+  #
+  # 2°F, not less: with hundredths resolution, a breeze moves the Eve by a
+  # degree on its own. Not more either: on a borderline day (peak ~74) a
+  # larger drop pushes the open prompt noticeably below openBelowF, because
+  # both have to hold before it fires.
+  peakDropF = 2;
+  forecastRiseF = 1;   # met.no hourly is whole degrees; 1 absorbs rounding
+
   # Local time (America/Los_Angeles). eveningEndsAt moved 22:00 -> 21:00 on
   # 2026-10-03: an evening that is still above openBelowF at 9pm is not worth
-  # opening up for.
-  morningEndsAt = "12:00:00";
-  eveningStartsAt = "16:00:00";
+  # opening up for. That is a comfort cutoff, not a stand-in for the peak, so
+  # it survived the 2026-10-11 move to peak detection.
   eveningEndsAt = "21:00:00";
   openDayAnnouncementAt = "08:00:00";
 
@@ -308,6 +341,35 @@ let
       "{{ ${builtins.toJSON (builtins.attrNames openings)} | map('states') | reject('eq', '${state}') | list | length > 0 }}";
   };
 
+  # Jinja that sets `rise` (how far met.no expects the rest of today to climb
+  # above its own current hour; 0 with no data) and `fc_hours`, from the
+  # `hourly` response variable of the past-peak entity below.
+  #
+  # forecast[0] is the CURRENT hour (verified 2026-10-11: at 15:45 local the
+  # first entry was 22:00Z), so the rise is measured from now. Entries are UTC;
+  # as_local() before comparing dates, or the evening hours land on tomorrow.
+  forecastRise = ''
+    {% set fc = hourly['${forecastEntity}'].forecast if hourly is defined and hourly and '${forecastEntity}' in hourly else [] %}
+    {% set ns = namespace(temps=[]) %}
+    {% for f in fc if as_local(as_datetime(f.datetime)).date() == now().date() %}
+      {% set ns.temps = ns.temps + [f.temperature | float(0)] %}
+    {% endfor %}
+    {% set fc_hours = ns.temps | length %}
+    {% set rise = ((ns.temps | max) - ns.temps[0]) if fc_hours > 0 else 0 %}
+  '';
+
+  # Whether the day has peaked, for the automation conditions. Only an
+  # explicit `on` counts as past the peak; `unavailable` counts as not past it.
+  # See binary_sensor.outdoor_past_peak for why that is the safe direction.
+  pastPeak = {
+    condition = "template";
+    value_template = "{{ is_state('binary_sensor.outdoor_past_peak', 'on') }}";
+  };
+  notPastPeak = {
+    condition = "template";
+    value_template = "{{ not is_state('binary_sensor.outdoor_past_peak', 'on') }}";
+  };
+
   outdoorTemperatureSensor =
     if outdoorSensor == null then {
       name = "Outdoor Temperature";
@@ -416,6 +478,101 @@ let
           attributes.high_for_date = "{{ now().strftime('%Y-%m-%d') }}";
         }];
       }
+
+      # Today's MEASURED high: the running maximum of sensor.outdoor_temperature
+      # since local midnight, with the time it was reached. Deliberately
+      # separate from forecast_high_today above, which folds met.no's forecast
+      # into its latch and so can sit above anything the yard has actually
+      # seen. The peak test needs the curve's real top.
+      #
+      # Same date-keyed latch as forecast_high_today: a restart carries the
+      # value across (trigger-based template entities restore), and the /30
+      # trigger lands on 00:00 to reset it. `this` is the state BEFORE this
+      # update in every template here, so state and attributes agree on what
+      # was latched.
+      {
+        triggers = [
+          { trigger = "state"; entity_id = "sensor.outdoor_temperature"; }
+          { trigger = "time_pattern"; minutes = "/30"; }
+          { trigger = "homeassistant"; event = "start"; }
+        ];
+        sensor = [{
+          name = "Outdoor High Today";
+          unique_id = "homelab_outdoor_high_today";
+          device_class = "temperature";
+          state_class = "measurement";
+          unit_of_measurement = "°F";
+          state = ''
+            {% set latched = (this.state | float(-999)) if this.attributes.get('high_for_date') == now().strftime('%Y-%m-%d') else -999 %}
+            {% set best = [latched, states('sensor.outdoor_temperature') | float(-999)] | max %}
+            {{ best if best > -999 else none }}
+          '';
+          attributes = {
+            high_for_date = "{{ now().strftime('%Y-%m-%d') }}";
+            high_at = ''
+              {% set latched = (this.state | float(-999)) if this.attributes.get('high_for_date') == now().strftime('%Y-%m-%d') else -999 %}
+              {% set t = states('sensor.outdoor_temperature') | float(-999) %}
+              {{ now().isoformat() if t > -999 and t > latched else this.attributes.get('high_at') }}
+            '';
+          };
+        }];
+      }
+
+      # Has today's temperature peaked? The three tests and their thresholds
+      # are described at peakDropF; this is where they run.
+      #
+      # Re-evaluated on every outdoor reading and every 30 min. The forecast
+      # read is HA's cached met.no data, not a network call, so calling it per
+      # reading is cheap. It may run on the same state change that raises
+      # outdoor_high_today and see the previous high, which cannot produce a
+      # false "on": a new high means the current reading IS the high, so the
+      # drop test fails against either value.
+      #
+      # Not latched for the day. If the afternoon climbs back to a new high,
+      # the drop test fails and this goes off again, which is the truth.
+      #
+      # Failure directions: no forecast (action failed, or no hours left today)
+      # → the forecast test passes and the other two decide. Temperature or
+      # high unavailable → this is unavailable, and the automations read
+      # unavailable as "not past peak": the close prompt can still fire and
+      # the open prompt cannot, which is the same choice as closeAboveF and
+      # notAlready (a redundant prompt costs nothing, a missed close costs a
+      # hot house).
+      {
+        triggers = [
+          { trigger = "state"; entity_id = "sensor.outdoor_temperature"; }
+          { trigger = "time_pattern"; minutes = "/30"; }
+          { trigger = "homeassistant"; event = "start"; }
+        ];
+        actions = [{
+          action = "weather.get_forecasts";
+          target.entity_id = forecastEntity;
+          data.type = "hourly";
+          response_variable = "hourly";
+          continue_on_error = true;
+        }];
+        binary_sensor = [{
+          name = "Outdoor Past Peak";
+          unique_id = "homelab_outdoor_past_peak";
+          availability =
+            "{{ has_value('sensor.outdoor_temperature') and has_value('sensor.outdoor_high_today') }}";
+          state = ''
+            ${forecastRise}
+            {% set drop = (states('sensor.outdoor_high_today') | float(0)) - (states('sensor.outdoor_temperature') | float(0)) %}
+            {{ state_attr('sun.sun', 'rising') == false and drop >= ${toString peakDropF} and rise <= ${toString forecastRiseF} }}
+          '';
+          # Diagnostics, so "why hasn't it fired?" is answerable from the
+          # entity alone.
+          attributes = {
+            drop_from_high = "{{ ((states('sensor.outdoor_high_today') | float(0)) - (states('sensor.outdoor_temperature') | float(0))) | round(1) }}";
+            sun_rising = "{{ state_attr('sun.sun', 'rising') }}";
+            forecast_rise_rest_of_today = ''
+              ${forecastRise}
+              {{ rise if fc_hours > 0 else none }}
+            '';
+          };
+        }];
+      }
     ];
 
     automation = [
@@ -434,10 +591,13 @@ let
           "Today is a windows open day! Forecast high {{ states('sensor.forecast_high_today') }}°F.";
       }
 
-      # 2. Morning warm-up → close up.
+      # 2. Warming up → close up.
+      #
+      # The id still says "morning" from when this was clock-gated; it is the
+      # entity registry key, so it stays.
       {
         id = "homelab_windows_close_morning";
-        alias = "Windows: close (morning warm-up)";
+        alias = "Windows: close (warming up)";
         mode = "single";
         # The sunrise trigger is not redundant with the numeric_state one. A
         # numeric_state trigger fires only on a *crossing*, so after a warm night
@@ -477,8 +637,8 @@ let
           #
           # Polling every 30 min sidesteps both. It is safe because it changes
           # nothing about WHEN the prompt is allowed — the conditions below still
-          # gate on temperature, sunrise, the noon cutoff, the open-day check,
-          # and oncePerDay, so the worst case remains exactly one prompt per day.
+          # gate on temperature, sunrise, the peak, the open-day check, and
+          # oncePerDay, so the worst case remains exactly one prompt per day.
           { trigger = "homeassistant"; event = "start"; }
           { trigger = "time_pattern"; minutes = "/30"; }
         ];
@@ -489,7 +649,10 @@ let
             above = closeAboveF;
           }
           { condition = "sun"; after = "sunrise"; }
-          { condition = "time"; before = morningEndsAt; }
+          # Replaced a 12:00 cutoff. A day still climbing at 13:00 (morning fog,
+          # a late warm front) now gets its prompt; a day that has turned over
+          # does not, whatever the clock says.
+          notPastPeak
           notAnOpenDay
           (notAlready "off")
           oncePerDay
@@ -498,15 +661,18 @@ let
           "It's {{ states('sensor.outdoor_temperature') }}°F outside and climbing — shut the windows to hold the cool air. High of {{ states('sensor.forecast_high_today') }}°F today.";
       }
 
-      # 3. Evening cool-down → open up.
+      # 3. Cooling down → open up. Same registry-key note on the id as above.
       {
         id = "homelab_windows_open_evening";
-        alias = "Windows: open (evening cool-down)";
+        alias = "Windows: open (cooling down)";
         mode = "single";
-        # Same reasoning as above, mirrored: on a day that peaked at 78°F and
-        # dropped under 72°F at 15:30, the crossing happens before the evening
-        # window opens and would otherwise be missed entirely. The 16:00 trigger
-        # re-checks the standing state at the moment the window opens.
+        # Two conditions have to hold together — below openBelowF and past the
+        # peak — and either can be the one that arrives second, so each gets a
+        # trigger. Usually the peak comes first (2026-10-11: ~14:50, 2°F off
+        # 74.5, then under 72 about half an hour later) and the temperature
+        # trigger fires. A day that peaks below openBelowF without counting as
+        # an open day (the forecast latch said 75+) is already under 72 when
+        # it turns over, so there the past-peak trigger is the one that fires.
         triggers = [
           {
             trigger = "numeric_state";
@@ -514,11 +680,16 @@ let
             below = openBelowF;
             "for" = sustainedFor;
           }
-          { trigger = "time"; at = eveningStartsAt; }
-          # Same standing-state re-evaluation as the morning rule — see the long
-          # comment there. The 16:00 trigger is the evening's equivalent of
-          # sunrise and has the same weakness: it fires once, so an HA restart
-          # after 16:00 on an already-cool evening leaves no live trigger.
+          # Sustained like the temperature trigger: the drop test can flicker
+          # while the reading hovers right at high − peakDropF.
+          {
+            trigger = "state";
+            entity_id = "binary_sensor.outdoor_past_peak";
+            to = "on";
+            "for" = sustainedFor;
+          }
+          # Same standing-state re-evaluation as the close rule — see the long
+          # comment there.
           { trigger = "homeassistant"; event = "start"; }
           { trigger = "time_pattern"; minutes = "/30"; }
         ];
@@ -528,7 +699,11 @@ let
             entity_id = "sensor.outdoor_temperature";
             below = openBelowF;
           }
-          { condition = "time"; after = eveningStartsAt; before = eveningEndsAt; }
+          # Replaced a 16:00–21:00 window. 21:00 stays as a comfort cutoff (see
+          # eveningEndsAt); 16:00 was a guess at when the day turns over and is
+          # now measured instead.
+          pastPeak
+          { condition = "time"; before = eveningEndsAt; }
           notAnOpenDay
           (notAlready "on")
           oncePerDay
@@ -584,6 +759,6 @@ in
   # remain UI-editable, while these are reproducible from the flake.
   #
   # A package rather than a bare automation list because a package can also
-  # declare `template:`, and both sensors above are templates.
+  # declare `template:`, and all four sensors above are templates.
   services.home-assistant.config.homeassistant.packages.windows = windowsPackage;
 }
