@@ -56,6 +56,17 @@ let
     bindsTo = [ "${unit}.service" ];
     serviceConfig.ExecStart = "${pkgs.systemd}/bin/systemd-inhibit --what=sleep:idle --who=${unit} --why='${why}' --mode=block ${pkgs.coreutils}/bin/sleep infinity";
   };
+
+  # Exits 0 while some SSH connection is running something — see "Never
+  # suspend under an SSH session". The user-side sshd process is
+  # `sshd-session: user@…` (OpenSSH 9.8+; `sshd:` before), and an idle
+  # multiplexed master has no children.
+  sshSessionActive = pkgs.writeShellScript "ssh-session-active" ''
+    for pid in $(${pkgs.procps}/bin/pgrep -f '^sshd(-session)?: [^ ]+@'); do
+      ${pkgs.procps}/bin/pgrep -P "$pid" >/dev/null && exit 0
+    done
+    exit 1
+  '';
 in
 {
   # ---------------------------------------------------------------------------
@@ -355,15 +366,28 @@ in
   # Never suspend under an SSH session (ported from Arch's ssh-sleep-inhibit).
   # Load-bearing for deploys: a 30-minute idle suspend mid-`deploy terra`
   # drops the connection and deploy-rs's magic rollback undoes the deploy.
+  #
+  # "Under an SSH session" means a connection that is RUNNING something, not
+  # merely open. liquidark's ssh config multiplexes (ControlMaster,
+  # ControlPersist 30m), so every `ssh terra` leaves an idle master connection
+  # behind for half an hour. Counting that as a session vetoed Steam's idle
+  # sleep at 21:26 on 2026-10-10, and Steam does not survive a refused sleep:
+  # it blanks the screen first and never un-blanks it (the black is Steam's
+  # own layer; gamescope kept rendering underneath), so the TV stayed black
+  # until a real suspend+wake. An idle master is a user-side
+  # `sshd-session: user@…` with no child processes; a shell, a command, or
+  # deploy-rs's copy/activate/confirm steps are its children. A logged-in
+  # shell sitting at its prompt still counts — that is someone using it.
+  # Both units below ask `sshSessionActive` (top of file).
   systemd.services.ssh-sleep-inhibit = {
     description = "Inhibit sleep while SSH sessions are active";
     wantedBy = [ "multi-user.target" ];
     after = [ "sshd.service" ];
-    path = [ pkgs.iproute2 pkgs.systemd pkgs.gnugrep pkgs.coreutils ];
+    path = [ pkgs.systemd pkgs.coreutils ];
     # Polls every 20s and holds each inhibitor for 30s, so they overlap.
     script = ''
       while true; do
-        if ss -tnH state established '( sport = :22 )' | grep -q .; then
+        if ${sshSessionActive}; then
           systemd-inhibit --what=sleep:idle --who=ssh-guard \
             --why="Active SSH session" --mode=block sleep 30 &
         fi
@@ -398,9 +422,8 @@ in
       Type = "oneshot";
       RemainAfterExit = true;
     };
-    path = [ pkgs.iproute2 pkgs.gnugrep ];
     script = ''
-      if ss -tnH state established '( sport = :22 )' | grep -q .; then
+      if ${sshSessionActive}; then
         echo "refusing to sleep: active SSH session(s)" >&2
         exit 1
       fi
