@@ -46,55 +46,14 @@
 { config, pkgs, lib, inputs, ... }:
 
 let
-  # Used by the Emulation section below; see the comments there.
-  es-de = pkgs.callPackage ../pkgs/es-de.nix { };
-
-  retroarchCoreOptions = {
-    beetle-psx-hw = {
-      beetle_psx_hw_internal_resolution = "8x";
-      beetle_psx_hw_pgxp_mode = "memory only";
-      beetle_psx_hw_pgxp_texture = "enabled";
-      beetle_psx_hw_dither_mode = "disabled";
-      beetle_psx_hw_depth = "32bpp";
-    };
-    mupen64plus = {
-      mupen64plus-rdp-plugin = "parallel";
-      mupen64plus-rsp-plugin = "parallel";
-      mupen64plus-parallel-rdp-upscaling = "4x";
-    };
+  # A unit that holds a sleep inhibitor for exactly as long as `unit` runs —
+  # see "Upgrades & health".
+  sleepInhibitor = unit: why: {
+    description = "Inhibit sleep: ${why}";
+    wantedBy = [ "${unit}.service" ];
+    bindsTo = [ "${unit}.service" ];
+    serviceConfig.ExecStart = "${pkgs.systemd}/bin/systemd-inhibit --what=sleep:idle --who=${unit} --why='${why}' --mode=block ${pkgs.coreutils}/bin/sleep infinity";
   };
-
-  retroarchCoreOptionsFile = pkgs.writeText "retroarch-core-options.cfg"
-    (lib.concatStrings (lib.mapAttrsToList (k: v: "${k} = \"${v}\"\n")
-      (lib.mergeAttrsList (lib.attrValues retroarchCoreOptions))));
-
-  # Fails the build if a core no longer has an option key declared above —
-  # RetroArch ignores an unknown key without a word.
-  retroarchCoreOptionsCheck = pkgs.runCommand "retroarch-core-options-check" { } (
-    lib.concatStrings (lib.mapAttrsToList (core: opts:
-      lib.concatMapStrings (key: ''
-        grep -qaF -- '${key}' ${pkgs.libretro.${core}}/lib/retroarch/cores/*.so \
-          || { echo "libretro.${core} has no core option '${key}'" >&2; exit 1; }
-      '') (lib.attrNames opts)) retroarchCoreOptions)
-    + "touch $out\n");
-
-  esdePsxSystem = pkgs.runCommand "es-de-psx-system.xml"
-    { nativeBuildInputs = [ pkgs.python3 ]; } ''
-    python3 - ${es-de.systems} > $out <<'EOF'
-    import sys, xml.etree.ElementTree as ET
-    bundled = ET.parse(sys.argv[1]).getroot()
-    psx = next(s for s in bundled.iter("system") if s.findtext("name") == "psx")
-    commands = psx.findall("command")
-    hw = next(c for c in commands if c.get("label") == "Beetle PSX HW")
-    psx.remove(hw)
-    psx.insert(list(psx).index(commands[0]), hw)
-    out = ET.Element("systemList")
-    out.append(psx)
-    ET.indent(out)
-    print('<?xml version="1.0"?>')
-    print(ET.tostring(out, encoding="unicode"))
-    EOF
-  '';
 in
 {
   # ---------------------------------------------------------------------------
@@ -279,8 +238,16 @@ in
   # steamos-manager only cleans at the start of a graphical session, so a
   # relogin can land straight back in Plasma. steamosctl is SteamOS's own path
   # and handles that file. In the app launcher, and on the desktop (Plasma
-  # only shows a ~/Desktop launcher that is executable — hence the flag). The
-  # app-launcher entry is in environment.systemPackages, under Emulation.
+  # only shows a ~/Desktop launcher that is executable — hence the flag).
+  environment.systemPackages = [
+    (pkgs.makeDesktopItem {
+      name = "return-to-gaming-mode";
+      desktopName = "Return to Gaming Mode";
+      exec = "steamosctl switch-to-game-mode";
+      icon = "steam";
+      categories = [ "Game" ];
+    })
+  ];
   home-manager.users.brian.home.file."Desktop/Return to Gaming Mode.desktop" = {
     executable = true;
     text = ''
@@ -311,134 +278,6 @@ in
     alsa.support32Bit = true;
     pulse.enable = true;
   };
-
-  # ---------------------------------------------------------------------------
-  # Emulation — ES-DE frontend, RetroArch cores
-  # ---------------------------------------------------------------------------
-  #
-  # ES-DE is a launcher only: per system it runs a command like
-  # `%EMULATOR_RETROARCH% -L %CORE_RETROARCH%/snes9x_libretro.so %ROM%`, and
-  # resolves CORE_RETROARCH from its bundled find rules, which already include
-  # /run/current-system/sw/lib/retroarch/cores. The wrapper below puts the
-  # cores there, so finding cores needs no custom_systems override.
-  #
-  # Launched from Gaming Mode as a non-Steam shortcut (Desktop Mode → Steam →
-  # Add a Non-Steam Game → ES-DE). That shortcut lives in Steam's data, not
-  # here, so a reinstall has to add it again.
-  #
-  # NOT in Nix, restored from erebor's backups share (terra/) 2026-10-09:
-  # ~/ROMs and ~/ES-DE (settings, gamelists, 19 GB of scraped media, themes,
-  # BIOS). Emulator saves are not backed up yet — they did not survive the
-  # Arch install.
-  #
-  # Cores: ES-DE's default for each system that has games, plus the PS1
-  # alternatives (Beetle PSX HW for upscaling, SwanStation). Adding a system
-  # means adding its default core — the first <command> for that system in
-  # ES-DE's resources/systems/linux/es_systems.xml.
-  #
-  # `settings` are passed as --appendconfig on EVERY launch, so they override
-  # RetroArch's own retroarch.cfg and a change made in RetroArch's menu to one
-  # of these keys does not stick. Picture quality is declared; binds and
-  # shaders belong to the menu.
-  #
-  # Upscaling (PS1 and N64), declared rather than set in the menu:
-  #
-  # - PS1 runs on Beetle PSX HW, not ES-DE's default Beetle PSX, which is a
-  #   software renderer and cannot upscale. ES-DE uses a system's FIRST
-  #   <command>, so esdePsxSystem (top of file) regenerates the bundled psx
-  #   entry with Beetle PSX HW moved first, and home-manager installs it as
-  #   ~/ES-DE/custom_systems/es_systems.xml — a custom system of the same name
-  #   replaces the bundled one. It is derived at build time so a new ES-DE
-  #   keeps its own extensions and commands; the build fails if the psx system
-  #   or the "Beetle PSX HW" label disappears. A per-system or per-game
-  #   alternative emulator picked in ES-DE's UI is stored in gamelist.xml and
-  #   wins over this — there are none today.
-  #
-  # - Core options come from retroarchCoreOptions (top of file), one store
-  #   file for every core: global_core_options makes RetroArch read
-  #   core_options_path instead of ~/.config/retroarch/config/<core>/<core>.opt
-  #   (those files are ignored while it is on). RetroArch writes the file back
-  #   only when an option changed, and a failed write is just logged, so a
-  #   Quick Menu change lasts the session and reverts on the next launch —
-  #   same contract as `settings`. A per-GAME override (Quick Menu → Core
-  #   Options → Manage → Save Game Options) still lands in the writable config
-  #   dir and beats the global file. retroarchCoreOptionsCheck fails the build
-  #   if a core drops a declared key. Values must match the core's own strings
-  #   exactly ("memory only", "1x(native)") — an unknown value is ignored too.
-  #
-  # - Beetle PSX HW: 8x internal resolution (2560x1920 — about 4K's height);
-  #   PGXP "memory only" with perspective-correct textures, which removes the
-  #   PS1's polygon wobble and texture warping ("memory + CPU" is labelled
-  #   Buggy by the core); dithering off, since upscaled dither is a visible
-  #   mesh, and 32bpp so that does not band.
-  #
-  # - Mupen64Plus-Next: ParaLLEl-RDP (accurate, Vulkan) with the ParaLLEl RSP,
-  #   which it requires (LLE), at 4x — 8x is the next step if every game holds
-  #   full speed. GLideN64 is the alternative for widescreen hacks and HD
-  #   texture packs but needs video_driver = gl, so it is a per-game question.
-  #
-  # - video_driver = vulkan: Beetle's "hardware" renderer follows the video
-  #   driver, and ParaLLEl-RDP runs only on Vulkan. The other cores
-  #   (Snes9x/Mesen/Genesis Plus GX) are driver-agnostic.
-  #
-  # The frame rate is not raised: these games run their logic at 20–30 fps,
-  # and the levers that exist (emulated CPU overclock, 60 fps cheats) break
-  # some games, so they are per-game choices, not defaults here.
-  #
-  # system_directory: cores ask RetroArch, never ES-DE, where BIOS files are.
-  # Pointed at the restored ~/ES-DE/bios rather than the default
-  # ~/.config/retroarch/system so there is one BIOS folder. PS1 BIOS must sit
-  # at its top level as scph5500/5501/5502.bin — Beetle and SwanStation do not
-  # search subfolders.
-  #
-  # input_joypad_driver: in Gaming Mode every game sees Steam Input's virtual
-  # pad (28de:11ff, "Steam Virtual Gamepad"), never the controller itself.
-  # RetroArch's default udev driver has no autoconfig profile for it, so the
-  # pad was detected but bound to nothing — games ran with no input while
-  # ES-DE (SDL) worked. The sdl2 profile set does carry one.
-  #
-  # Gamepad combos: terra has no keyboard, and RetroArch ships with no
-  # controller binding for its menu or for quit — without these the only way
-  # out of a game is Steam's Exit Game, which kills ES-DE with it. Values are
-  # RetroArch's input_combo_type enum (input/input_defines.h): 2 = L3+R3,
-  # 4 = Start+Select. Quit returns to ES-DE; quit_press_twice (default on)
-  # makes it ask for a second press.
-  environment.systemPackages = [
-    # Desktop Mode's way back — see the "Return to Gaming Mode" comment above.
-    (pkgs.makeDesktopItem {
-      name = "return-to-gaming-mode";
-      desktopName = "Return to Gaming Mode";
-      exec = "steamosctl switch-to-game-mode";
-      icon = "steam";
-      categories = [ "Game" ];
-    })
-    es-de
-    (pkgs.retroarch-bare.wrapper {
-      cores = with pkgs.libretro; [
-        beetle-psx
-        beetle-psx-hw
-        swanstation
-        mupen64plus
-        snes9x
-        mesen
-        genesis-plus-gx
-      ];
-      settings = {
-        system_directory = "/home/brian/ES-DE/bios";
-        input_joypad_driver = "sdl2";
-        input_menu_toggle_gamepad_combo = "2";
-        input_quit_gamepad_combo = "4";
-        video_driver = "vulkan";
-        global_core_options = "true";
-        core_options_path = "${retroarchCoreOptionsFile}";
-      };
-    })
-  ];
-
-  home-manager.users.brian.home.file."ES-DE/custom_systems/es_systems.xml".source =
-    esdePsxSystem;
-
-  system.checks = [ retroarchCoreOptionsCheck ];
 
   # ---------------------------------------------------------------------------
   # Networking
@@ -566,17 +405,34 @@ in
     Persistent = lib.mkForce false;
   };
 
-  # Hold off idle suspend for as long as the upgrade runs: the machine was
+  # Emulator saves are backed up (modules/emulation.nix) on the same terms:
+  # backup.nix's 03:00/04:00 slots would elapse during suspend and fire on
+  # resume, under a game, so terra's repos run on wake timers just ahead of
+  # the upgrade — the one wake serves all three. Not Persistent, for the same
+  # reason as the upgrade. Its onsite repo is a subdirectory because
+  # backups/terra/ on erebor already holds the Arch-era plain copy of ~/ROMs
+  # and ~/ES-DE.
+  services.restic.backups.local.timerConfig = lib.mkForce {
+    OnCalendar = "05:00";
+    WakeSystem = true;
+  };
+  services.restic.backups.offsite.timerConfig = lib.mkForce {
+    OnCalendar = "05:05";
+    WakeSystem = true;
+  };
+  homelab.backup.localRepository = "/var/backup/erebor/terra/restic";
+
+  # Hold off idle suspend for as long as each of those runs: the machine was
   # woken just for it, nobody is touching it, and IdleAction would otherwise
   # suspend it mid-build (a cold NVIDIA module build can run past 30 min).
   # No After=: started alongside the oneshot, and BindsTo stops it the moment
-  # the upgrade unit goes inactive, success or failure.
-  systemd.services.homelab-upgrade-inhibit = {
-    description = "Inhibit sleep during the nightly upgrade";
-    wantedBy = [ "homelab-upgrade.service" ];
-    bindsTo = [ "homelab-upgrade.service" ];
-    serviceConfig.ExecStart = "${pkgs.systemd}/bin/systemd-inhibit --what=sleep:idle --who=homelab-upgrade --why='NixOS upgrade running' --mode=block ${pkgs.coreutils}/bin/sleep infinity";
-  };
+  # the unit goes inactive, success or failure.
+  systemd.services.homelab-upgrade-inhibit =
+    sleepInhibitor "homelab-upgrade" "NixOS upgrade running";
+  systemd.services.restic-backups-local-inhibit =
+    sleepInhibitor "restic-backups-local" "Backup to erebor running";
+  systemd.services.restic-backups-offsite-inhibit =
+    sleepInhibitor "restic-backups-offsite" "Backup to R2 running";
 
   # Gaming Mode is the whole job: a closure that boots to a black screen is a
   # failed upgrade, and post-upgrade-check rolls it back.
@@ -594,7 +450,9 @@ in
   # ---------------------------------------------------------------------------
   #
   # Only what base.nix's imports need. tailscale_auth_key is declared by
-  # modules/tailscale.nix; it is the same value as in every other host's yaml.
+  # modules/tailscale.nix, restic_password and restic_r2_env by backup.nix
+  # (emulator saves); all three are the same value as in every other host's
+  # yaml.
   sops = {
     defaultSopsFile = ../secrets/terra.yaml;
     defaultSopsFormat = "yaml";

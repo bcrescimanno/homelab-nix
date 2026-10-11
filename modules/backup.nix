@@ -107,6 +107,21 @@ in
     description = "Paths to back up with restic (onsite + offsite).";
   };
 
+  options.homelab.backup.exclude = lib.mkOption {
+    type = lib.types.listOf lib.types.str;
+    default = [];
+    description = "restic --exclude patterns, applied to both repos.";
+  };
+
+  # terra's directory on the share already holds a plain copy of its ROMs and
+  # ES-DE data from the Arch migration, so its repo sits one level down rather
+  # than sharing a directory with them.
+  options.homelab.backup.localRepository = lib.mkOption {
+    type = lib.types.str;
+    default = "/var/backup/erebor/${config.networking.hostName}";
+    description = "Path of the onsite restic repo, on the erebor NFS mount.";
+  };
+
   config = lib.mkIf (config.homelab.backup.paths != []) {
 
     # NFS client support (idempotent — pirateship already has this)
@@ -265,7 +280,8 @@ in
       local = {
         initialize = true;
         paths = config.homelab.backup.paths;
-        repository = "/var/backup/erebor/${config.networking.hostName}";
+        exclude = config.homelab.backup.exclude;
+        repository = config.homelab.backup.localRepository;
         passwordFile = config.sops.secrets.restic_password.path;
         timerConfig = {
           OnCalendar = "03:00";
@@ -282,6 +298,7 @@ in
       offsite = {
         initialize = true;
         paths = config.homelab.backup.paths;
+        exclude = config.homelab.backup.exclude;
         repository = "s3:https://${r2AccountId}.r2.cloudflarestorage.com/homelab-backup/${config.networking.hostName}";
         passwordFile = config.sops.secrets.restic_password.path;
         environmentFile = config.sops.secrets.restic_r2_env.path;

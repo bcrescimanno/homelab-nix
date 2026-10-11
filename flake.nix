@@ -310,8 +310,9 @@
         specialArgs = { inherit inputs r2AccountId brianSshKey; };
       };
 
-      # The living-room games console. Not a server: no monitoring, backup or
-      # NUT modules — see hosts/terra.nix.
+      # The living-room games console. Not a server: no monitoring or NUT
+      # modules — see hosts/terra.nix. backup.nix is here only for emulator
+      # saves (modules/emulation.nix).
       terra = nixpkgs.lib.nixosSystem {
         system = "x86_64-linux";
         modules = [
@@ -326,6 +327,8 @@
             home-manager.backupFileExtension = "backup";
           }
           ./modules/base.nix
+          ./modules/backup.nix
+          ./modules/emulation.nix
           ./hosts/terra.nix
         ];
         specialArgs = { inherit inputs r2AccountId brianSshKey; };
