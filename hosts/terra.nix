@@ -20,7 +20,9 @@
 # DRM backend flickered along the bottom of the screen on this card (NVIDIA bug
 # 5240452). This config runs gamescope again, on 615.x. If the flicker is back,
 # the fallback is greetd → Hyprland → `steam -gamepadui` with no gamescope —
-# i.e. replace jovian.steam.autoStart, not the whole host.
+# i.e. replace jovian.steam.autoStart, not the whole host. (615.x fixed that
+# flicker, but a different corruption needed direct scan-out turned off — see
+# the gamescope script under Gaming Mode.)
 #
 # ---------------------------------------------------------------------------
 # Initial installation via nixos-anywhere (same recipe as orthanc). This WIPES
@@ -174,6 +176,26 @@ in
   # `ttm.pages_min=2097152` (an 8 GiB TTM floor, sized for the Deck's shared
   # memory — half of terra's RAM). Both are Deck assumptions.
   jovian.steamos.enableDefaultCmdlineConfig = false;
+
+  # Direct scan-out is off: gamescope composites every frame itself instead of
+  # handing a client's buffer straight to a KMS plane. With scan-out on, the TV
+  # intermittently showed screen-wide corruption — smeared colours, regions
+  # repeated elsewhere, flicker — while `gamescopectl screenshot` of the same
+  # moment was clean, i.e. the frames were right and the plane was misreading
+  # them. Proven by A/B on 2026-10-10 (615.71.09, gamescope 3.16.30, 4K60
+  # HDR): `gamescopectl composite_force 0` brought the corruption back the
+  # instant it was set, `1` cleared it. It comes and goes because gamescope
+  # only scans out when a single client buffer can be shown as-is. Desktop
+  # Mode (KWin, SDR) never showed it. The cost is one extra composite pass per
+  # frame — nothing on this GPU.
+  #
+  # Set through gamescope's Lua config rather than `--force-composition`,
+  # because Jovian's session script owns the command line; gamescope runs
+  # every .lua under /etc/gamescope at startup. Retest after a driver bump by
+  # flipping the convar live (see above) — if scan-out stays clean, drop this.
+  environment.etc."gamescope/scripts/90-terra-force-composition.lua".text = ''
+    gamescope.convars.composite_force.value = true
+  '';
 
   # Steam's Settings → Software Updates asks Jovian's `steamos-update check`
   # stub, which reports "restart pending" (exit 8) when the booted kernel and
