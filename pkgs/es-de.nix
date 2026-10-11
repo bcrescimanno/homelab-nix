@@ -43,9 +43,13 @@ appimageTools.wrapType2 {
     install -Dm444 ${contents}/org.es_de.frontend.svg -t $out/share/icons/hicolor/scalable/apps
   '';
 
-  # The bundled system definitions, so hosts/terra.nix can derive a
-  # custom_systems override from them rather than copying one by hand.
-  passthru.systems = "${contents}/usr/share/es-de/resources/systems/linux/es_systems.xml";
+  # The bundled system definitions, so modules/emulation.nix can derive a
+  # custom_systems override from them rather than copying one by hand, and
+  # the find rules, so it can check every default emulator is installed.
+  passthru = {
+    systems = "${contents}/usr/share/es-de/resources/systems/linux/es_systems.xml";
+    findRules = "${contents}/usr/share/es-de/resources/systems/linux/es_find_rules.xml";
+  };
 
   meta.mainProgram = "es-de";
 }
