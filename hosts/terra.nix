@@ -430,6 +430,39 @@ in
     '';
   };
 
+  # Stay awake while ES-DE is scraping (a multi-scrape of hundreds of games
+  # runs for hours with nobody touching a controller). DESKTOP MODE ONLY, on
+  # purpose: in Gaming Mode it is Steam that sleeps the machine, Steam does
+  # not check inhibitors before trying, and a refused sleep leaves the TV
+  # black (see above) — so there an inhibitor would turn "slept mid-scrape"
+  # into "black screen mid-scrape". Scrape from Desktop Mode, where logind's
+  # IdleAction and Plasma's powerdevil both honour it.
+  #
+  # "Scraping" is the es-de process holding an established TCP connection:
+  # the scraper fetches metadata and media continuously, and an idle ES-DE
+  # holds none. Each sighting holds the inhibitor for 5 min, so a gap
+  # between games never lets it lapse and a finished scrape releases it
+  # within 5 min.
+  systemd.services.esde-scrape-inhibit = {
+    description = "Inhibit sleep while ES-DE is scraping in Desktop Mode";
+    wantedBy = [ "multi-user.target" ];
+    path = [ pkgs.systemd pkgs.coreutils pkgs.procps pkgs.iproute2 pkgs.gnugrep ];
+    script = ''
+      while true; do
+        if pgrep -x plasmashell >/dev/null \
+          && ss -tnpH state established | grep -q '(("es-de",'; then
+          systemd-inhibit --what=sleep:idle --who=esde-scrape \
+            --why="ES-DE scraping" --mode=block sleep 300 &
+        fi
+        sleep 20
+      done
+    '';
+    serviceConfig = {
+      Restart = "always";
+      RestartSec = 5;
+    };
+  };
+
   # ---------------------------------------------------------------------------
   # Upgrades & health
   # ---------------------------------------------------------------------------
