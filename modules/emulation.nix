@@ -181,6 +181,19 @@
 # makes it ask for a second press. PCSX2 is seeded with the same two combos
 # (L3+R3 pause menu, Select+Start quit).
 #
+# Desktop Mode goes through Steam too, or the mappings are wrong. Nothing
+# starts Steam in Plasma (leaving Gaming Mode kills it), and the Steam
+# Controller (the 2026 puck, 28de:1304) without Steam falls back to its
+# firmware keyboard/mouse mode. ES-DE's SDL 2.32 has no driver for the pad
+# itself, so it saw only a keyboard and applied its keyboard defaults
+# (2026-10-11: both Desktop Mode runs logged "Added keyboard", no
+# controller). Even with Steam running, an app it did not launch gets the
+# Desktop Configuration, which is keyboard/mouse as well. So the Plasma menu
+# entry for ES-DE is replaced (esdeViaSteam) with one that runs the Gaming
+# Mode shortcut through Steam — same virtual pad, same per-game controller
+# config, in either mode. Steam assigns the shortcut's appid at random when
+# it is added, so it is read from shortcuts.vdf at launch, not pinned here.
+#
 # STILL A ONE-TIME UI STEP (Desktop Mode, the Steam controller as a mouse):
 # Dolphin, Cemu and Azahar key their controller profiles by device name or
 # SDL GUID, which is not something to guess in Nix. Map the controller once
@@ -198,6 +211,73 @@ let
   # Systems whose games live on erebor rather than the SSD — see "ROM library
   # on erebor" below. Add a system only once its games are on the share.
   romShare = "/mnt/games";
+
+  # ES-DE from the Plasma menu, launched as the Gaming Mode shortcut so
+  # Steam Input drives the controller — see "Controllers" above. Without a
+  # shortcut (a fresh install) it still opens ES-DE, but says why the
+  # controller is wrong instead of leaving that to be rediscovered.
+  esdeViaSteam = pkgs.writers.writePython3Bin "es-de-via-steam" {
+    flakeIgnore = [ "E501" ]; # interpolated store paths
+  } ''
+    import glob
+    import os
+    import struct
+
+
+    def shortcuts(data):
+        # Steam's binary VDF: type byte, NUL-terminated key, value; 0x08
+        # closes a map. Only maps, strings and int32 appear in this file.
+        pos = 0
+
+        def cstr():
+            nonlocal pos
+            end = data.index(b"\0", pos)
+            text = data[pos:end].decode("utf-8", "replace")
+            pos = end + 1
+            return text
+
+        def node():
+            nonlocal pos
+            out = {}
+            while True:
+                kind = data[pos]
+                pos += 1
+                if kind == 8:
+                    return out
+                key = cstr().lower()
+                if kind == 0:
+                    out[key] = node()
+                elif kind == 1:
+                    out[key] = cstr()
+                elif kind == 2:
+                    out[key] = struct.unpack_from("<I", data, pos)[0]
+                    pos += 4
+                else:
+                    raise ValueError(f"VDF type {kind}")
+
+        return node().get("shortcuts", {}).values()
+
+
+    pattern = os.path.expanduser(
+        "~/.local/share/Steam/userdata/*/config/shortcuts.vdf")
+    for path in glob.glob(pattern):
+        try:
+            entries = list(shortcuts(open(path, "rb").read()))
+        except (OSError, ValueError, IndexError):
+            continue
+        for entry in entries:
+            exe = os.path.basename(entry.get("exe", "").strip('"'))
+            if exe == "es-de" and "appid" in entry:
+                game = entry["appid"] << 32 | 0x02000000
+                os.execv("${config.programs.steam.package}/bin/steam",
+                         ["steam", f"steam://rungameid/{game}"])
+
+    os.spawnv(os.P_NOWAIT, "${pkgs.libnotify}/bin/notify-send", [
+        "notify-send", "-a", "ES-DE", "No ES-DE shortcut in Steam",
+        "Controller buttons will be wrong. Add ES-DE as a non-Steam game "
+        "(Steam → Add a Game → Add a Non-Steam Game)."])
+    os.execv("${es-de}/bin/es-de", ["es-de"])
+  '';
   nasSystems = [ "pcenginecd" ];
 
   es-de = pkgs.callPackage ../pkgs/es-de.nix { };
@@ -575,6 +655,20 @@ in
   home-manager.users.brian = { config, ... }: {
     home.file = {
       "ES-DE/custom_systems/es_systems.xml".source = esdeCustomSystems;
+
+      # Shadows the package's own entry (same desktop-file ID) in Plasma's
+      # menu. The Steam shortcut runs plain `es-de`, so this cannot loop.
+      ".local/share/applications/org.es_de.frontend.desktop".text = ''
+        [Desktop Entry]
+        Type=Application
+        Name=ES-DE
+        GenericName=Gaming Frontend
+        Exec=${esdeViaSteam}/bin/es-de-via-steam
+        Icon=org.es_de.frontend
+        Terminal=false
+        Categories=Game;Emulator;
+        Keywords=emulator;emulation;front-end;frontend;
+      '';
 
       # The PPSSPP core reads its fonts, system-dialog atlas and language
       # files from <system dir>/PPSSPP and ships none of them; nixpkgs'
