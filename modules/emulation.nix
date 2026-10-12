@@ -499,7 +499,9 @@ let
       }
       # Dolphin's device string for Steam's virtual pad (SDL3's own name for
       # 28de:11ff). Buttons go by position: GameCube A is the big south
-      # button and B sits to its left. Trigger axes take no sign, sticks do.
+      # button and B sits to its left. Trigger axes take no sign, sticks do,
+      # and Dolphin flips SDL's Y axis: up is Y+ (confirmed on terra — Y-
+      # played the left stick upside down).
       {
         format = "ini";
         path = "${home}/.config/dolphin-emu/GCPadNew.ini";
@@ -511,12 +513,12 @@ let
           "Buttons/Y" = "`Button N`";
           "Buttons/Z" = "`Shoulder R`";
           "Buttons/Start" = "`Start`";
-          "Main Stick/Up" = "`Left Y-`";
-          "Main Stick/Down" = "`Left Y+`";
+          "Main Stick/Up" = "`Left Y+`";
+          "Main Stick/Down" = "`Left Y-`";
           "Main Stick/Left" = "`Left X-`";
           "Main Stick/Right" = "`Left X+`";
-          "C-Stick/Up" = "`Right Y-`";
-          "C-Stick/Down" = "`Right Y+`";
+          "C-Stick/Up" = "`Right Y+`";
+          "C-Stick/Down" = "`Right Y-`";
           "C-Stick/Left" = "`Right X-`";
           "C-Stick/Right" = "`Right X+`";
           "Triggers/L" = "`Trigger L`";
