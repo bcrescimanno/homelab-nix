@@ -66,6 +66,10 @@
 #                looks there first)
 #   Neo Geo CD   neocd/ (neocd_z.rom or one of the other BIOS sets NeoCD lists)
 #   GBA          gba_bios.bin (optional)
+#   GameCube     nothing to supply: Dolphin boots games without the IPL and
+#                ships free replacement fonts and DSP ROMs in its own Sys/GC.
+#                Multi-disc games are Game.m3u/ folders holding the discs and
+#                a same-named playlist — Dolphin swaps discs from it.
 #   Wii U        wiiu/keys.txt — Cemu reads it through a symlink at
 #                ~/.local/share/Cemu/keys.txt (below); games as .wua
 #   Xbox         xbox/mcpx_1.0.bin and xbox/Complex_4627.bin (names fixed by
@@ -278,7 +282,7 @@ let
         "(Steam → Add a Game → Add a Non-Steam Game)."])
     os.execv("${es-de}/bin/es-de", ["es-de"])
   '';
-  nasSystems = [ "pcenginecd" ];
+  nasSystems = [ "pcenginecd" "gc" ];
 
   es-de = pkgs.callPackage ../pkgs/es-de.nix { };
 
