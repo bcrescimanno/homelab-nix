@@ -198,13 +198,18 @@
 # config, in either mode. Steam assigns the shortcut's appid at random when
 # it is added, so it is read from shortcuts.vdf at launch, not pinned here.
 #
+# Dolphin's GameCube pad 1 and its Stop hotkey (Select+Start) are seeded
+# below against "SDL/0/Steam Virtual Gamepad" — Dolphin keys bindings by
+# device name, and that is SDL3's name for Steam's virtual pad (in libSDL3's
+# controller database). Steam hides the physical controllers from games, so
+# in Gaming Mode it is always SDL index 0.
+#
 # STILL A ONE-TIME UI STEP (Desktop Mode, the Steam controller as a mouse):
-# Dolphin, Cemu and Azahar key their controller profiles by device name or
-# SDL GUID, which is not something to guess in Nix. Map the controller once
-# in each, and in Dolphin bind a "Stop" hotkey (Select+Start) — otherwise
-# leaving a game is Steam's Exit Game. Wii games additionally need the Wii
-# Remote emulated (pointer on the right stick or Steam Input gyro, shake and
-# tilt on spare buttons), often per game. Those profiles are backed up.
+# Cemu and Azahar key their controller profiles by SDL GUID, which is not
+# something to guess in Nix — map the controller once in each. Wii games
+# need the Wii Remote emulated in Dolphin (pointer on the right stick or
+# Steam Input gyro, shake and tilt on spare buttons), often per game. Those
+# profiles are backed up.
 
 { config, pkgs, lib, ... }:
 
@@ -492,8 +497,50 @@ let
         path = "${home}/.config/dolphin-emu/GFX.ini";
         set.Settings.InternalResolution = "4";
       }
+      # Dolphin's device string for Steam's virtual pad (SDL3's own name for
+      # 28de:11ff). Buttons go by position: GameCube A is the big south
+      # button and B sits to its left. Trigger axes take no sign, sticks do.
+      {
+        format = "ini";
+        path = "${home}/.config/dolphin-emu/GCPadNew.ini";
+        seed.GCPad1 = {
+          Device = dolphinPad;
+          "Buttons/A" = "`Button S`";
+          "Buttons/B" = "`Button W`";
+          "Buttons/X" = "`Button E`";
+          "Buttons/Y" = "`Button N`";
+          "Buttons/Z" = "`Shoulder R`";
+          "Buttons/Start" = "`Start`";
+          "Main Stick/Up" = "`Left Y-`";
+          "Main Stick/Down" = "`Left Y+`";
+          "Main Stick/Left" = "`Left X-`";
+          "Main Stick/Right" = "`Left X+`";
+          "C-Stick/Up" = "`Right Y-`";
+          "C-Stick/Down" = "`Right Y+`";
+          "C-Stick/Left" = "`Right X-`";
+          "C-Stick/Right" = "`Right X+`";
+          "Triggers/L" = "`Trigger L`";
+          "Triggers/R" = "`Trigger R`";
+          "Triggers/L-Analog" = "`Trigger L`";
+          "Triggers/R-Analog" = "`Trigger R`";
+          "D-Pad/Up" = "`Pad N`";
+          "D-Pad/Down" = "`Pad S`";
+          "D-Pad/Left" = "`Pad W`";
+          "D-Pad/Right" = "`Pad E`";
+          "Rumble/Motor" = "`Motor`";
+        };
+      }
+      {
+        format = "ini";
+        path = "${home}/.config/dolphin-emu/Hotkeys.ini";
+        seed.Hotkeys = {
+          Device = dolphinPad;
+          "General/Stop" = "`Back` & `Start`";
+        };
+      }
     ];
   };
+  dolphinPad = "SDL/0/Steam Virtual Gamepad";
 
   cemu = configured {
     pkg = pkgs.cemu;
