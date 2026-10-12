@@ -67,6 +67,83 @@ let
     done
     exit 1
   '';
+
+  # Gets the picture back on the TV — see "Display recovery". `resume` (the
+  # post-resume unit) acts only if the HDMI connector stayed disconnected
+  # after waking; `now` (by hand: `sudo terra-display-recover now`) always
+  # re-probes and restarts whichever session is up.
+  displayRecover = pkgs.writeShellApplication {
+    name = "terra-display-recover";
+    runtimeInputs = with pkgs; [ coreutils curl procps systemd util-linux kdePackages.libkscreen ];
+    text = ''
+      mode=''${1:-now}
+      user=${config.jovian.steam.user}
+      uid=$(id -u "$user")
+      status=$(echo /sys/class/drm/card*-HDMI-A-1/status)
+
+      connected() { [ "$(cat "$status")" = connected ]; }
+      gaming() { systemctl --user -M "$user@" is-active --quiet gamescope-session.service; }
+      notify() {
+        curl -s --connect-timeout 5 --max-time 20 --retry 5 --retry-delay 5 --retry-all-errors \
+          -H "Title: $1" -H "Priority: $2" -H "Tags: tv" -d "$3" \
+          http://10.0.1.9:2586/homelab >/dev/null || true
+      }
+
+      if [ "$mode" = resume ]; then
+        # Normally gamescope sees the TV within a second of resume, even with
+        # the TV in standby; 15s of disconnected is the failure, not a slow TV.
+        for _ in $(seq 15); do
+          connected && { echo "HDMI connected after resume, nothing to do"; exit 0; }
+          sleep 1
+        done
+        echo "HDMI still disconnected 15s after resume, forcing a re-probe"
+      fi
+
+      # The kernel reads the cached state; writing `detect` makes the driver
+      # probe the port again, and fires the hotplug the compositor missed.
+      for _ in $(seq 6); do
+        echo detect > "$status"
+        connected && break
+        sleep 5
+      done
+      if ! connected; then
+        echo "HDMI still disconnected after re-probing; is the TV unplugged?"
+        notify "terra: no TV on HDMI" 3 "HDMI-A-1 stayed disconnected after a forced re-probe ($mode). Nothing restarted."
+        exit 0
+      fi
+
+      if gaming; then
+        # The re-probe brings the picture back, but gamescope's output state
+        # comes back corrupted (smeared/repeated regions, while its own
+        # screenshot is clean). Only a fresh gamescope clears it. Restarting
+        # the unit is refused (RefuseManualStart); SIGTERM ends the session
+        # and SDDM's Relogin=true starts a new one.
+        echo "restarting the Gaming Mode session"
+        systemctl --user -M "$user@" kill gamescope-session.service
+        for _ in $(seq 60); do
+          sleep 1
+          if gaming; then
+            echo "Gaming Mode is back"
+            notify "terra: display recovered" 2 "HDMI re-probed and Gaming Mode restarted ($mode)."
+            exit 0
+          fi
+        done
+        echo "Gaming Mode did not come back within 60s"
+        notify "terra: Gaming Mode did not come back" 4 "Killed gamescope-session to recover the display ($mode); no new session after 60s. Check journalctl -u display-manager."
+        exit 1
+      fi
+
+      # Desktop Mode: KWin takes the hotplug itself; cycling DPMS is what got
+      # a dark TV back there (2026-10-12). Harmless if the screen was fine.
+      if pgrep -u "$user" -f bin/plasmashell >/dev/null; then
+        echo "cycling DPMS in Desktop Mode"
+        runuser -u "$user" -- env XDG_RUNTIME_DIR="/run/user/$uid" WAYLAND_DISPLAY=wayland-0 \
+          DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus" \
+          sh -c 'kscreen-doctor --dpms off; sleep 5; kscreen-doctor --dpms on' || true
+      fi
+      notify "terra: display recovered" 2 "HDMI re-probed ($mode)."
+    '';
+  };
 in
 {
   # ---------------------------------------------------------------------------
@@ -286,6 +363,7 @@ in
   # and handles that file. In the app launcher, and on the desktop (Plasma
   # only shows a ~/Desktop launcher that is executable — hence the flag).
   environment.systemPackages = [
+    displayRecover # see "Display recovery"
     (pkgs.makeDesktopItem {
       name = "return-to-gaming-mode";
       desktopName = "Return to Gaming Mode";
@@ -473,6 +551,35 @@ in
     serviceConfig = {
       Restart = "always";
       RestartSec = 5;
+    };
+  };
+
+  # ---------------------------------------------------------------------------
+  # Display recovery
+  # ---------------------------------------------------------------------------
+  #
+  # On 2026-10-12 terra resumed with HDMI-A-1 reading `disconnected` — the
+  # driver checked the port before the TV answered and never looked again —
+  # so gamescope had no output and the TV stayed black (`cannot find any
+  # connected connector!`). In every other resume in the journal gamescope saw
+  # the TV within a second, TV on or in standby. Writing `detect` to the
+  # connector got the picture back, but corrupted, and nothing short of a
+  # fresh gamescope cleared that (composite_force, a TV input switch and HDR
+  # off all did not).
+  #
+  # So after every resume, terra-display-recover waits 15s for the connector,
+  # and only if it never appears re-probes it and restarts the Gaming Mode
+  # session (quitting Steam — the screen is black anyway). Each recovery
+  # pushes to ntfy so how often this happens is on record. By hand, for a
+  # dark or garbled TV without a resume: `sudo terra-display-recover now`.
+  systemd.services.terra-display-resume-check = {
+    description = "Recover the TV if HDMI was lost across resume";
+    wantedBy = [ "suspend.target" ];
+    after = [ "suspend.target" ];
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = "${displayRecover}/bin/terra-display-recover resume";
+      TimeoutStartSec = "3min";
     };
   };
 
