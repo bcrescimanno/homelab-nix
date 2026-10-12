@@ -247,6 +247,19 @@ in
 
   services.desktopManager.plasma6.enable = true;
 
+  # No DrKonqi. Its coredump processor runs for every systemd-coredump and
+  # hands the dump to a per-user launcher; on terra that launcher itself
+  # aborts, which is a new coredump, which starts the processor again — a
+  # self-feeding loop at ~2 dumps/s from 2026-10-09 (set off by a burst of
+  # RetroArch crashes) until this landed: 5,221 dumps in three days. A crash
+  # dialog is useless on a console anyway; coredumpctl still has every dump.
+  # Masked rather than excluded: the plasma6 module adds the unit through
+  # systemd.packages unconditionally, the package carries its own
+  # systemd-coredump@.service.wants link, and excludePackages left drkonqi in
+  # the profile anyway (other Plasma packages pull it in). The binaries stay;
+  # nothing starts them.
+  systemd.services."drkonqi-coredump-processor@".enable = false;
+
   # brian has no password (users.mutableUsers = false, keys only), so a Plasma
   # lock screen would be a lock nobody can open. Gaming Mode never locks.
   environment.etc."xdg/kscreenlockerrc".text = ''
