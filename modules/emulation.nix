@@ -625,11 +625,20 @@ in
   # NAS, outside terra's restic backup — an emulator that tries to save next
   # to the game gets a write error instead.
   #
-  # Only mounted while something uses it (automount, 10-minute idle unmount),
-  # which matters because erebor's NFS is `hard`: a reader blocks for as long
-  # as erebor is gone, and terra suspends nightly while erebor powers off on
-  # UPS battery. mount-timeout bounds the wait when erebor is already away —
-  # ES-DE then shows the system empty rather than hanging at startup.
+  # `soft`, unlike every other erebor mount here. The default `hard` makes a
+  # reader block for as long as erebor is gone, and erebor powers off on UPS
+  # battery while terra may be up. soft's usual danger is a timed-out WRITE
+  # corrupting data, and this mount takes no writes — the worst case is an
+  # emulator getting a read error after a couple of minutes (timeo=150 is
+  # 15s, and over TCP each of the 3 retries waits 15s longer than the last).
+  #
+  # The idle timeout does NOT keep it unmounted in practice, probably because
+  # Steam's and ES-DE's bwrap sandboxes each hold a copy of the mount in their
+  # own namespace; with them running it never expired (seen 2026-10-11:
+  # mounted 16:54, still up 21 idle minutes later, no unmount attempted). So
+  # in Gaming Mode assume it stays mounted, through suspend too — `soft` is
+  # what makes that safe, not the idle timeout. mount-timeout bounds the wait
+  # when erebor is already away: ES-DE shows the system empty, no hang.
   #
   # Only the games/ subdirectory is mounted, never the whole media share. The
   # media export's client list in the UniFi console must include terra
@@ -639,7 +648,7 @@ in
     device = "erebor.theshire.io:/var/nfs/shared/media/games";
     fsType = "nfs";
     options = [
-      "ro" "_netdev" "nofail" "noauto"
+      "ro" "soft" "timeo=150" "retrans=3" "_netdev" "nofail" "noauto"
       "x-systemd.automount" "x-systemd.idle-timeout=600" "x-systemd.mount-timeout=30s"
     ];
   };
