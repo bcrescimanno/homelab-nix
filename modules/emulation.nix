@@ -59,12 +59,17 @@
 #                needs no filename configured.
 #   Sega CD      bios_CD_U.bin, bios_CD_E.bin, bios_CD_J.bin
 #   PCE-CD/TG-CD syscard3.pce
-#   Saturn       sega_101.bin (JP), mpr-17933.bin (US/EU)
+#   Saturn       sega_101.bin (JP), mpr-17933.bin (US/EU) — REQUIRED: Beetle
+#                Saturn has no HLE BIOS, and a game boots on its own region's
 #   Dreamcast    dc/dc_boot.bin, dc/dc_flash.bin (optional — Flycast falls
 #                back to its HLE BIOS)
+#                Saturn/Dreamcast multi-disc games are Game.m3u/ folders, as
+#                for GameCube below; both cores swap discs from the playlist.
 #   Neo Geo      neogeo.zip, next to the games in ~/ROMs/neogeo (FinalBurn Neo
 #                looks there first)
-#   Neo Geo CD   neocd/ (neocd_z.rom or one of the other BIOS sets NeoCD lists)
+#   Neo Geo CD   neocd/ — REQUIRED: one BIOS image (neocd_z.rom, top-sp1.bin,
+#                uni-bioscd.rom or another NeoCD lists) AND the Y-ZOOM ROM
+#                (ng-lo.rom or MAME's 000-lo.lo)
 #   GBA          gba_bios.bin (optional)
 #   GameCube     nothing to supply: Dolphin boots games without the IPL and
 #                ships free replacement fonts and DSP ROMs in its own Sys/GC.
@@ -287,7 +292,7 @@ let
         "(Steam → Add a Game → Add a Non-Steam Game)."])
     os.execv("${es-de}/bin/es-de", ["es-de"])
   '';
-  nasSystems = [ "pcenginecd" "gc" ];
+  nasSystems = [ "pcenginecd" "gc" "dreamcast" "saturn" "neogeocd" ];
 
   es-de = pkgs.callPackage ../pkgs/es-de.nix { };
 
