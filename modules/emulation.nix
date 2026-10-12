@@ -15,6 +15,8 @@
 # NOT in Nix, restored from erebor's backups share (terra/) 2026-10-09:
 # ~/ROMs and ~/ES-DE (settings, gamelists, 19 GB of scraped media, themes,
 # BIOS). Saves are backed up from here on — see "Backups" at the bottom.
+# Disc-based systems move to erebor one at a time — see "ROM library on
+# erebor".
 #
 # ---------------------------------------------------------------------------
 # Systems and their emulators
@@ -192,6 +194,11 @@
 let
   home = "/home/brian";
   bios = "${home}/ES-DE/bios";
+
+  # Systems whose games live on erebor rather than the SSD — see "ROM library
+  # on erebor" below. Add a system only once its games are on the share.
+  romShare = "/mnt/games";
+  nasSystems = [ "pcenginecd" ];
 
   es-de = pkgs.callPackage ../pkgs/es-de.nix { };
 
@@ -583,7 +590,9 @@ in
       # with the other BIOS files, where it is backed up.
       ".local/share/Cemu/keys.txt".source =
         config.lib.file.mkOutOfStoreSymlink "${bios}/wiiu/keys.txt";
-    };
+    } // lib.listToAttrs (map (system: lib.nameValuePair "ROMs/${system}" {
+      source = config.lib.file.mkOutOfStoreSymlink "${romShare}/${system}";
+    }) nasSystems);
 
     # restic fails a run on a path that does not exist, and most of these
     # appear only once an emulator first starts. Directories only, created as
@@ -595,6 +604,59 @@ in
   };
 
   system.checks = [ retroarchCoreOptionsCheck esdeCheck ];
+
+  # ---------------------------------------------------------------------------
+  # ROM library on erebor
+  # ---------------------------------------------------------------------------
+  #
+  # The bulk of the disc-based library lives in games/ on erebor's media
+  # share; cartridge systems, ~/ES-DE (gamelists, scraped media) and every
+  # save stay on the SSD. Each system in nasSystems becomes a symlink
+  # ~/ROMs/<system> → /mnt/games/<system>, so ES-DE's paths do not change.
+  # games/reports/ (retool's 1G1R output) is on the share too and is never
+  # linked.
+  #
+  # Moving a system: copy it to games/<system>, verify, add it to nasSystems
+  # and deploy. home-manager's backupFileExtension moves the old local folder
+  # to ~/ROMs/<system>.backup instead of failing or deleting it; delete that
+  # by hand once the game list looks right.
+  #
+  # Mounted read-only on purpose: nothing an emulator writes may land on the
+  # NAS, outside terra's restic backup — an emulator that tries to save next
+  # to the game gets a write error instead.
+  #
+  # `soft`, unlike every other erebor mount here. The default `hard` makes a
+  # reader block for as long as erebor is gone, and erebor powers off on UPS
+  # battery while terra may be up. soft's usual danger is a timed-out WRITE
+  # corrupting data, and this mount takes no writes — the worst case is an
+  # emulator getting a read error after a couple of minutes (timeo=150 is
+  # 15s, and over TCP each of the 3 retries waits 15s longer than the last).
+  #
+  # The idle timeout does NOT keep it unmounted in practice, probably because
+  # Steam's and ES-DE's bwrap sandboxes each hold a copy of the mount in their
+  # own namespace; with them running it never expired (seen 2026-10-11:
+  # mounted 16:54, still up 21 idle minutes later, no unmount attempted). So
+  # in Gaming Mode assume it stays mounted, through suspend too — `soft` is
+  # what makes that safe, not the idle timeout. mount-timeout bounds the wait
+  # when erebor is already away: ES-DE shows the system empty, no hang.
+  #
+  # Only the games/ subdirectory is mounted, never the whole media share. The
+  # media export's client list in the UniFi console must include terra
+  # (10.0.1.215); the backups export having it does not carry over.
+  boot.supportedFilesystems = [ "nfs" ];
+  fileSystems.${romShare} = {
+    device = "erebor.theshire.io:/var/nfs/shared/media/games";
+    fsType = "nfs";
+    options = [
+      "ro" "soft" "timeo=150" "retrans=3" "_netdev" "nofail" "noauto"
+      "x-systemd.automount" "x-systemd.idle-timeout=600" "x-systemd.mount-timeout=30s"
+    ];
+  };
+
+  assertions = map (system: {
+    assertion = lib.elem system esdeSystems;
+    message = "emulation.nix: nasSystems entry ${system} is not in esdeSystems";
+  }) nasSystems;
 
   # ---------------------------------------------------------------------------
   # Backups
