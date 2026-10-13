@@ -4,6 +4,7 @@ keys:
   - &mirkwood age1wgxr6uc3hh52kh7pfju9hyxdvrn45dcqs705zdplvzpduxknnp9s3085tg
   - &orthanc age170fgg0z30vu0as5q08eawyy0n30k6lnswq7ufe9zutfzwftxfs5s0dsvvu
   - &terra age1lxtggudpt3j3273ptex3xcl5xmfzsgmsyc4778axqn00x98404hselhpkt
+  - &celes age1586w2hnd9qq7mhf6ccvh99wjyw7zv9f2cwkz6w6dry5ntp6ph3gsrjnxgj
   # Admin recipients. liquidark is the working key; backup's private half is
   # held off-machine (Bitwarden), so losing liquidark never strands a secret.
   - &liquidark age1tl6nxc9gl080x7vxy8l9mc5eps0sp33rwdlylt2uvhkuy6l6hvsqmcx0av
@@ -38,5 +39,11 @@ creation_rules:
     key_groups:
       - age:
         - *terra
+        - *liquidark
+        - *backup
+  - path_regex: secrets/celes.yaml$
+    key_groups:
+      - age:
+        - *celes
         - *liquidark
         - *backup

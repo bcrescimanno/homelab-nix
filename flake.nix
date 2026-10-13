@@ -334,6 +334,27 @@
         specialArgs = { inherit inputs r2AccountId brianSshKey; };
       };
 
+      # Brian's laptop (Zephyrus G14 2024). A desktop, like terra: base.nix for
+      # users/SSH/upgrades/tailnet, no monitoring, NUT or backups — see
+      # hosts/celes.nix.
+      celes = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = [
+          disko.nixosModules.disko
+          sops-nix.nixosModules.sops
+          home-manager.nixosModules.home-manager
+          {
+            nixpkgs.overlays = commonOverlays;
+            home-manager.useGlobalPkgs = true;
+            home-manager.useUserPackages = true;
+            home-manager.backupFileExtension = "backup";
+          }
+          ./modules/base.nix
+          ./hosts/celes.nix
+        ];
+        specialArgs = { inherit inputs r2AccountId brianSshKey; };
+      };
+
       # Custom installer ISO for orthanc (x86_64).
       # Build: nix build .#nixosConfigurations.orthanc-installer.config.system.build.isoImage
       # Write:  sudo dd if=result/iso/*.iso of=/dev/sdX bs=4M status=progress oflag=sync
@@ -412,6 +433,20 @@
           autoRollback  = true;
           fastConnection = true;
           path          = activateX86 self.nixosConfigurations.terra;
+        };
+      };
+      # Same shape again. Single-host only in scripts/deploy: a laptop is
+      # asleep or away more often than not.
+      celes = {
+        hostname = "celes.home.theshire.io";
+        profiles.system = {
+          sshUser       = "brian";
+          user          = "root";
+          remoteBuild   = false;
+          magicRollback = true;
+          autoRollback  = true;
+          fastConnection = true;
+          path          = activateX86 self.nixosConfigurations.celes;
         };
       };
     };

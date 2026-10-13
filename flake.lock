@@ -84,11 +84,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1791645225,
-        "narHash": "sha256-GdGRy3zmDJLWJIteY98sc5L+2eaUFF5mNAuStC50hC8=",
+        "lastModified": 1791928747,
+        "narHash": "sha256-Y3wu+mxzk1jvllkIluz3lvaWPBTT7WuqkwAGZWquT6M=",
         "owner": "bcrescimanno",
         "repo": "dotfiles",
-        "rev": "a6b4b1929bf7bd75c5ab903ef3fedb3a5bae6256",
+        "rev": "78cee9a41b9bd4b9e583aa25cd23d5b418b64371",
         "type": "github"
       },
       "original": {
