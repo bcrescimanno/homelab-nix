@@ -68,7 +68,8 @@ let
     exit 1
   '';
 
-  # Gets the picture back on the TV — see "Display recovery". `resume` (the
+  # Gets the picture back on the TV — see "Display recovery", and log every
+  # occurrence in hosts/terra-display-glitches.md. `resume` (the
   # post-resume unit) acts only if the HDMI connector stayed disconnected
   # after waking; `now` (by hand: `sudo terra-display-recover now`) always
   # re-probes and restarts whichever session is up.
