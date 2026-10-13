@@ -216,7 +216,7 @@
 # Steam Input gyro, shake and tilt on spare buttons), often per game. Those
 # profiles are backed up.
 
-{ config, pkgs, lib, ... }:
+{ config, pkgs, lib, utils, ... }:
 
 let
   home = "/home/brian";
@@ -803,6 +803,22 @@ in
       "ro" "soft" "timeo=150" "retrans=3" "_netdev" "nofail" "noauto"
       "x-systemd.automount" "x-systemd.idle-timeout=600" "x-systemd.mount-timeout=30s"
     ];
+  };
+
+  # No start limit on the mount. At boot home-manager's activation stats every
+  # ~/ROMs/<nasSystem> link, each stat is an automount request, and NM reaches
+  # network-online on IPv6 SLAAC alone, ~2s before DHCPv4 — so each attempt
+  # fails "Network is unreachable" (erebor is v4) in the same second. With five
+  # NAS systems that hit the default 5-in-10s limit and the automount gave up
+  # for the whole boot (2026-10-12: every NAS system missing from ES-DE until
+  # `systemctl reset-failed`). Unlimited, a failed attempt just leaves the
+  # automount armed and the next access — ES-DE, minutes later — mounts.
+  systemd.units."${utils.escapeSystemdPath romShare}.mount" = {
+    overrideStrategy = "asDropin";
+    text = ''
+      [Unit]
+      StartLimitIntervalSec=0
+    '';
   };
 
   assertions = map (system: {
