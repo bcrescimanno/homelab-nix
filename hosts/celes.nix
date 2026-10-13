@@ -18,57 +18,10 @@
 # nvidia-open 615.71.09).
 #
 # ---------------------------------------------------------------------------
-# Initial installation: nixos-anywhere from a NixOS USB stick. This WIPES the
-# disk named in disko.devices below; celes has only the one.
-#
-# NOT terra's recipe. nixos-anywhere normally kexecs into an in-RAM installer,
-# and that installer has no Wi-Fi ("nixos-anywhere does not support wifi
-# networks", docs/requirements.md). The G14 has no Ethernet port. So boot a
-# real installer ISO, join Wi-Fi there, and point nixos-anywhere at it. It
-# sees VARIANT_ID=installer in /etc/os-release and skips the kexec on its own.
-#
-#   # The host's age key was generated when this config was written and lives
-#   # in an --extra-files tree on liquidark, already at its target path:
-#   #   ~/.local/share/celes-install/var/lib/sops-nix/key.txt
-#   # Its public half is &celes in .sops.yaml. brian_password_hash in
-#   # secrets/celes.yaml must be a real hash (mkpasswd -m yescrypt), or
-#   # activation fails and nothing can log in at the console.
-#   # Keep var/ and var/lib/ in the tree at 0755: --extra-files copies modes
-#   # as they are (tar -p), so a 0700 there becomes /var/lib's mode on celes.
-#
-#   # 1. Still on Arch: carry over the Wi-Fi profiles and Bluetooth pairings.
-#   #    Arch's sudo wants a password, so -t; a tty mangles binary, so the tar
-#   #    goes through a file. Both copies hold the Wi-Fi PSK, so delete them.
-#   #    nixos-anywhere lands them root-owned (--no-same-owner) with modes
-#   #    intact, which NetworkManager requires (it ignores non-root profiles).
-#   ssh -t brian@celes 'sudo tar -C / -cf /tmp/carry.tar etc/NetworkManager/system-connections var/lib/bluetooth && sudo chown brian /tmp/carry.tar'
-#   scp brian@celes:/tmp/carry.tar /tmp/ \
-#     && tar -C ~/.local/share/celes-install -xpf /tmp/carry.tar \
-#     && rm /tmp/carry.tar && ssh brian@celes rm /tmp/carry.tar
-#
-#   # 2. Copy ~ off the laptop: nothing in /home survives.
-#
-#   # 3. Boot the stick: any current NixOS ISO, minimal or graphical. Esc at
-#   #    power-on opens the boot menu (F2 is BIOS setup); Secure Boot is
-#   #    already off. Every installer ISO runs NetworkManager and sshd, and
-#   #    user nixos has passwordless sudo.
-#   #    At its console:
-#   nmtui                                   # join noctropolis
-#   mkdir -p ~/.ssh && curl -s https://github.com/bcrescimanno.keys > ~/.ssh/authorized_keys
-#   ip -br addr show wlp3s0                 # note the address
-#
-#   # 4. From liquidark. The address is the installer's DHCP lease, not
-#   #    celes.home.theshire.io: the installer has a different hostname.
-#   nix run github:nix-community/nixos-anywhere -- \
-#     --flake .#celes \
-#     --extra-files ~/.local/share/celes-install \
-#     nixos@<ip>
-#
-#   # 5. After first boot: `nmcli connection show --active` shows
-#   #    noctropolis, `bluetoothctl devices Paired` lists the old pairings.
-#   #    Then delete ~/.local/share/celes-install: it holds the host key and the
-#   #    Wi-Fi PSK. The new host key differs from Arch's, so drop the old
-#   #    entry with `ssh-keygen -R celes` (and the FQDN and IP).
+# Installation is a checklist in hosts/celes-install.md: nixos-anywhere from
+# a NixOS USB stick, not terra's kexec recipe (the kexec installer has no
+# Wi-Fi, and the G14 has no Ethernet port), plus the Wi-Fi/Bluetooth
+# carry-over and the first-boot checks.
 # ---------------------------------------------------------------------------
 
 { config, pkgs, lib, inputs, ... }:
