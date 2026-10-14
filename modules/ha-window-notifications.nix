@@ -10,6 +10,12 @@
 #   3. If today's forecast high is below 75°F, 1 and 2 are suppressed entirely
 #      and a single 08:00 notification says "Today is a windows open day!"
 #
+# Rule 3's verdict is published as binary_sensor.windows_open_day so that
+# nothing else contradicts it: modules/ha-hvac-openings.nix reads it to hold
+# back its warm-side "Close up the house" reminder, which fires above 72°F and
+# so used to nag four times on 2026-10-13, an announced open day that peaked
+# at 73.2°F.
+#
 # "Peaked" is binary_sensor.outdoor_past_peak, judged from the measured
 # temperature curve — see the comment on it. Until 2026-10-11 rules 1 and 2
 # were gated on clock windows instead (before 12:00 / 16:00–21:00), which were
@@ -311,12 +317,12 @@ let
   # errors and RE-RAISES rather than treating the inner check as false. An
   # unavailable forecast sensor would therefore have blocked both temperature
   # automations outright — silence, not degradation. The `float(999)` default
-  # makes the intended behaviour real: no forecast reading → not an open day →
-  # the temperature rules still run.
+  # in binary_sensor.windows_open_day, plus `not is_state(…, 'on')` here, make
+  # the intended behaviour real: no forecast reading → not an open day → the
+  # temperature rules still run.
   notAnOpenDay = {
     condition = "template";
-    value_template =
-      "{{ states('sensor.forecast_high_today') | float(999) >= ${toString openAllDayBelowF} }}";
+    value_template = "{{ not is_state('binary_sensor.windows_open_day', 'on') }}";
   };
 
   # "The house is not already <state>" — passes when at least one opening is
@@ -479,6 +485,24 @@ let
         }];
       }
 
+      # Is today a windows-open day? The one place that is decided: the 08:00
+      # announcement, notAnOpenDay, and the HVAC module's close reminder all
+      # read this entity rather than re-deriving it from the forecast.
+      #
+      # It follows the forecast latch, so it can turn off mid-day (a day
+      # forecast at 74 that really reaches 75 stops being an open day and gets
+      # its close prompts back) but never back on. `float(999)`: no forecast
+      # reading → off → every prompt and reminder still runs, the same
+      # failure direction as notAnOpenDay always had.
+      {
+        binary_sensor = [{
+          name = "Windows Open Day";
+          unique_id = "homelab_windows_open_day";
+          state =
+            "{{ states('sensor.forecast_high_today') | float(999) < ${toString openAllDayBelowF} }}";
+        }];
+      }
+
       # Today's MEASURED high: the running maximum of sensor.outdoor_temperature
       # since local midnight, with the time it was reached. Deliberately
       # separate from forecast_high_today above, which folds met.no's forecast
@@ -583,9 +607,9 @@ let
         mode = "single";
         triggers = [{ trigger = "time"; at = openDayAnnouncementAt; }];
         conditions = [{
-          condition = "numeric_state";
-          entity_id = "sensor.forecast_high_today";
-          below = openAllDayBelowF;
+          condition = "state";
+          entity_id = "binary_sensor.windows_open_day";
+          state = "on";
         }];
         actions = notify "Windows open day"
           "Today is a windows open day! Forecast high {{ states('sensor.forecast_high_today') }}°F.";

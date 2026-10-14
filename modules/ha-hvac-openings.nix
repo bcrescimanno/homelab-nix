@@ -13,6 +13,12 @@
 #      30+ min → push "close it" to the household, naming what is open.
 #      Repeats every 30 min while both hold. Independent of the thermostat:
 #      it fires whether or not the HVAC is paused or was overridden by hand.
+#      EXCEPT on a windows-open day (binary_sensor.windows_open_day, from
+#      ha-window-notifications.nix): there the warm side is silenced, because
+#      the house has been told to open up and a 72–74°F afternoon is the point,
+#      not a reason to close. The cold side (below 40°F) still fires. If the
+#      day turns out warmer than forecast (75+), that sensor turns off and the
+#      reminder comes back on the next 5-min tick.
 #
 # Rules 1–3 are unchanged by adding sensors: "any" and "all" are over the whole
 # `openings` set, and a manual override is only undone by a NEW opening
@@ -140,12 +146,16 @@ let
   # "Should be closed" reminder: outdoor temperature outside [comfortLowF,
   # comfortHighF] (inclusive) and an opening open for closeAfter. Repeats every
   # remindEvery while both stay true. Deliberately NOT tied to the window prompts'
-  # 66/72 in ha-window-notifications.nix — different question, different numbers.
+  # 68/72 in ha-window-notifications.nix — different question, different numbers.
+  # It does defer to that module's open-day verdict on the warm side (rule 5).
   outdoorTemp = "sensor.outdoor_temperature";
   comfortLowF = 40;
   comfortHighF = 72;
   closeAfter = { minutes = 30; };
   remindEvery = { minutes = 30; };
+  # Declared in ha-window-notifications.nix; on when today's forecast high is
+  # under that module's open-all-day threshold.
+  openDay = "binary_sensor.windows_open_day";
 
   # Household phones. Same targets as modules/ha-window-notifications.nix; read
   # the husk-registration comment there before re-pointing either.
@@ -178,10 +188,13 @@ let
   anyOpenFor = minSeconds: collectOpen minSeconds + "{{ ns.out | length > 0 }}";
 
   # Jinja: true when the outdoor temperature is outside the comfort range OR
-  # unknown — an unavailable sensor must not silence the reminder.
+  # unknown — an unavailable sensor must not silence the reminder. Too warm
+  # does not count on a windows-open day; only an explicit `on` silences it, so
+  # an unavailable open-day sensor leaves the reminder armed.
   outOfRange = ''
     {%- set t = states('${outdoorTemp}') | float(none) -%}
-    {{ t is none or t < ${toString comfortLowF} or t > ${toString comfortHighF} }}'';
+    {%- set open_day = is_state('${openDay}', 'on') -%}
+    {{ t is none or t < ${toString comfortLowF} or (t > ${toString comfortHighF} and not open_day) }}'';
 
   onStart = [{ trigger = "homeassistant"; event = "start"; id = "ha_start"; }];
   ifStartedWaitThen = extra: {
