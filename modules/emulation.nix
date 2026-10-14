@@ -292,7 +292,7 @@ let
         "(Steam → Add a Game → Add a Non-Steam Game)."])
     os.execv("${es-de}/bin/es-de", ["es-de"])
   '';
-  nasSystems = [ "pcenginecd" "gc" "dreamcast" "saturn" "neogeocd" ];
+  nasSystems = [ "pcenginecd" "gc" "dreamcast" "saturn" "neogeocd" "psx" "psp" ];
 
   es-de = pkgs.callPackage ../pkgs/es-de.nix { };
 
