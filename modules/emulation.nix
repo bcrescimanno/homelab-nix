@@ -56,7 +56,9 @@
 #                and SwanStation do not search subfolders)
 #   PS2          any PS2 BIOS dump, any name, top level. PCSX2 scans the
 #                folder for a 4–8 MB image that passes its BIOS check, so it
-#                needs no filename configured.
+#                needs no filename configured. Multi-disc games are
+#                Game.m3u/ folders too, but PCSX2 boots disc 1 and swaps from
+#                its pause menu — see the pcsx2 wrapper below.
 #   Sega CD      bios_CD_U.bin, bios_CD_E.bin, bios_CD_J.bin
 #   PCE-CD/TG-CD syscard3.pce
 #   Saturn       sega_101.bin (JP), mpr-17933.bin (US/EU) — REQUIRED: Beetle
@@ -292,7 +294,7 @@ let
         "(Steam → Add a Game → Add a Non-Steam Game)."])
     os.execv("${es-de}/bin/es-de", ["es-de"])
   '';
-  nasSystems = [ "pcenginecd" "gc" "dreamcast" "saturn" "neogeocd" "psx" "psp" ];
+  nasSystems = [ "pcenginecd" "gc" "dreamcast" "saturn" "neogeocd" "psx" "psp" "ps2" ];
 
   es-de = pkgs.callPackage ../pkgs/es-de.nix { };
 
@@ -400,7 +402,7 @@ let
   # The package with each of `bins` wrapped to merge `spec` into its config
   # first. `aliases` are other names for a wrapped binary (Cemu ships `cemu`
   # as a symlink to `Cemu`), re-pointed so they cannot bypass the wrapper.
-  configured = { pkg, bins, aliases ? { }, spec }:
+  configured = { pkg, bins, aliases ? { }, spec, launch ? bin: "${pkg}/bin/${bin}" }:
     let specFile = pkgs.writeText "${pkg.pname}-config.json" (builtins.toJSON spec);
     in pkgs.symlinkJoin {
       name = "${pkg.pname}-configured-${pkg.version}";
@@ -408,7 +410,7 @@ let
       nativeBuildInputs = [ pkgs.makeWrapper ];
       postBuild = lib.concatMapStrings (bin: ''
         rm "$out/bin/${bin}"
-        makeWrapper ${pkg}/bin/${bin} "$out/bin/${bin}" --run "${configMerge} ${specFile}"
+        makeWrapper ${launch bin} "$out/bin/${bin}" --run "${configMerge} ${specFile}"
       '') bins
       + lib.concatStrings (lib.mapAttrsToList (alias: target: ''
         ln -sfn ${target} "$out/bin/${alias}"
@@ -416,9 +418,27 @@ let
       inherit (pkg) meta;
     };
 
+  # PCSX2 cannot open an .m3u (2.8.2 has no playlist support at all), and
+  # multi-disc PS2 games are Game.m3u/ folders like every other disc system,
+  # so ES-DE hands it the playlist. Boot the first disc the playlist names
+  # instead; a later disc is swapped in from PCSX2's pause menu (Change Disc).
   pcsx2 = configured {
     pkg = pkgs.pcsx2;
     bins = [ "pcsx2-qt" ];
+    launch = bin: pkgs.writeShellScript "pcsx2-first-disc" ''
+      args=("$@")
+      last=''${!#}
+      if (( $# )) && [[ ''${last,,} == *.m3u && -f $last ]]; then
+        while IFS= read -r disc || [[ -n $disc ]]; do
+          disc=''${disc%$'\r'}
+          [[ -z $disc || $disc == \#* ]] && continue
+          [[ $disc == /* ]] || disc=''${last%/*}/$disc
+          args[-1]=$disc
+          break
+        done < "$last"
+      fi
+      exec ${pkgs.pcsx2}/bin/${bin} "''${args[@]}"
+    '';
     spec = [{
       format = "ini";
       path = "${home}/.config/PCSX2/inis/PCSX2.ini";
