@@ -63,7 +63,7 @@
 # reason: these hosts are already ON 10.0.1.0/24 and must not learn it a second
 # time through the tunnel.
 
-{ config, ... }:
+{ config, lib, ... }:
 
 let
   # The main LAN. Deliberately NOT the IoT VLAN (10.0.12.0/22): rivendell's
@@ -158,9 +158,17 @@ in
   #
   # After=, not Requires=: if wait-online ever times out, tailscaled still
   # starts, just as it did before.
+  #
+  # Restart = always, because tailscaled can shut ITSELF down with exit 0 and
+  # upstream's on-failure policy does not restart a clean exit. On 2026-10-21
+  # rivendell's daemon hit "Failed to read packet from TUN device: … no buffer
+  # space available", closed its engine, ran --cleanup and exited 0
+  # (NRestarts=0). It stayed down for 1h20m and took the subnet route with it,
+  # until someone started it by hand.
   systemd.services.tailscaled = {
     after = [ "network-online.target" ];
     wants = [ "network-online.target" ];
+    serviceConfig.Restart = lib.mkForce "always";
   };
 
   # Belt and braces for a power-restore cold start, where the DNS servers on
