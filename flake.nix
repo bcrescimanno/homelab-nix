@@ -149,10 +149,12 @@
       #   fix: nixpkgs #576939.
       # - urllib3-future 2.25.902 (caldav → daily digest, niquests,
       #   music-assistant): the socks tests are incompatible with python-socks
-      #   v3 (jawah/urllib3.future#437). Upstream fix: nixpkgs #575392, which
-      #   skips exactly these two paths.
-      # Droppable once those land. disabledTestPaths entries that no longer
-      # matter are inert rather than build-breaking, so these do not have to
+      #   v3 (jawah/urllib3.future#437). Upstream fix: nixpkgs #575392. We skip
+      #   the WHOLE suite, not just those two paths: on rivendell its pytest
+      #   climbs past 3.8 GB RSS (87s on x86_64) and sat for 34 min throttled
+      #   at nix-daemon's memory limit on 2026-10-21. Hence probe = "cache".
+      # Droppable once those land. Neither override is a --replace-fail, so
+      # neither breaks the build once redundant, and these do not have to
       # ride with the lock bump that fixes them.
       testSkipOverlay = final: prev: {
         pythonPackagesExtensions = prev.pythonPackagesExtensions ++ [
@@ -160,12 +162,7 @@
             elgato = pyPrev.elgato.overridePythonAttrs (old: {
               disabledTestPaths = (old.disabledTestPaths or [ ]) ++ [ "tests/cli/test_cli.py" ];
             });
-            urllib3-future = pyPrev.urllib3-future.overridePythonAttrs (old: {
-              disabledTestPaths = (old.disabledTestPaths or [ ]) ++ [
-                "test/contrib/asynchronous/test_socks.py"
-                "test/contrib/test_socks.py"
-              ];
-            });
+            urllib3-future = pyPrev.urllib3-future.overridePythonAttrs { doCheck = false; };
           })
         ];
       };
@@ -239,8 +236,8 @@
         "python3Packages.urllib3-future" = {
           arch = "any";
           flaky = false;
-          probe = "build";
-          note = "socks tests incompatible with python-socks v3; nixpkgs #575392; both socks test files skipped";
+          probe = "cache";
+          note = "socks tests incompatible with python-socks v3 (nixpkgs #575392); full suite >3.8 GB on a Pi; tests skipped";
         };
         music-assistant = {
           arch = "aarch64";
