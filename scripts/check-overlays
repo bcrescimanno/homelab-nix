@@ -103,8 +103,12 @@ for name in $names; do
   # single-trial bug this field exists to prevent.
   flaky="$(nix eval --raw ".#overlayWorkarounds.\"${name}\".flaky" \
              --apply 'v: if v then "yes" else "no"' 2>/dev/null)"
-  if [[ -z "$want" || -z "$flaky" ]]; then
-    echo "  ${RED}✗${NC} ${name} — could not read its arch; treating as unprobed"
+  # Also mandatory. "cache" only asks whether the unpatched package can be
+  # substituted, for overlays that exist because Hydra has no aarch64 build.
+  # Building one of those here is the very thing the overlay prevents.
+  probe="$(nix eval --raw ".#overlayWorkarounds.\"${name}\".probe" 2>/dev/null)"
+  if [[ -z "$want" || -z "$flaky" || ( "$probe" != "build" && "$probe" != "cache" ) ]]; then
+    echo "  ${RED}✗${NC} ${name} — could not read its arch/flaky/probe; treating as unprobed"
     INCONCLUSIVE+=("$name (unreadable)")
     continue
   fi
@@ -127,6 +131,8 @@ for name in $names; do
   # variable and changes nothing about the build itself.
   runs=1
   [[ "$flaky" == "yes" ]] && runs="$ATTEMPTS"
+  build_opts=()
+  [[ "$probe" == "cache" ]] && build_opts=(--max-jobs 0)
 
   clean=0
   outcome=""
@@ -137,12 +143,12 @@ for name in $names; do
                 p = f.inputs.nixpkgs.legacyPackages.\${builtins.currentSystem};
             in p.${name}.overrideAttrs (o: { PROBE_NONCE = \"${attempt}\"; })"
     else
-      printf '  … %s (unpatched, up to %ss)\n' "$name" "$TIMEOUT"
+      printf '  … %s (unpatched, %s, up to %ss)\n' "$name" "$( [[ "$probe" == "cache" ]] && echo "substitute only" || echo "build" )" "$TIMEOUT"
       expr="let f = builtins.getFlake \"path:$REPO\";
             in f.inputs.nixpkgs.legacyPackages.\${builtins.currentSystem}.${name}"
     fi
 
-    if timeout "$TIMEOUT" nix build --no-link --impure --expr "$expr" >/dev/null 2>&1; then
+    if timeout "$TIMEOUT" nix build --no-link --impure "${build_opts[@]}" --expr "$expr" >/dev/null 2>&1; then
       clean=$((clean + 1))
     else
       rc=$?

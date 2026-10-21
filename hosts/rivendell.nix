@@ -356,8 +356,17 @@
   # Hard backstop: a runaway build gets OOM-killed inside this cgroup instead
   # of taking the host with it. A failed build is recoverable; a wedged
   # rivendell needs physical access.
+  #
+  # MemorySwapMax = 0 is what makes MemoryMax a backstop. MemoryMax caps only
+  # the cgroup's RAM. With swap left unlimited, a build pushed past MemoryHigh
+  # swaps instead of dying, and zram keeps the compressed pages in host RAM,
+  # where this cgroup is not charged for them. It is the 2026-07-31 failure
+  # by another route. On 2026-10-20 the lock PR's duckdb compile froze the host
+  # from 20:05 to 22:45 under exactly these limits: no OOM kill, no scrapes,
+  # journald 40 minutes behind, tailscaled and the UPS USB link both lost.
   systemd.services.nix-daemon.serviceConfig = {
     MemoryHigh = "3G";
     MemoryMax = "4G";
+    MemorySwapMax = "0";
   };
 }

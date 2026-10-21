@@ -121,8 +121,27 @@
         });
       };
 
+      # narwhals (scikit-learn → librosa → music-assistant, so rivendell) is
+      # not cached for aarch64 because its TEST inputs are not: duckdb has
+      # ended "Log limit exceeded" on every Hydra aarch64 build since
+      # 2026-09-28, the same GCC 16 failure as torchaudio above, and narwhals
+      # is reported the same way behind it. duckdb, ibis, sqlframe and sqlglot
+      # reach narwhals only through nativeCheckInputs, so skipping the tests
+      # drops all four from the build graph and changes nothing at runtime.
+      # Without this, rivendell compiles duckdb itself. On 2026-10-20 the
+      # lock PR's CI job did exactly that and froze the host from 20:05 to
+      # 22:45 (no scrapes, journald 40 min behind). tailscaled and the UPS USB
+      # link both failed in that stall. Droppable once Hydra caches narwhals.
+      narwhalsOverlay = final: prev: {
+        pythonPackagesExtensions = prev.pythonPackagesExtensions ++ [
+          (pyFinal: pyPrev: {
+            narwhals = pyPrev.narwhals.overridePythonAttrs { doCheck = false; };
+          })
+        ];
+      };
+
       commonOverlays = [ glancesOverlay ];
-      piOverlays = commonOverlays ++ [ torchaudioOverlay musicAssistantOverlay ];
+      piOverlays = commonOverlays ++ [ torchaudioOverlay narwhalsOverlay musicAssistantOverlay ];
 
       # Every overlay above is a workaround for an upstream bug, and every one
       # of their comments ends with some form of "remove once nixpkgs fixes it".
@@ -150,24 +169,41 @@
       # in a hundred.
       #
       # Marked entries must come back clean on every one of several forced
-      # rebuilds before the probe will call them droppable. Both fields are
-      # mandatory on every entry: an absent field would be read as a default,
-      # and a default that silently means "not flaky" is the failure mode this
-      # whole module exists to avoid.
+      # rebuilds before the probe will call them droppable.
+      #
+      # `probe` is what the probe does. "build" builds the package unpatched.
+      # "cache" asks only whether the unpatched package can be SUBSTITUTED
+      # (`--max-jobs 0`), for an overlay that works around a missing cache entry
+      # rather than a broken build. Building narwhals unpatched would compile
+      # duckdb on rivendell every week, which is the stall that overlay exists
+      # to prevent.
+      #
+      # All three fields are mandatory on every entry: an absent field would be
+      # read as a default, and a default that silently means "not flaky" is the
+      # failure mode this whole module exists to avoid.
       overlayWorkarounds = {
         glances = {
           arch = "aarch64";
           flaky = false;
+          probe = "build";
           note = "sandbox + network-dependent tests; psutil topology returns None on aarch64";
         };
         "python3Packages.torchaudio" = {
           arch = "aarch64";
           flaky = false;
+          probe = "build";
           note = "no Hydra cache since GCC 16 (log limit exceeded); local pytest OOMs rivendell; tests skipped";
+        };
+        "python3Packages.narwhals" = {
+          arch = "aarch64";
+          flaky = false;
+          probe = "cache";
+          note = "test-only duckdb has no Hydra aarch64 cache since GCC 16 (log limit exceeded); compiling it froze rivendell; tests skipped";
         };
         music-assistant = {
           arch = "aarch64";
           flaky = false;
+          probe = "build";
           note = "2 AirPlay pipe-stall tests assume 64 KiB pipes; Pi 5 16K pages give 256 KiB; only bites on a local build";
         };
       };
