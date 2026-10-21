@@ -296,10 +296,11 @@ in
     # authentication — anything that can reach 8191 gets a VPN-egressing
     # browser.
     #
-    # No memory limit, and that is not an oversight: pirateship's kernel has
-    # no memory cgroup controller (cgroup.controllers lacks `memory`), so
-    # `--memory` and MemoryMax are both inert there. v3 starts a browser per
-    # request and closes it afterwards, so idle cost is the Python process only.
+    # No memory limit. Until 2026-10-21 one would have been inert: the Pi
+    # firmware disabled the memory cgroup controller (see `cgroup_enable=memory`
+    # in flake.nix's piModules). It works after a reboot onto that cmdline, but
+    # none is needed: v3 starts a browser per request and closes it afterwards,
+    # so idle cost is the Python process only.
     #
     # Prowlarr side is UI state (its DB), set once: Settings → Indexers →
     # Indexer Proxies → FlareSolverr, Host http://localhost:8191/, tag

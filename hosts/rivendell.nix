@@ -364,6 +364,10 @@
   # by another route. On 2026-10-20 the lock PR's duckdb compile froze the host
   # from 20:05 to 22:45 under exactly these limits: no OOM kill, no scrapes,
   # journald 40 minutes behind, tailscaled and the UPS USB link both lost.
+  #
+  # None of these three is enforced unless the kernel has the memory
+  # controller, which the Pi firmware disables. See `cgroup_enable=memory` in
+  # flake.nix's piModules. Until a reboot onto that cmdline they are inert.
   systemd.services.nix-daemon.serviceConfig = {
     MemoryHigh = "3G";
     MemoryMax = "4G";

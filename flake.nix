@@ -263,6 +263,18 @@
           # them. See the input comment above for the measured justification.
           boot.kernelPackages =
             lib.mkForce inputs.nixos-raspberrypi-cached.packages.aarch64-linux.linuxPackages_rpi5;
+
+          # The Pi firmware puts `cgroup_disable=memory` on the kernel command
+          # line from the device tree, ahead of cmdline.txt, so it shows in
+          # /proc/cmdline but nowhere in this repo. Without the memory
+          # controller every MemoryMax/MemoryHigh/MemorySwapMax and podman
+          # `--memory` on a Pi is silently ignored. That is why rivendell's
+          # nix-daemon caps never contained a build: on 2026-07-31, in the
+          # torchaudio OOM, and in the 2026-10-20 duckdb freeze. The RPi
+          # kernel's cgroup_enable= handler runs after the firmware's disable
+          # and turns the controller back on. Takes effect at the next reboot.
+          # Verify with `grep memory /sys/fs/cgroup/cgroup.controllers`.
+          boot.kernelParams = [ "cgroup_enable=memory" ];
         })
         disko.nixosModules.disko
         sops-nix.nixosModules.sops
