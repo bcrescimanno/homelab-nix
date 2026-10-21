@@ -358,14 +358,23 @@
   # rivendell needs physical access.
   #
   # MemorySwapMax = 0 is what makes MemoryMax a backstop. MemoryMax caps only
-  # the cgroup's RAM. With swap left unlimited, a build pushed past MemoryHigh
+  # the cgroup's RAM. With swap left unlimited, a build pushed past its limit
   # swaps instead of dying, and zram keeps the compressed pages in host RAM,
   # where this cgroup is not charged for them. It is the 2026-07-31 failure
   # by another route. On 2026-10-20 the lock PR's duckdb compile froze the host
   # from 20:05 to 22:45 under exactly these limits: no OOM kill, no scrapes,
   # journald 40 minutes behind, tailscaled and the UPS USB link both lost.
+  #
+  # Neither limit is enforced unless the kernel has the memory
+  # controller, which the Pi firmware disables. See `cgroup_enable=memory` in
+  # flake.nix's piModules. Until a reboot onto that cmdline they are inert.
+  #
+  # No MemoryHigh. Once the controller worked (2026-10-21), MemoryHigh = 3G
+  # combined with no swap left a 3.8 GB pytest throttled for 34 minutes with
+  # zero OOM kills. MemoryHigh slows a cgroup down; it never kills anything.
+  # A build over budget should fail fast at MemoryMax, not stall the CI
+  # runner for hours.
   systemd.services.nix-daemon.serviceConfig = {
-    MemoryHigh = "3G";
     MemoryMax = "4G";
     MemorySwapMax = "0";
   };

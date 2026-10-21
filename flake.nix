@@ -140,8 +140,35 @@
         ];
       };
 
+      # Two test-only breakages from the 2026-10-20 nixpkgs that block lock PR
+      # #901 on every arch (Hydra status 1 on x86_64 and aarch64 alike). Only
+      # rivendell's closure contains either package. Runtime code is untouched
+      # in both cases; the suites just fall behind a dependency bump.
+      # - elgato 6.1.1 (HA Key Light integration): tests/cli/test_cli.py does
+      #   `import click`, and typer 0.27.2 no longer pulls click in. Upstream
+      #   fix: nixpkgs #576939.
+      # - urllib3-future 2.25.902 (caldav → daily digest, niquests,
+      #   music-assistant): the socks tests are incompatible with python-socks
+      #   v3 (jawah/urllib3.future#437). Upstream fix: nixpkgs #575392. We skip
+      #   the WHOLE suite, not just those two paths: on rivendell its pytest
+      #   climbs past 3.8 GB RSS (87s on x86_64) and sat for 34 min throttled
+      #   at nix-daemon's memory limit on 2026-10-21. Hence probe = "cache".
+      # Droppable once those land. Neither override is a --replace-fail, so
+      # neither breaks the build once redundant, and these do not have to
+      # ride with the lock bump that fixes them.
+      testSkipOverlay = final: prev: {
+        pythonPackagesExtensions = prev.pythonPackagesExtensions ++ [
+          (pyFinal: pyPrev: {
+            elgato = pyPrev.elgato.overridePythonAttrs (old: {
+              disabledTestPaths = (old.disabledTestPaths or [ ]) ++ [ "tests/cli/test_cli.py" ];
+            });
+            urllib3-future = pyPrev.urllib3-future.overridePythonAttrs { doCheck = false; };
+          })
+        ];
+      };
+
       commonOverlays = [ glancesOverlay ];
-      piOverlays = commonOverlays ++ [ torchaudioOverlay narwhalsOverlay musicAssistantOverlay ];
+      piOverlays = commonOverlays ++ [ torchaudioOverlay narwhalsOverlay testSkipOverlay musicAssistantOverlay ];
 
       # Every overlay above is a workaround for an upstream bug, and every one
       # of their comments ends with some form of "remove once nixpkgs fixes it".
@@ -200,6 +227,18 @@
           probe = "cache";
           note = "test-only duckdb has no Hydra aarch64 cache since GCC 16 (log limit exceeded); compiling it froze rivendell; tests skipped";
         };
+        "python3Packages.elgato" = {
+          arch = "any";
+          flaky = false;
+          probe = "build";
+          note = "CLI test imports click, which typer 0.27.2 dropped; nixpkgs #576939; tests/cli skipped";
+        };
+        "python3Packages.urllib3-future" = {
+          arch = "any";
+          flaky = false;
+          probe = "cache";
+          note = "socks tests incompatible with python-socks v3 (nixpkgs #575392); full suite >3.8 GB on a Pi; tests skipped";
+        };
         music-assistant = {
           arch = "aarch64";
           flaky = false;
@@ -221,6 +260,18 @@
           # them. See the input comment above for the measured justification.
           boot.kernelPackages =
             lib.mkForce inputs.nixos-raspberrypi-cached.packages.aarch64-linux.linuxPackages_rpi5;
+
+          # The Pi firmware puts `cgroup_disable=memory` on the kernel command
+          # line from the device tree, ahead of cmdline.txt, so it shows in
+          # /proc/cmdline but nowhere in this repo. Without the memory
+          # controller every MemoryMax/MemoryHigh/MemorySwapMax and podman
+          # `--memory` on a Pi is silently ignored. That is why rivendell's
+          # nix-daemon caps never contained a build: on 2026-07-31, in the
+          # torchaudio OOM, and in the 2026-10-20 duckdb freeze. The RPi
+          # kernel's cgroup_enable= handler runs after the firmware's disable
+          # and turns the controller back on. Takes effect at the next reboot.
+          # Verify with `grep memory /sys/fs/cgroup/cgroup.controllers`.
+          boot.kernelParams = [ "cgroup_enable=memory" ];
         })
         disko.nixosModules.disko
         sops-nix.nixosModules.sops
