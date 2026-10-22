@@ -225,7 +225,7 @@
         "python3Packages.torchaudio" = {
           arch = "aarch64";
           flaky = false;
-          probe = "build";
+          probe = "cache";
           note = "no Hydra cache since GCC 16 (log limit exceeded); local pytest OOMs rivendell; tests skipped";
         };
         "python3Packages.narwhals" = {
