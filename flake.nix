@@ -103,22 +103,21 @@
         ];
       };
 
-      # Two music-assistant AirPlay tests assume a 176400-byte write overflows
-      # the pipe buffer. That holds on 4K-page kernels (64 KiB buffer), but the
-      # Pi 5 kernel uses 16K pages, the buffer is 256 KiB, the write fits, and
-      # both fail with `assert True is False`. Deterministic, not a race, and
-      # Hydra's 4K-page builders never see it — it only surfaces when the
-      # torchaudio overlay above forces a local build. Remove when it goes and
-      # music-assistant substitutes from cache again.
+      # music-assistant's test suite is skipped entirely on the Pis. It is never
+      # substituted here: the overlays above change its closure hash, so every
+      # lock bump reruns it on rivendell (12,700 tests, ~10 min, ~4 GB). Once
+      # the memory controller was live (2026-10-21) it hit nix-daemon's 4G cap
+      # and OOM-killed an xdist worker, and running it pinned the cap long
+      # enough to fire MemoryPressure on rivendell. It also hid two
+      # deterministic Pi-only failures: AirPlay pipe-stall tests that assume
+      # 64 KiB pipes, where the Pi 5's 16K pages give 256 KiB. Hydra's x86_64
+      # and aarch64 builds still run the suite upstream.
       # overrideAttrs, NOT overridePythonAttrs: the latter drops `.override`,
       # which the upstream module (finalPackage) and ours (PYTHONPATH) call.
+      # With overrideAttrs, buildPythonPackage's doCheck is already lowered to
+      # doInstallCheck, so that is the attribute to set.
       musicAssistantOverlay = final: prev: {
-        music-assistant = prev.music-assistant.overrideAttrs (oldAttrs: {
-          disabledTests = (oldAttrs.disabledTests or []) ++ [
-            "test_pipe_write_reports_a_stalled_reader_without_raising"
-            "test_pipe_write_resets_fd_when_the_reader_closes_during_a_stall"
-          ];
-        });
+        music-assistant = prev.music-assistant.overrideAttrs { doInstallCheck = false; };
       };
 
       # narwhals (scikit-learn → librosa → music-assistant, so rivendell) is
@@ -257,7 +256,7 @@
           arch = "aarch64";
           flaky = false;
           probe = "build";
-          note = "2 AirPlay pipe-stall tests assume 64 KiB pipes; Pi 5 16K pages give 256 KiB; only bites on a local build";
+          note = "suite never substituted on Pis (overlaid closure); ~4 GB / 10 min on rivendell; 16K-page pipe tests fail; tests skipped";
         };
       };
 
