@@ -153,9 +153,14 @@
       #   the WHOLE suite, not just those two paths: on rivendell its pytest
       #   climbs past 3.8 GB RSS (87s on x86_64) and sat for 34 min throttled
       #   at nix-daemon's memory limit on 2026-10-21. Hence probe = "cache".
-      # Droppable once those land. Neither override is a --replace-fail, so
-      # neither breaks the build once redundant, and these do not have to
-      # ride with the lock bump that fixes them.
+      # - niquests 3.21.2 (caldav → daily digest): 8
+      #   test_use_proxy_from_environment cases fail on every arch once the
+      #   2026-10-17 urllib3-future update lands (`assert 0 > 0`: the local
+      #   proxy never sees a request). Hydra never reached it because
+      #   urllib3-future failed first. No upstream fix or report yet.
+      # Droppable once those land. No override here is a --replace-fail, so
+      # none breaks the build once redundant, and these do not have to ride
+      # with the lock bump that fixes them.
       testSkipOverlay = final: prev: {
         pythonPackagesExtensions = prev.pythonPackagesExtensions ++ [
           (pyFinal: pyPrev: {
@@ -163,6 +168,9 @@
               disabledTestPaths = (old.disabledTestPaths or [ ]) ++ [ "tests/cli/test_cli.py" ];
             });
             urllib3-future = pyPrev.urllib3-future.overridePythonAttrs { doCheck = false; };
+            niquests = pyPrev.niquests.overridePythonAttrs (old: {
+              disabledTests = (old.disabledTests or [ ]) ++ [ "test_use_proxy_from_environment" ];
+            });
           })
         ];
       };
@@ -238,6 +246,12 @@
           flaky = false;
           probe = "cache";
           note = "socks tests incompatible with python-socks v3 (nixpkgs #575392); full suite >3.8 GB on a Pi; tests skipped";
+        };
+        "python3Packages.niquests" = {
+          arch = "any";
+          flaky = false;
+          probe = "build";
+          note = "8 test_use_proxy_from_environment cases fail after the 10-17 urllib3-future update; no upstream fix yet; those tests skipped";
         };
         music-assistant = {
           arch = "aarch64";
