@@ -396,8 +396,17 @@ upstreams = {
     };
   };
 
-  # Ensure Blocky starts after Unbound is ready, not just started
-  systemd.services.blocky.after = [ "unbound.service" ];
+  # Ensure Blocky starts after Unbound is ready, not just started.
+  #
+  # And after the host has an IPv4 lease (network-online is gated on one:
+  # networking.dhcpcd.wait = "ipv4" in base.nix). Without it Blocky raced the
+  # network on every boot: on rivendell's 2026-10-21 reboot every upstream and
+  # both denylist downloads failed with "network is unreachable", burning the
+  # retry budget in seconds and holding BlocklistDownloadFailing (grafana.nix)
+  # for its full 6h latch on a perfectly healthy host. Wants=, not Requires=:
+  # if wait-online ever times out, DNS still starts, just as it did before.
+  systemd.services.blocky.after = [ "unbound.service" "network-online.target" ];
+  systemd.services.blocky.wants = [ "network-online.target" ];
   systemd.services.blocky.requires = [ "unbound.service" ];
 
   # Probe unbound health every 2 minutes. Sends ntfy alerts only on state

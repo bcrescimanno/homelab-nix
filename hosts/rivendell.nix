@@ -326,6 +326,19 @@
     # nixpkgs, so github-runner now defaults to nodeRuntimes = [ "node24" ].
   };
 
+  # The runner's own cgroup holds the CI job's `nix build` CLIENT, which is
+  # where evaluation happens — the builds themselves land under nix-daemon
+  # (below). Evaluating three Pi toplevels took ~1.5 GB RSS on 2026-10-21 and
+  # the cgroup peaked at 2.67 GB including page cache, with no cap at all. 3G
+  # leaves that headroom (cache is reclaimed before anything is killed) while
+  # keeping a runaway eval from becoming the next host-wide freeze. Same
+  # MemorySwapMax reasoning as nix-daemon: without it zram absorbs the overflow
+  # uncharged.
+  systemd.services.github-runner-rivendell.serviceConfig = {
+    MemoryMax = "3G";
+    MemorySwapMax = "0";
+  };
+
   # ---------------------------------------------------------------------------
   # Build resource limits — rivendell is NOT a dedicated builder
   #
