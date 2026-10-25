@@ -42,6 +42,17 @@ ACTION_SUPER_SEEDING = "EnableSuperSeeding"
 VALID_ACTIONS = {ACTION_DEFAULT, ACTION_STOP, ACTION_REMOVE,
                  ACTION_REMOVE_WITH_CONTENT, ACTION_SUPER_SEEDING}
 
+# WebAPI 2.16 (qBittorrent 5.3.0) added shareLimitsMode, and setShareLimits
+# rejects a call without it: HTTP 400 "Missing required parameters:
+# shareLimitsMode". It decides whether the action fires when ANY configured
+# limit is reached or only when ALL are. Same silent-coercion trap as the action
+# (setShareLimits parses it with toEnum, so a typo becomes "Default"), so it is
+# part of the read-back too. "Default" would defer to the global mode, which
+# this unit does not manage, so it is pinned per torrent. Only the ratio limit
+# is ever set (both time limits are -1), so MatchAny means "ratio reached", and
+# with every limit off (private) it never fires.
+MODE_MATCH_ANY = "MatchAny"
+
 # Global max_ratio_act, read off this build's own WebUI markup:
 #   0 Stop torrent   1 Remove torrent   3 Remove torrent and its files
 #   2 Enable super seeding for torrent
@@ -170,6 +181,7 @@ def main():
         return not (approx(t.get("ratio_limit"), ratio)
                     and approx(t.get("seeding_time_limit"), NO_TIME_LIMIT)
                     and approx(t.get("inactive_seeding_time_limit"), NO_TIME_LIMIT)
+                    and t.get("share_limits_mode") == MODE_MATCH_ANY
                     and t.get("share_limit_action") == action)
 
     changed = 0
@@ -184,8 +196,9 @@ def main():
         log("%s share limits: updating %d/%d to ratio=%s action=%s"
             % (label, len(stale), len(group), ratio, action))
         for t in stale[:8]:
-            log("    %-48s ratio %s->%s  action %s->%s"
+            log("    %-48s ratio %s->%s  mode %s->%s  action %s->%s"
                 % (t["name"][:48], t.get("ratio_limit"), ratio,
+                   t.get("share_limits_mode"), MODE_MATCH_ANY,
                    t.get("share_limit_action"), action))
         if len(stale) > 8:
             log("    ... and %d more" % (len(stale) - 8))
@@ -197,6 +210,7 @@ def main():
                 "ratioLimit": ratio,
                 "seedingTimeLimit": NO_TIME_LIMIT,
                 "inactiveSeedingTimeLimit": NO_TIME_LIMIT,
+                "shareLimitsMode": MODE_MATCH_ANY,
                 "shareLimitAction": action,
             })
             applied.append((label, {t["hash"] for t in stale}, ratio, action))
@@ -213,8 +227,9 @@ def main():
                 if needs(t, ratio, action):
                     bad += 1
                     if bad <= 5:
-                        log("VERIFY FAIL [%s] %-40s ratio=%s action=%s"
+                        log("VERIFY FAIL [%s] %-40s ratio=%s mode=%s action=%s"
                             % (label, t["name"][:40], t.get("ratio_limit"),
+                               t.get("share_limits_mode"),
                                t.get("share_limit_action")))
         if bad:
             log("FATAL: %d torrent(s) did not take the requested share limits" % bad)
