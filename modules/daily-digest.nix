@@ -65,9 +65,10 @@
 #
 # OPEN SIGNUPS
 #
-# opensignup.xyz's RSS feed, rendered as fetched (never sent to Claude) as the
-# LAST section, and only entries no earlier digest has shown. No new entries →
-# no section at all. `stateFile` maps each entry's guid to the date of the
+# trackersignup.org's RSS feed (opensignup.xyz until 2026-10; the old domain
+# 301s to the new homepage, not the feed, which Cloudflare 403s), rendered as
+# fetched (never sent to Claude) as the LAST section, and only entries no
+# earlier digest has shown. No new entries → no section at all. `stateFile` maps each entry's guid to the date of the
 # digest that first carried it, so `daily-digest@today` re-run the same day
 # shows the same entries again, and the next morning's digest does not. It is
 # saved only after the page is written. With no state file (first run, or after
@@ -160,7 +161,7 @@ let
     };
 
     openSignups = {
-      url = "https://opensignup.xyz/rss.xml";
+      url = "https://trackersignup.org/rss.xml";
       # Outside www/, which Caddy serves.
       stateFile = "/var/lib/daily-digest/opensignup-seen.json";
       retainDays = 180;

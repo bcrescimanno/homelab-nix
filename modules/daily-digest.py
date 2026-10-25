@@ -455,7 +455,7 @@ def unsummarized_news(cfg, candidates):
 
 
 # ---------------------------------------------------------------------------
-# Open signups (opensignup.xyz RSS — only entries no digest has shown yet)
+# Open signups (trackersignup.org RSS — only entries no digest has shown yet)
 # ---------------------------------------------------------------------------
 
 def load_seen(path):
