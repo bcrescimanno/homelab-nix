@@ -45,6 +45,17 @@
       # advertise the apiKeyAuthentication OpenSubsonic extension, so triggering
       # startScan would mean keeping a user's password in sops.
       "Scanner.Schedule" = "5m";
+      # No plugins are used here, and with plugin support on, 0.64 dies at
+      # startup. The nixpkgs module pins Plugins.Folder (readOnly) to
+      # ${finalPackage}/share/plugins, which only exists when withPlugins
+      # selects something; Navidrome's plugin manager then tries to mkdir it
+      # inside the read-only store and exits:
+      #   FATAL: creating directory ".../navidrome-wrapped-0.64.2/share/plugins":
+      #     mkdir ...: read-only file system
+      # That failed activation on every nightly upgrade from 2026-10-26 and
+      # left Navidrome down. If a plugin is ever wanted, set withPlugins and
+      # drop this — the folder then exists.
+      Plugins.Enabled = false;
     };
   };
 
