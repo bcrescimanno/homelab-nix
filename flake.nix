@@ -77,7 +77,7 @@
       # - test_core.py: test_000_update fails in sandbox (no real system stats available)
       glancesOverlay = final: prev: {
         glances = prev.glances.overrideAttrs (oldAttrs: {
-          pytestFlagsArray = (oldAttrs.pytestFlagsArray or []) ++ [
+          pytestFlags = (oldAttrs.pytestFlags or [ ]) ++ [
             "--deselect=tests/test_plugin_load.py::TestLoadHelperFunctions::test_phys_core_returns_int"
             "--ignore=tests/test_api.py"
             "--ignore=tests/test_browser_restful.py"
