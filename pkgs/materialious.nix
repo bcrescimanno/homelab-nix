@@ -34,6 +34,13 @@
 # actually reached the built bundle. A bump that silently drops the codec fix
 # fails the build rather than quietly regressing playback.
 #
+# IT ONLY PROVES STRINGS REACHED THE BUNDLE, NOT THAT ANYTHING READS THEM. A
+# green build is not a working site. 1.18.11 passed installCheck and all three
+# required CI builds (#936) and was dead on arrival: SvelteKit 3 broke the env
+# fallback described in preBuild, so the instance was undefined, the page threw
+# and no player mounted, with every asserted string still sitting in the bundle.
+# Load the build in a real browser before merging a bump.
+#
 # -----------------------------------------------------------------------------
 # WATCH LIST: getting off this derivation entirely (checked 2026-08-25)
 #
@@ -53,7 +60,7 @@
 #
 #   1. It cannot carry the two shaka patches below. Neither
 #      `preferredVideoCodecs` nor `defaultBandwidthEstimate` is exposed upstream
-#      in any configurable form — re-verified against 1.18.9: no VITE_ variable,
+#      in any configurable form — re-verified against 1.18.12: no VITE_ variable,
 #      no settings entry, no UI toggle, and zero hits for either identifier
 #      anywhere under src/ or the new shared/. They exist ONLY because the source
 #      is patched before building. A prebuilt image gives up the measured
@@ -79,18 +86,18 @@
 
 buildNpmPackage rec {
   pname = "materialious";
-  version = "1.18.9";
+  version = "1.18.12";
 
   src = fetchFromGitHub {
     owner = "Materialious";
     repo = "Materialious";
     tag = version;
-    hash = "sha256-1uhkubu2eM4HAv8uw2uOjw9peks/QoePylOcWVztTNI=";
+    hash = "sha256-vHT7EjNOd7C/Lv0yk67dt+NRbEvutN5bEKlQXqtmyUs=";
   };
 
   sourceRoot = "${src.name}/materialious";
 
-  npmDepsHash = "sha256-Lj3xnuJsiUSBYbjTKTwFMsQV9Cos9Xj/Qx4CfaIk+tM=";
+  npmDepsHash = "sha256-EfHQbprmcdwgfeNeXjvXphX8KJj0TZc+/JJ6AqoubuY=";
 
   # WORKAROUND 1 — `sharp` (a devDependency reached via @capacitor/assets, and
   # used only to generate mobile app icons) has a postinstall that downloads a
@@ -126,7 +133,7 @@ buildNpmPackage rec {
   # and it is strictly better than the one carried here: it awaits `pageStream`
   # only when `data.video` is still unset, catches a failed page load instead
   # of hanging on it, and re-guards `data.video &&` afterwards. Verified
-  # present at 1.18.9 in +page.svelte. Both local substitutions are therefore
+  # present at 1.18.12 in +page.svelte. Both local substitutions are therefore
   # deleted rather than re-anchored — keeping them would now redeclare
   # `pageStream`, which upstream already declares.
   #
@@ -201,18 +208,20 @@ buildNpmPackage rec {
     # they go straight in and no runtime substitution exists to go wrong.
     #
     # 1.18.x MOVED THE LOOKUP, AND VITE_ IS NOW THE FALLBACK, NOT THE NAME.
-    # src/lib/env.ts reads `env["PUBLIC_" + n] ?? import.meta.env["VITE_" + n]`,
-    # so every variable below is still honoured — but only as the second choice,
+    # src/lib/env.ts reads `publicEnv[n] || import.meta.env["VITE_" + n]`, so
+    # every variable below is still honoured — but only as the second choice,
     # and the names are built by string concatenation. That means grepping the
     # tree for a literal `VITE_DEFAULT_SETTINGS` finds NOTHING and proves
-    # nothing; at 1.18.9 the only literal VITE_ hit in the whole source is
-    # VITE_DEFAULT_INVIDIOUS_INSTANCE. Confirm a variable is still consumed by
-    # grepping for its name minus the prefix (e.g. `DEFAULT_SPONSERBLOCK_INSTANCE`)
-    # against getPublicEnv callers instead.
+    # nothing. Confirm a variable is still consumed by grepping for its name
+    # minus the prefix (e.g. `DEFAULT_SPONSERBLOCK_INSTANCE`) against
+    # getPublicEnv callers instead.
     #
-    # If upstream ever drops that `??` fallback, every default here goes quietly
-    # back to upstream's own — the installCheck's settings-JSON assertion is what
-    # turns that into a failed build rather than a silently re-themed site.
+    # THAT FALLBACK HAS ALREADY BROKEN ONCE, AND NOTHING IN THIS FILE CAUGHT IT.
+    # It was `??` until 1.18.12. SvelteKit 3 (1.18.11) normalises unset PUBLIC_*
+    # variables to "", which `??` accepts, so no VITE_ value was ever read and
+    # the site could not start. The installCheck stayed green because the unread
+    # values are still in the bundle — see the header. If the VITE_ fallback goes
+    # away, move these to PUBLIC_ names (declared in upstream's src/env.ts).
     #
     # WORKAROUND 3 / TRAP — VITE_DEFAULT_SETTINGS MUST stay single-quoted.
     # It is JSON containing `"themeColor": "#2596be"`, and in an unquoted
