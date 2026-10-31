@@ -38,7 +38,7 @@
 # hostname, with its own firewall hole and its own CORS block, purely to save
 # one proxy hop.
 #
-# It is not required. src/lib/components/player/Player.svelte:294 —
+# It is not required. src/lib/components/player/Player.svelte:485 —
 #
 #     // Due to CORs issues with redirects, hosted instances of Materialious
 #     // dirctly provide the companion instance
@@ -56,9 +56,9 @@
 # The redirect problem that comment refers to is avoided by `?local=true`, which
 # makes Invidious proxy the media bytes instead of 302-ing to googlevideo (a
 # cross-origin redirect drops the CORS headers). On this build that is not even
-# a preference — Player.svelte:304 appends it whenever
-# `!isUnrestrictedPlatform()`, and misc.ts:114 defines that as "no own backend
-# AND not a Capacitor native platform", which is exactly a plain web build.
+# a preference — Player.svelte:497 appends it whenever
+# `!isUnrestrictedPlatform()`, and lib/backend.ts:12 defines that as "no own
+# backend AND not a Capacitor native platform", which is exactly a plain web build.
 # `proxyVideos: true` below is belt-and-braces for the Android/desktop apps if
 # they are ever pointed at this instance.
 #
