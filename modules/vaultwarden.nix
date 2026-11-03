@@ -74,6 +74,18 @@ in
     enable = true;
     inherit backupDir;
 
+    # Run the package Hydra actually builds. The module rebuilds its package
+    # with `.override { dbBackend = cfg.dbBackend; }`, and the option defaults
+    # to "sqlite" (bundled libsqlite3-sys) while the package defaults to
+    # "sqlite_system". Only the latter reaches cache.nixos.org promptly; the
+    # module's variant lagged 18 days for 1.37.4 and was still missing for
+    # 1.37.5 when the channel advanced, so every bump compiled Rust on
+    # rivendell — which is what hung it on 2026-11-02 (lock PR #950).
+    # dbBackend itself must stay "sqlite": the module only permits backupDir
+    # with that value. Same SQLite file format either way; only the linkage
+    # differs. Swallowing the override keeps the option and the package apart.
+    package = pkgs.vaultwarden // { override = _: pkgs.vaultwarden; };
+
     # PUSH_INSTALLATION_ID / PUSH_INSTALLATION_KEY. Read by systemd as root
     # before it drops to the vaultwarden user, so the sops default 0400
     # root:root is right.

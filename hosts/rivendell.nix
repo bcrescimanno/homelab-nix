@@ -329,15 +329,9 @@
   # The runner's own cgroup holds the CI job's `nix build` CLIENT, which is
   # where evaluation happens — the builds themselves land under nix-daemon
   # (below). Evaluating three Pi toplevels took ~1.5 GB RSS on 2026-10-21 and
-  # the cgroup peaked at 2.67 GB including page cache, with no cap at all. 3G
-  # leaves that headroom (cache is reclaimed before anything is killed) while
-  # keeping a runaway eval from becoming the next host-wide freeze. Same
-  # MemorySwapMax reasoning as nix-daemon: without it zram absorbs the overflow
-  # uncharged.
-  systemd.services.github-runner-rivendell.serviceConfig = {
-    MemoryMax = "3G";
-    MemorySwapMax = "0";
-  };
+  # 2.3 GB of anon memory on 2026-11-02. Its memory budget is shared with
+  # nix-daemon through build.slice (below), not set per service.
+  systemd.services.github-runner-rivendell.serviceConfig.Slice = "build.slice";
 
   # ---------------------------------------------------------------------------
   # Build resource limits — rivendell is NOT a dedicated builder
@@ -366,9 +360,27 @@
   nix.daemonCPUSchedPolicy = "idle";
   nix.daemonIOSchedClass = "idle";
 
-  # Hard backstop: a runaway build gets OOM-killed inside this cgroup instead
+  # Hard backstop: a runaway build gets OOM-killed inside build.slice instead
   # of taking the host with it. A failed build is recoverable; a wedged
   # rivendell needs physical access.
+  #
+  # ONE budget for everything build-shaped, not one per service. Until
+  # 2026-11-02 the runner had 3G and nix-daemon 4G of their own: 7 of 8 GiB.
+  # Lock PR #950's eval (2.3 GB, runner) plus a vaultwarden Rust compile
+  # (~2 GB, nix-daemon) each stayed under its own cap while together they took
+  # anon memory to 6.1 GiB, squeezed the page cache to 0.1 GiB and thrashed the
+  # host for an hour (17k major faults/s) — sshd, DNS, Caddy, HA, ntfy and the
+  # NUT primary all dark until a power cycle. Per-cgroup caps protect nothing
+  # if their sum leaves the services no room. 4G leaves ~4 GiB for a host whose
+  # services sit at ~1.3 GiB with a few GiB of cache they depend on.
+  #
+  # A cgroup at its MemoryMax with no swap does not necessarily OOM: the kernel
+  # keeps reclaiming the slice's own file pages (rustc, the nix binary) and the
+  # build crawls instead of dying. systemd-oomd ends that: it kills the
+  # thrashing child once the slice's memory pressure stays above the limit.
+  # oomd needs PSI, which the RPi kernel builds but leaves off
+  # (CONFIG_PSI_DEFAULT_DISABLED=y) — hence `psi=1`, effective after a reboot.
+  # Verify with `ls /proc/pressure` and `systemctl is-active systemd-oomd`.
   #
   # MemorySwapMax = 0 is what makes MemoryMax a backstop. MemoryMax caps only
   # the cgroup's RAM. With swap left unlimited, a build pushed past its limit
@@ -387,8 +399,19 @@
   # zero OOM kills. MemoryHigh slows a cgroup down; it never kills anything.
   # A build over budget should fail fast at MemoryMax, not stall the CI
   # runner for hours.
-  systemd.services.nix-daemon.serviceConfig = {
-    MemoryMax = "4G";
-    MemorySwapMax = "0";
+  systemd.slices.build = {
+    description = "Nix builds and CI evaluation (shared memory budget)";
+    sliceConfig = {
+      MemoryMax = "4G";
+      MemorySwapMax = "0";
+      ManagedOOMMemoryPressure = "kill";
+      ManagedOOMMemoryPressureLimit = "40%";
+      ManagedOOMMemoryPressureDurationSec = "20s";
+    };
   };
+
+  systemd.services.nix-daemon.serviceConfig.Slice = "build.slice";
+
+  systemd.oomd.enable = true;
+  boot.kernelParams = [ "psi=1" ];
 }
