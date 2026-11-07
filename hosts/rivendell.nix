@@ -333,6 +333,20 @@
   # nix-daemon through build.slice (below), not set per service.
   systemd.services.github-runner-rivendell.serviceConfig.Slice = "build.slice";
 
+  # A switch must not kill a CI job mid-build. Renovate's lock PRs open around
+  # 12:00–12:20 UTC on Tuesdays and Saturdays, which is rivendell's 04:20
+  # nightly upgrade (base.nix). On 2026-11-07 that upgrade restarted this unit
+  # and cancelled #964's pre-build. nix-daemon restarting in the same switch
+  # is harmless: it runs KillMode=process, so the worker serving the build
+  # survives.
+  #
+  # The cost: a changed runner (version, token, extraPackages) takes effect
+  # only at the next reboot or `systemctl restart github-runner-rivendell`.
+  # rivendell does not auto-reboot, so restart it by hand after changing the
+  # runner config. A new unit still gets started on a switch; this only stops
+  # an already-running one being restarted.
+  systemd.services.github-runner-rivendell.restartIfChanged = false;
+
   # ---------------------------------------------------------------------------
   # Build resource limits — rivendell is NOT a dedicated builder
   #
