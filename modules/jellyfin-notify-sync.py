@@ -116,16 +116,31 @@ def degrade(reason):
 if not wait_for(JF_BASE + "/System/Info/Public", {}, "jellyfin"):
     degrade("%s did not become reachable" % JF_BASE)
 
-try:
-    folders = http(JF_BASE + "/Library/VirtualFolders", headers=jf_auth(JF_KEY))
-except urllib.error.HTTPError as e:
-    if e.code in (401, 403):
-        degrade("Jellyfin rejected the API key (HTTP %d). Jellyfin 12.0 removed "
-                "the legacy X-Emby-Token/?api_key= auth; if this appeared after a "
-                "Jellyfin upgrade, check the key in sops is still valid." % e.code)
-    degrade("Jellyfin returned HTTP %d for /Library/VirtualFolders" % e.code)
-except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as e:
-    degrade("Jellyfin unreachable during library discovery: %s" % e)
+# Retried, because /System/Info/Public answering does not mean Jellyfin is
+# ready. While it boots, Jellyfin serves a temporary startup server, then closes
+# it so the real one can bind — and for that moment nothing is listening. On
+# 2026-11-07 orthanc's 04:01 upgrade restarted Jellyfin; this run's wait_for got
+# an answer from the startup server, and the discovery call one second later
+# got ECONNREFUSED and raised a false "skipped" alert. Connection errors are
+# retried for ~30s; HTTP errors (401 above all) are real answers and are not.
+for attempt in range(15):
+    try:
+        folders = http(JF_BASE + "/Library/VirtualFolders", headers=jf_auth(JF_KEY))
+        break
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            degrade("Jellyfin rejected the API key (HTTP %d). Jellyfin 12.0 removed "
+                    "the legacy X-Emby-Token/?api_key= auth; if this appeared after a "
+                    "Jellyfin upgrade, check the key in sops is still valid." % e.code)
+        if e.code == 503 and attempt < 14:   # still starting up
+            time.sleep(2)
+            continue
+        degrade("Jellyfin returned HTTP %d for /Library/VirtualFolders" % e.code)
+    except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as e:
+        if attempt < 14:
+            time.sleep(2)
+            continue
+        degrade("Jellyfin unreachable during library discovery: %s" % e)
 
 libs = {}
 for v in folders:
