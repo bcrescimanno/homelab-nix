@@ -347,6 +347,19 @@
   # an already-running one being restarted.
   systemd.services.github-runner-rivendell.restartIfChanged = false;
 
+  # An OOM-killed build must fail the JOB, not end the runner. With systemd's
+  # default OOMPolicy=stop, build.slice killing the job's `nix` client on
+  # 2026-11-07 10:07 stopped the whole service, and with the module's
+  # Restart=no (forced over below) it stayed down for 5h40m. Every PR's required aarch64 check
+  # queued behind it (#964–#967). `continue` lets the kernel kill the child
+  # while Runner.Listener reports the failure and takes the next job.
+  # Restart=on-failure covers any other kind of crash.
+  systemd.services.github-runner-rivendell.serviceConfig = {
+    OOMPolicy = "continue";
+    Restart = lib.mkForce "on-failure"; # the module sets "no" unless ephemeral
+    RestartSec = "30s";
+  };
+
   # ---------------------------------------------------------------------------
   # Build resource limits — rivendell is NOT a dedicated builder
   #
