@@ -31,12 +31,27 @@ jobs:
     timeout-minutes: 300
     steps:
       - uses: actions/checkout@v4
+      # Evaluate first, one host per process, then build the .drv paths.
+      #
+      # This job's nix client and nix-daemon's builds share ONE 4 GiB budget
+      # (build.slice, hosts/rivendell.nix). `nix build <three flake attrs>`
+      # evaluates all three toplevels in a single process and keeps that
+      # memory (2.2 GB anon) for the whole build, leaving the actual builds
+      # under 2 GiB. Lock PR #964 was OOM-killed in build.slice that way on
+      # 2026-11-07, mid homepage-dashboard build.
+      #
+      # Split up, each eval peaks at ~1.1 GB and returns it on exit before
+      # anything builds. Building from `.drv^*` evaluates nothing (~40 MB
+      # client), so the daemon gets nearly the whole budget. Keep the evals
+      # sequential: running them in parallel would bring the combined peak back.
       - name: Build Pi closures
         run: |
-          nix build --no-link \
-            .#nixosConfigurations.rivendell.config.system.build.toplevel \
-            .#nixosConfigurations.mirkwood.config.system.build.toplevel \
-            .#nixosConfigurations.pirateship.config.system.build.toplevel
+          set -euo pipefail
+          drvs=()
+          for host in rivendell mirkwood pirateship; do
+            drvs+=("$(nix eval --raw ".#nixosConfigurations.$host.config.system.build.toplevel.drvPath")^*")
+          done
+          nix build --no-link "${drvs[@]}"
 
   build-x86_64:
     name: Build x86_64 closure (orthanc)
