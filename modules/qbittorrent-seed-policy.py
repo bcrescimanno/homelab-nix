@@ -14,6 +14,8 @@ Run with --dry-run to print the plan without touching anything.
 import json
 import re
 import sys
+import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import http.cookiejar
@@ -67,15 +69,45 @@ def log(msg):
 
 
 class QBit:
-    def __init__(self, base, username, password):
+    def __init__(self, base, username, password, deadline=240, interval=10):
         self.base = base.rstrip("/")
         cj = http.cookiejar.CookieJar()
         self.op = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
-        self.op.open(urllib.request.Request(
-            self.base + "/api/v2/auth/login",
-            data=urllib.parse.urlencode(
-                {"username": username, "password": password}).encode(),
-            headers={"Referer": self.base}), timeout=20)
+        self._login(username, password, deadline, interval)
+
+    def _login(self, username, password, deadline, interval):
+        """Log in, tolerating a qBittorrent that is still coming up.
+
+        The timer fires every 5 minutes, so it routinely lands inside an
+        activation that restarts gluetun and with it qBittorrent: on
+        2026-11-08 it fired 1.5s after podman reported the container started
+        and got connection refused, which failed switch-to-configuration and
+        pushed a false "Upgrade FAILED" for an upgrade that had applied.
+        (Same failure as music-library-audit; see modules/music-sync.nix.)
+
+        So retry connection-level errors for `deadline` seconds -- the
+        container's preStart alone may wait 90s for gluetun's forwarded port
+        -- then give up loudly; that stays inside TimeoutStartSec (5m). HTTP
+        errors (bad credentials, an IP ban) are faults, not readiness, and are
+        never retried.
+        """
+        waited = 0
+        while True:
+            try:
+                self.op.open(urllib.request.Request(
+                    self.base + "/api/v2/auth/login",
+                    data=urllib.parse.urlencode(
+                        {"username": username, "password": password}).encode(),
+                    headers={"Referer": self.base}), timeout=20)
+                return
+            except urllib.error.HTTPError:
+                raise
+            except (urllib.error.URLError, OSError) as e:
+                if waited >= deadline:
+                    raise
+                log("qBittorrent not ready (%s); retrying in %ds" % (e, interval))
+                time.sleep(interval)
+                waited += interval
 
     def get(self, path):
         return self.op.open(self.base + path, timeout=90).read().decode()
