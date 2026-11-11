@@ -157,62 +157,8 @@
           });
       };
 
-      # narwhals (scikit-learn → librosa → music-assistant, so rivendell) is
-      # not cached for aarch64 because its TEST inputs are not: duckdb has
-      # ended "Log limit exceeded" on every Hydra aarch64 build since
-      # 2026-09-28, the same GCC 16 failure that once broke torchaudio, and narwhals
-      # is reported the same way behind it. duckdb, ibis, sqlframe and sqlglot
-      # reach narwhals only through nativeCheckInputs, so skipping the tests
-      # drops all four from the build graph and changes nothing at runtime.
-      # Without this, rivendell compiles duckdb itself. On 2026-10-20 the
-      # lock PR's CI job did exactly that and froze the host from 20:05 to
-      # 22:45 (no scrapes, journald 40 min behind). tailscaled and the UPS USB
-      # link both failed in that stall. Droppable once Hydra caches narwhals.
-      narwhalsOverlay = final: prev: {
-        pythonPackagesExtensions = prev.pythonPackagesExtensions ++ [
-          (pyFinal: pyPrev: {
-            narwhals = pyPrev.narwhals.overridePythonAttrs { doCheck = false; };
-          })
-        ];
-      };
-
-      # Two test-only breakages from the 2026-10-20 nixpkgs that block lock PR
-      # #901 on every arch (Hydra status 1 on x86_64 and aarch64 alike). Only
-      # rivendell's closure contains either package. Runtime code is untouched
-      # in both cases; the suites just fall behind a dependency bump.
-      # - elgato 6.1.1 (HA Key Light integration): tests/cli/test_cli.py does
-      #   `import click`, and typer 0.27.2 no longer pulls click in. Upstream
-      #   fix: nixpkgs #576939.
-      # - urllib3-future 2.25.902 (caldav → daily digest, niquests,
-      #   music-assistant): the socks tests are incompatible with python-socks
-      #   v3 (jawah/urllib3.future#437). Upstream fix: nixpkgs #575392. We skip
-      #   the WHOLE suite, not just those two paths: on rivendell its pytest
-      #   climbs past 3.8 GB RSS (87s on x86_64) and sat for 34 min throttled
-      #   at nix-daemon's memory limit on 2026-10-21. Hence probe = "cache".
-      # - niquests 3.21.2 (caldav → daily digest): 8
-      #   test_use_proxy_from_environment cases fail on every arch once the
-      #   2026-10-17 urllib3-future update lands (`assert 0 > 0`: the local
-      #   proxy never sees a request). Hydra never reached it because
-      #   urllib3-future failed first. No upstream fix or report yet.
-      # Droppable once those land. No override here is a --replace-fail, so
-      # none breaks the build once redundant, and these do not have to ride
-      # with the lock bump that fixes them.
-      testSkipOverlay = final: prev: {
-        pythonPackagesExtensions = prev.pythonPackagesExtensions ++ [
-          (pyFinal: pyPrev: {
-            elgato = pyPrev.elgato.overridePythonAttrs (old: {
-              disabledTestPaths = (old.disabledTestPaths or [ ]) ++ [ "tests/cli/test_cli.py" ];
-            });
-            urllib3-future = pyPrev.urllib3-future.overridePythonAttrs { doCheck = false; };
-            niquests = pyPrev.niquests.overridePythonAttrs (old: {
-              disabledTests = (old.disabledTests or [ ]) ++ [ "test_use_proxy_from_environment" ];
-            });
-          })
-        ];
-      };
-
       commonOverlays = [ glancesOverlay ];
-      piOverlays = commonOverlays ++ [ narwhalsOverlay testSkipOverlay musicAssistantOverlay maNoTorchOverlay ];
+      piOverlays = commonOverlays ++ [ musicAssistantOverlay maNoTorchOverlay ];
 
       # Every overlay above is a workaround for an upstream bug, and every one
       # of their comments ends with some form of "remove once nixpkgs fixes it".
@@ -245,9 +191,10 @@
       # `probe` is what the probe does. "build" builds the package unpatched.
       # "cache" asks only whether the unpatched package can be SUBSTITUTED
       # (`--max-jobs 0`), for an overlay that works around a missing cache entry
-      # rather than a broken build. Building narwhals unpatched would compile
-      # duckdb on rivendell every week, which is the stall that overlay exists
-      # to prevent. "eval" builds nothing: the entry carries
+      # rather than a broken build: building such a package unpatched would
+      # compile its uncached dependencies on rivendell every week, which is
+      # the stall the overlay exists to prevent (narwhals → duckdb froze
+      # rivendell on 2026-10-20). "eval" builds nothing: the entry carries
       # `droppableWhen = pkgs: <bool>`, evaluated against the unpatched
       # package set, for an overlay that is a deliberate choice rather than a
       # bug workaround (the key is then a label, not a package path).
@@ -267,30 +214,6 @@
           flaky = false;
           probe = "build";
           note = "sandbox + network-dependent tests; psutil topology returns None on aarch64";
-        };
-        "python3Packages.narwhals" = {
-          arch = "aarch64";
-          flaky = false;
-          probe = "cache";
-          note = "test-only duckdb has no Hydra aarch64 cache since GCC 16 (log limit exceeded); compiling it froze rivendell; tests skipped";
-        };
-        "python3Packages.elgato" = {
-          arch = "any";
-          flaky = false;
-          probe = "build";
-          note = "CLI test imports click, which typer 0.27.2 dropped; nixpkgs #576939; tests/cli skipped";
-        };
-        "python3Packages.urllib3-future" = {
-          arch = "any";
-          flaky = false;
-          probe = "cache";
-          note = "socks tests incompatible with python-socks v3 (nixpkgs #575392); full suite >3.8 GB on a Pi; tests skipped";
-        };
-        "python3Packages.niquests" = {
-          arch = "any";
-          flaky = false;
-          probe = "build";
-          note = "8 test_use_proxy_from_environment cases fail after the 10-17 urllib3-future update; no upstream fix yet; those tests skipped";
         };
         music-assistant = {
           arch = "aarch64";
