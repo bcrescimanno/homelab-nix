@@ -46,7 +46,7 @@ let
 
   # Fully qualified: nixpkgs 26.11 no longer defines unqualified-search-registries,
   # so a bare "itzg/..." short name fails to resolve at pull time (podman exit 125).
-  image = "docker.io/itzg/minecraft-server:java21@sha256:88ea35f13e9d87085ddc9938d31a278652f5af5c61b00b03551a3d66369ef3d0";
+  image = "docker.io/itzg/minecraft-server:java21@sha256:385b3348c2f4998ac3aceefdd169f01862881506a248a9c36043eddeb285f6c4";
 
   # Per-server definitions. `memory` is the JVM heap; `memoryMax` is the cgroup
   # hard cap (heap + off-heap + Forge overhead). Each is pinned to 4 cores so a
