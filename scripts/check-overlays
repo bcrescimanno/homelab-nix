@@ -107,7 +107,7 @@ for name in $names; do
   # substituted, for overlays that exist because Hydra has no aarch64 build.
   # Building one of those here is the very thing the overlay prevents.
   probe="$(nix eval --raw ".#overlayWorkarounds.\"${name}\".probe" 2>/dev/null)"
-  if [[ -z "$want" || -z "$flaky" || ( "$probe" != "build" && "$probe" != "cache" ) ]]; then
+  if [[ -z "$want" || -z "$flaky" || ( "$probe" != "build" && "$probe" != "cache" && "$probe" != "eval" ) ]]; then
     echo "  ${RED}✗${NC} ${name} — could not read its arch/flaky/probe; treating as unprobed"
     INCONCLUSIVE+=("$name (unreadable)")
     continue
@@ -122,6 +122,70 @@ for name in $names; do
     echo "  ${YELLOW}−${NC} ${name} — skipped, reproduces on ${want} only"
     SKIPPED+=("$name (needs $want)")
     continue
+  fi
+
+  # "eval" builds nothing. The overlay is a deliberate choice rather than a bug
+  # workaround (today: torch stripped from music-assistant), so "does it build
+  # unpatched" is the wrong question. The entry's own droppableWhen predicate
+  # is evaluated against the UNPATCHED package set instead. An evaluation
+  # error is inconclusive, never droppable.
+  if [[ "$probe" == "eval" ]]; then
+    printf '  … %s (unpatched, eval only)\n' "$name"
+    verdict="$(nix eval --raw --impure --expr "let f = builtins.getFlake \"path:$REPO\";
+                   p = f.inputs.nixpkgs.legacyPackages.\${builtins.currentSystem};
+               in if f.overlayWorkarounds.\"${name}\".droppableWhen p then \"yes\" else \"no\"" 2>/dev/null)"
+    case "$verdict" in
+      yes) echo "  ${GREEN}✓ ${name} — droppableWhen holds unpatched; the overlay can be dropped${NC}"
+           DROPPABLE+=("$name") ;;
+      no)  echo "  ${CYAN}·${NC} ${name} — still applies, overlay still needed"
+           echo "      ($note)"
+           NEEDED+=("$name") ;;
+      *)   echo "  ${RED}✗${NC} ${name} — droppableWhen did not evaluate; inconclusive"
+           INCONCLUSIVE+=("$name (eval error)") ;;
+    esac
+    continue
+  fi
+
+  # A "build" probe may compile the package itself and nothing else. An
+  # unpatched dependency that cannot be substituted would be compiled here,
+  # on rivendell. That is the PyTorch case: the lock PR's CI no longer builds
+  # torch (it is stripped from the Pi closures), so a lock where Hydra lacks it
+  # can merge, and the unpatched music-assistant probe would then spend its
+  # whole timeout compiling torch in build.slice. A dry run lists what would
+  # be built; anything beyond the target's own .drv makes the probe
+  # inconclusive. Parsed in pure bash: grep/jq are not guaranteed on the
+  # runner PATH (see the PATH notes above).
+  if [[ "$probe" == "build" ]]; then
+    base="let f = builtins.getFlake \"path:$REPO\";
+          in f.inputs.nixpkgs.legacyPackages.\${builtins.currentSystem}.${name}"
+    target="$(nix eval --raw --impure --expr "($base).drvPath" 2>/dev/null)"
+    plan="$(nix build --dry-run --no-link --impure --expr "$base" 2>&1)" || plan="DRYRUN-FAILED"
+    extra=0
+    if [[ -z "$target" || "$plan" == "DRYRUN-FAILED" ]]; then
+      extra=-1
+    else
+      in_build=0
+      while IFS= read -r line; do
+        case "$line" in
+          *"will be built:"*) in_build=1; continue ;;
+          *"will be fetched"*|*"will be copied"*) in_build=0; continue ;;
+        esac
+        if [[ $in_build -eq 1 ]]; then
+          drv="${line#"${line%%[![:space:]]*}"}"
+          [[ "$drv" == *.drv && "$drv" != "$target" ]] && extra=$((extra + 1))
+        fi
+      done <<< "$plan"
+    fi
+    if [[ $extra -ne 0 ]]; then
+      if [[ $extra -lt 0 ]]; then
+        echo "  ${YELLOW}⚠${NC} ${name} — could not plan the unpatched build; inconclusive"
+        INCONCLUSIVE+=("$name (no build plan)")
+      else
+        echo "  ${YELLOW}⚠${NC} ${name} — ${extra} unpatched dependencies are not substitutable; not compiling them here"
+        INCONCLUSIVE+=("$name (${extra} deps uncached)")
+      fi
+      continue
+    fi
   fi
 
   # A flaky entry gets several INDEPENDENT builds. nix caches aggressively, so
@@ -212,7 +276,7 @@ if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
     echo "| **droppable** | ${DROPPABLE[*]:-—} |"
     echo "| still needed | ${NEEDED[*]:-—} |"
     echo "| skipped (wrong arch) | ${SKIPPED[*]:-—} |"
-    echo "| inconclusive (timeout) | ${INCONCLUSIVE[*]:-—} |"
+    echo "| inconclusive | ${INCONCLUSIVE[*]:-—} |"
   } >> "$GITHUB_STEP_SUMMARY"
 fi
 

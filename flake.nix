@@ -89,20 +89,6 @@
         });
       };
 
-      # torchaudio (beat-this → music-assistant, so rivendell) is not cached
-      # for aarch64: every Hydra build since the GCC 16 bump (2026-09-29 on)
-      # ended "Log limit exceeded", so rivendell compiles it itself. The
-      # compile is fine; the pytest suite climbs past 5 GB RSS and is
-      # OOM-killed on an 8 GB Pi. Skip the tests. Droppable once Hydra caches
-      # it again — the unpatched build then substitutes instead of building.
-      torchaudioOverlay = final: prev: {
-        pythonPackagesExtensions = prev.pythonPackagesExtensions ++ [
-          (pyFinal: pyPrev: {
-            torchaudio = pyPrev.torchaudio.overridePythonAttrs { doCheck = false; };
-          })
-        ];
-      };
-
       # music-assistant's test suite is skipped entirely on the Pis. It is never
       # substituted here: the overlays above change its closure hash, so every
       # lock bump reruns it on rivendell (12,700 tests, ~10 min, ~4 GB). Once
@@ -120,10 +106,61 @@
         music-assistant = prev.music-assistant.overrideAttrs { doInstallCheck = false; };
       };
 
+      # torch + torchaudio are stripped from music-assistant on the Pis. They
+      # are in MA's core pyproject dependencies, but only two providers import
+      # them: smart_fades (beat-aligned crossfades) and sonic_analysis. Neither
+      # is configured on rivendell. smart_fades is in MA's DEFAULT_PROVIDERS
+      # but was never set up there: no settings.json entry and never loaded
+      # (checked 2026-11-11; Loudness Analysis is the only audio_analysis
+      # provider that loads). Nothing on any Pi imports torch.
+      #
+      # Carrying it anyway is a standing risk to rivendell. Hydra's aarch64
+      # torch build is easily cancelled by a newer eval (buildstatus 4), and
+      # then every lock PR makes rivendell compile PyTorch in build.slice for
+      # hours. Lock PR #964 sat a week like that: nixpkgs-unstable was stuck
+      # at 4fe25e1 behind the staging-next world rebuild (nixpkgs #580394, the
+      # 26.11 ZHF window), and aarch64 torch never started on Hydra. Without
+      # torch, a lock PR depends only on how fast Hydra serves ordinary
+      # packages, not on whether its slowest aarch64 job finished.
+      #
+      # Mechanics: filtering propagatedBuildInputs removes them from the
+      # closure (the module's PYTHONPATH is provider deps + MA's own
+      # site-packages, so nothing re-adds them). pythonRemoveDeps strips them
+      # from the wheel metadata so the runtime-deps check does not fail.
+      # Upstream relaxes torch, so it also comes out of pythonRelaxDeps.
+      # overrideAttrs, not overridePythonAttrs, for the same `.override`
+      # reason as the overlay above.
+      #
+      # Reverting is deleting this overlay, and is wanted if smart_fades or
+      # sonic_analysis is ever enabled: their imports fail without torch, and
+      # MA shows the provider as "Reconfigure". This also retired the
+      # torchaudio overlay (tests skipped because Hydra had no aarch64 cache
+      # since GCC 16 and its pytest OOMed rivendell): with torch gone, no Pi
+      # closure contains torchaudio, so that overlay changed nothing and its
+      # weekly probe would have reported "still needed" for a package we no
+      # longer ship. Re-add it alongside any revert of this one.
+      #
+      # Unlike every other overlay here, this is a CHOICE, not a workaround
+      # for a bug, so "builds unpatched" cannot say it is droppable. Its
+      # overlayWorkarounds entry uses probe = "eval" instead: it flags the day
+      # unpatched nixpkgs MA stops pulling torch in at all (upstream moving it
+      # into the providers' own requirements), when this is dead weight.
+      maNoTorchOverlay = final: prev: {
+        music-assistant = prev.music-assistant.overrideAttrs (old:
+          let
+            torchy = [ "torch" "torchaudio" ];
+            isTorchy = d: builtins.elem (d.pname or "") torchy;
+          in {
+            propagatedBuildInputs = builtins.filter (d: !isTorchy d) old.propagatedBuildInputs;
+            pythonRelaxDeps = builtins.filter (n: !builtins.elem n torchy) (old.pythonRelaxDeps or [ ]);
+            pythonRemoveDeps = (old.pythonRemoveDeps or [ ]) ++ torchy;
+          });
+      };
+
       # narwhals (scikit-learn → librosa → music-assistant, so rivendell) is
       # not cached for aarch64 because its TEST inputs are not: duckdb has
       # ended "Log limit exceeded" on every Hydra aarch64 build since
-      # 2026-09-28, the same GCC 16 failure as torchaudio above, and narwhals
+      # 2026-09-28, the same GCC 16 failure that once broke torchaudio, and narwhals
       # is reported the same way behind it. duckdb, ibis, sqlframe and sqlglot
       # reach narwhals only through nativeCheckInputs, so skipping the tests
       # drops all four from the build graph and changes nothing at runtime.
@@ -175,7 +212,7 @@
       };
 
       commonOverlays = [ glancesOverlay ];
-      piOverlays = commonOverlays ++ [ torchaudioOverlay narwhalsOverlay testSkipOverlay musicAssistantOverlay ];
+      piOverlays = commonOverlays ++ [ narwhalsOverlay testSkipOverlay musicAssistantOverlay maNoTorchOverlay ];
 
       # Every overlay above is a workaround for an upstream bug, and every one
       # of their comments ends with some form of "remove once nixpkgs fixes it".
@@ -210,7 +247,16 @@
       # (`--max-jobs 0`), for an overlay that works around a missing cache entry
       # rather than a broken build. Building narwhals unpatched would compile
       # duckdb on rivendell every week, which is the stall that overlay exists
-      # to prevent.
+      # to prevent. "eval" builds nothing: the entry carries
+      # `droppableWhen = pkgs: <bool>`, evaluated against the unpatched
+      # package set, for an overlay that is a deliberate choice rather than a
+      # bug workaround (the key is then a label, not a package path).
+      #
+      # A "build" probe also refuses to compile anything but the package
+      # itself: if an unpatched dependency is not substitutable, the result is
+      # inconclusive. Otherwise the music-assistant probe would compile
+      # PyTorch on rivendell whenever Hydra lacks it, now that the lock PR's
+      # own CI no longer builds torch and so no longer blocks such a lock.
       #
       # All three fields are mandatory on every entry: an absent field would be
       # read as a default, and a default that silently means "not flaky" is the
@@ -221,12 +267,6 @@
           flaky = false;
           probe = "build";
           note = "sandbox + network-dependent tests; psutil topology returns None on aarch64";
-        };
-        "python3Packages.torchaudio" = {
-          arch = "aarch64";
-          flaky = false;
-          probe = "cache";
-          note = "no Hydra cache since GCC 16 (log limit exceeded); local pytest OOMs rivendell; tests skipped";
         };
         "python3Packages.narwhals" = {
           arch = "aarch64";
@@ -257,6 +297,17 @@
           flaky = false;
           probe = "build";
           note = "suite never substituted on Pis (overlaid closure); ~4 GB / 10 min on rivendell; 16K-page pipe tests fail; tests skipped";
+        };
+        # Keyed by a label, not a package path: probe = "eval" builds nothing
+        # and only evaluates `droppableWhen` against the UNPATCHED package set.
+        music-assistant-no-torch = {
+          arch = "any";
+          flaky = false;
+          probe = "eval";
+          droppableWhen = pkgs:
+            !builtins.any (d: builtins.elem (d.pname or "") [ "torch" "torchaudio" ])
+              pkgs.music-assistant.propagatedBuildInputs;
+          note = "torch/torchaudio stripped from MA: only smart_fades/sonic_analysis use them (neither enabled) and an uncached aarch64 torch stalled lock PR #964 for a week; droppable when upstream MA no longer depends on torch, or delete it to enable smart_fades";
         };
       };
 
