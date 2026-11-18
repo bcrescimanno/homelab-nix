@@ -86,18 +86,18 @@
 
 buildNpmPackage rec {
   pname = "materialious";
-  version = "1.18.13";
+  version = "1.18.34";
 
   src = fetchFromGitHub {
     owner = "Materialious";
     repo = "Materialious";
     tag = version;
-    hash = "sha256-JJVZ7P9V0jBC0g3eOe3ucakgwMRfMXRYtZGMK2HcaLM=";
+    hash = "sha256-omGkIO4ewFH9n52yOOM323lO1bs7GqEZAcLJfJkSW6E=";
   };
 
   sourceRoot = "${src.name}/materialious";
 
-  npmDepsHash = "sha256-kSNXqzqUttwreVLzQJLE7AnAhuRVMNLfwUmM7LpDTog=";
+  npmDepsHash = "sha256-ydZoMcspfHXk+930lQRowAuh3P1SP7vQ5uHu5LTC14I=";
 
   # WORKAROUND 1 — `sharp` (a devDependency reached via @capacitor/assets, and
   # used only to generate mobile app icons) has a postinstall that downloads a
