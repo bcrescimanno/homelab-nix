@@ -86,18 +86,18 @@
 
 buildNpmPackage rec {
   pname = "materialious";
-  version = "1.18.13";
+  version = "1.18.34";
 
   src = fetchFromGitHub {
     owner = "Materialious";
     repo = "Materialious";
     tag = version;
-    hash = "sha256-JJVZ7P9V0jBC0g3eOe3ucakgwMRfMXRYtZGMK2HcaLM=";
+    hash = "sha256-omGkIO4ewFH9n52yOOM323lO1bs7GqEZAcLJfJkSW6E=";
   };
 
   sourceRoot = "${src.name}/materialious";
 
-  npmDepsHash = "sha256-kSNXqzqUttwreVLzQJLE7AnAhuRVMNLfwUmM7LpDTog=";
+  npmDepsHash = "sha256-ydZoMcspfHXk+930lQRowAuh3P1SP7vQ5uHu5LTC14I=";
 
   # WORKAROUND 1 — `sharp` (a devDependency reached via @capacitor/assets, and
   # used only to generate mobile app icons) has a postinstall that downloads a
@@ -108,6 +108,14 @@ buildNpmPackage rec {
   # is a TypeScript-types-only fix and `vite build` does not typecheck
   # (`npm run check` does, and is not run here), so the web build does not
   # need it. Verified: the build completes and the output is complete.
+  #
+  # SINCE 1.18.x postinstall ALSO RUNS `patch-package --error-on-fail`, which
+  # --ignore-scripts skips too — and silently, since nothing then fails. Those
+  # patches are NOT types-only (googlevideo's fixes a SABR decoder bug that
+  # surfaced as Shaka error 3004), so preBuild applies them explicitly. At
+  # 1.18.34 the SABR path is unreachable here (injectSabr requires a
+  # youtube.js video on an unrestricted platform; this is an Invidious-only
+  # web build), but applying upstream's patches beats depending on that.
   npmFlags = [ "--ignore-scripts" ];
 
   # UPSTREAM BUG, FIXED UPSTREAM IN 1.17.7 — patch removed at that bump.
@@ -186,6 +194,12 @@ buildNpmPackage rec {
   '';
 
   preBuild = ''
+    # Upstream's dependency patches; see WORKAROUND 1. --error-on-fail, as
+    # upstream runs it: a patch that no longer applies must fail the build.
+    if [ -d patches ]; then
+      npx --no-install patch-package --error-on-fail
+    fi
+
     # WORKAROUND 2 — `npm run build` runs scripts/githubContributors.mjs
     # (`patch:github`), which fetches api.github.com for the About page's
     # contributor list. Impossible in the sandbox; the script catches its own
