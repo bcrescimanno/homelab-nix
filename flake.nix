@@ -168,7 +168,9 @@
       # pythonPackagesExtensions, not a python3Packages override: Home
       # Assistant builds its own python set via packageOverrides, which a
       # top-level python3Packages overlay never reaches. Nothing calls
-      # `.override` on pylitterbot, so overridePythonAttrs is safe here.
+      # `.override` on pylitterbot, so overridePythonAttrs is safe here. The
+      # tests/test_mcp_*.py files exercise that optional MCP server and are
+      # skipped with it.
       # Droppable when nixpkgs stops listing fastmcp, or un-breaks fastmcp-slim
       # (see its overlayWorkarounds entry).
       pylitterbotNoFastmcpOverlay = final: prev: {
@@ -178,6 +180,8 @@
               dependencies = builtins.filter
                 (d: (d.pname or "") != "fastmcp")
                 (old.dependencies or [ ]);
+              # Its MCP-server tests import `mcp`, which is now absent.
+              disabledTestPaths = (old.disabledTestPaths or [ ]) ++ [ "tests/test_mcp_*.py" ];
             });
           })
         ];
