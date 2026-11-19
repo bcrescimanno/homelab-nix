@@ -157,8 +157,38 @@
           });
       };
 
+      # pylitterbot (Home Assistant's `litterrobot` integration) is stripped of
+      # fastmcp. nixpkgs lists fastmcp as a core dependency, but upstream's
+      # pyproject has it only under the optional `mcp` extra
+      # (`mcp[cli]>=1.0.0,<2`); the library itself never imports it. Since
+      # nixpkgs moved mcp to 2.x, fastmcp-slim is meta.broken
+      # (`versionAtLeast mcp.version "2"`), so the bogus edge made rivendell's
+      # whole system fail to EVALUATE and wedged lock PR #989.
+      #
+      # pythonPackagesExtensions, not a python3Packages override: Home
+      # Assistant builds its own python set via packageOverrides, which a
+      # top-level python3Packages overlay never reaches. Nothing calls
+      # `.override` on pylitterbot, so overridePythonAttrs is safe here. The
+      # tests/test_mcp_*.py files exercise that optional MCP server and are
+      # skipped with it.
+      # Droppable when nixpkgs stops listing fastmcp, or un-breaks fastmcp-slim
+      # (see its overlayWorkarounds entry).
+      pylitterbotNoFastmcpOverlay = final: prev: {
+        pythonPackagesExtensions = prev.pythonPackagesExtensions ++ [
+          (pyFinal: pyPrev: {
+            pylitterbot = pyPrev.pylitterbot.overridePythonAttrs (old: {
+              dependencies = builtins.filter
+                (d: (d.pname or "") != "fastmcp")
+                (old.dependencies or [ ]);
+              # Its MCP-server tests import `mcp`, which is now absent.
+              disabledTestPaths = (old.disabledTestPaths or [ ]) ++ [ "tests/test_mcp_*.py" ];
+            });
+          })
+        ];
+      };
+
       commonOverlays = [ glancesOverlay ];
-      piOverlays = commonOverlays ++ [ musicAssistantOverlay maNoTorchOverlay ];
+      piOverlays = commonOverlays ++ [ musicAssistantOverlay maNoTorchOverlay pylitterbotNoFastmcpOverlay ];
 
       # Every overlay above is a workaround for an upstream bug, and every one
       # of their comments ends with some form of "remove once nixpkgs fixes it".
@@ -231,6 +261,19 @@
             !builtins.any (d: builtins.elem (d.pname or "") [ "torch" "torchaudio" ])
               pkgs.music-assistant.propagatedBuildInputs;
           note = "torch/torchaudio stripped from MA: only smart_fades/sonic_analysis use them (neither enabled) and an uncached aarch64 torch stalled lock PR #964 for a week; droppable when upstream MA no longer depends on torch, or delete it to enable smart_fades";
+        };
+        # Also an eval probe: the failure is an evaluation refusal (fastmcp-slim
+        # meta.broken), so there is nothing to build. Droppable once unpatched
+        # pylitterbot no longer pulls fastmcp, or fastmcp-slim is not broken.
+        pylitterbot-no-fastmcp = {
+          arch = "any";
+          flaky = false;
+          probe = "eval";
+          droppableWhen = pkgs:
+            let py = pkgs.python3Packages; in
+            !(builtins.any (d: (d.pname or "") == "fastmcp") py.pylitterbot.propagatedBuildInputs)
+            || !(py.fastmcp-slim.meta.broken or false);
+          note = "nixpkgs lists fastmcp as a core pylitterbot dep (upstream: optional `mcp` extra); fastmcp-slim is meta.broken with mcp >= 2, which broke rivendell eval on lock PR #989";
         };
       };
 
