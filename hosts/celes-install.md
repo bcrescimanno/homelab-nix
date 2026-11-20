@@ -4,42 +4,31 @@ Moving celes (ASUS Zephyrus G14 2024, GA403UI) from Arch + Hyprland to NixOS + P
 
 **This wipes celes's only disk.** Nothing in `/home` survives.
 
-## Why a USB stick
+## Why kexec over the dock
 
-terra was installed with nixos-anywhere's usual path: it kexecs the running system into an in-RAM installer. That installer only brings up wired networking. nixos-anywhere's `docs/requirements.md` says "nixos-anywhere does not support wifi networks", and the G14 has no Ethernet port.
+terra was installed with nixos-anywhere's usual path: it kexecs the running system into an in-RAM installer, which only brings up wired networking (`docs/requirements.md`: "nixos-anywhere does not support wifi networks"). The G14 has no Ethernet port, which is why this checklist first planned on a USB stick.
 
-So celes boots a real NixOS installer ISO, joins Wi-Fi there, and nixos-anywhere targets that. nixos-anywhere sees `VARIANT_ID=installer` in `/etc/os-release` and skips the kexec on its own, so no `--phases` flag is needed.
+On 2026-11-20 celes got a wire: the **CalDigit Thunderbolt 4 Pro Dock**, whose Intel 2.5GbE NIC (`igc`, `enp100s0`, 10.0.1.85) sits behind a USB4 PCIe tunnel. The Thunderbolt domain's security level is `user`, so that tunnel exists only once something authorizes the dock. On Arch that is boltd. **The kexec installer has no boltd**, and whether the tunnel survives the kexec is unverified, so the kexec runs as a separate probe first: nothing on disk is touched until it reconnects. The USB stick on Wi-Fi stays as the fallback (section 4b).
 
-## Already done
-
-- [x] Config merged: `hosts/celes.nix`, the deploy node, and `secrets/celes.yaml` (#874, #876).
-- [x] dotfiles profile `machines/celes-nixos.nix` merged (bcrescimanno/dotfiles#3).
-- [x] Login password hash set in `secrets/celes.yaml` (`brian_password_hash`, a yescrypt hash). If it were missing, activation would fail and nothing could log in at the console.
-- [x] The host age key is in the extra-files tree on liquidark, already at its target path: `~/.local/share/celes-install/var/lib/sops-nix/key.txt`. Its public half is `&celes` in `.sops.yaml`.
-- [x] That tree's `var/` and `var/lib/` are 0755. `--extra-files` copies modes as they are (`tar -p`), so a 0700 there would become `/var/lib`'s mode on celes.
+The installed system runs boltd (`services.hardware.bolt.enable`), and Arch's `/var/lib/boltd` comes along so the dock is already enrolled at first boot.
 
 ## 1. Prepare
 
-- [ ] **Find a USB stick** (any size over about 2 GB).
-- [ ] Download a current NixOS ISO from <https://nixos.org/download/>. Minimal or graphical both work: every installer ISO runs NetworkManager and sshd, and its `nixos` user has passwordless sudo.
-- [ ] Write it to the stick. Check the device with `lsblk` first, because `dd` overwrites whatever it is pointed at:
+- [x] Anything important in `~` is backed up (confirmed 2026-11-20).
+- [ ] Unlock Bitwarden on liquidark, because the SSH key lives there. Work from `~/code/homelab-nix` on an up-to-date `main`.
+
+## 2. Carry-over (right before the install)
+
+Re-run this even though the tree already exists from 2026-10-13, so pairings made since are kept. Arch's sudo wants a password, so `ssh -t`. A tty mangles binary output, so the tar goes through a file. Both copies hold the Wi-Fi password, so the last line deletes them.
+
+- [ ] **Carry over Wi-Fi profiles, Bluetooth pairings and the bolt enrolment.**
   ```bash
-  sudo dd if=nixos-*.iso of=/dev/sdX bs=4M status=progress conv=fsync
-  ```
-
-## 2. While celes is still on Arch
-
-Do these as close to the wipe as you can, so nothing created in between is lost.
-
-- [ ] **Back up `~`.** Anything not in a git repo or in Bitwarden is gone after the install.
-- [ ] **Carry over the Wi-Fi profiles and Bluetooth pairings.** Arch's sudo wants a password, so `ssh -t`. A tty mangles binary output, so the tar goes through a file. Both copies hold the Wi-Fi password, so the last line deletes them.
-  ```bash
-  ssh -t brian@celes 'sudo tar -C / -cf /tmp/carry.tar etc/NetworkManager/system-connections var/lib/bluetooth && sudo chown brian /tmp/carry.tar'
+  ssh -t brian@celes 'sudo tar -C / -cf /tmp/carry.tar etc/NetworkManager/system-connections var/lib/bluetooth var/lib/boltd && sudo chown brian /tmp/carry.tar'
   scp brian@celes:/tmp/carry.tar /tmp/ \
     && tar -C ~/.local/share/celes-install -xpf /tmp/carry.tar \
     && rm /tmp/carry.tar && ssh brian@celes rm /tmp/carry.tar
   ```
-- [ ] **Check the tree.** Profiles in `etc/NetworkManager/system-connections/` should be `-rw-------`, `var/lib/bluetooth` should be `drwx------`, and `var` and `var/lib` should still be `drwxr-xr-x`.
+- [ ] **Check the tree.** Profiles in `etc/NetworkManager/system-connections/` should be `-rw-------`, `var/lib/bluetooth` should be `drwx------`, and `var`, `var/lib` and `var/lib/boltd` should be `drwxr-xr-x`.
   ```bash
   find ~/.local/share/celes-install -printf '%M %p\n'
   ```
@@ -48,42 +37,67 @@ What carries over, as checked on 2026-10-13:
 - `noctropolis` is WPA3 (SAE) with `psk-flags=0`, so the password is stored in the profile file and not in a keyring. The profile is pinned to `wlp3s0`, and NixOS uses the same predictable naming.
 - The three hotel profiles are open networks. They come along at no cost.
 - Bluetooth pairing keys are tied to the laptop's own adapter MAC, which isn't changing.
-- NixOS manages neither destination. It leaves `/etc/NetworkManager/system-connections` alone, and `/var/lib/bluetooth` is just bluetooth.service's `StateDirectory`.
+- NixOS manages none of the destinations. It leaves `/etc/NetworkManager/system-connections` alone, and `/var/lib/bluetooth` and `/var/lib/boltd` are just their services' `StateDirectory`.
 - nixos-anywhere extracts with `--no-same-owner`, so the files land root-owned. NetworkManager requires that and ignores profiles owned by anyone else.
 
-## 3. Boot the installer
+## 3. kexec probe
 
-- [ ] Plug in the stick and power on celes. **Esc** at power-on opens the boot menu (F2 is BIOS setup). Secure Boot is already off.
+- [ ] **Turn celes's Wi-Fi off**, so the installer restores only the wired address (it re-applies the old system's addresses by MAC, and a dead `wlp3s0` route could win):
+  ```bash
+  ssh brian@10.0.1.85 nmcli radio wifi off
+  ```
+- [ ] Kexec only. This touches no disk:
+  ```bash
+  nix run github:nix-community/nixos-anywhere -- \
+    --flake .#celes --phases kexec brian@10.0.1.85
+  ```
+- [ ] **If it reconnects** (`ssh root@10.0.1.85 true`), the dock survived the kexec; go to 4a.
+- [ ] **If it does not**, at the laptop's console (log in as root if prompted): `echo 1 > /sys/bus/thunderbolt/devices/0-2/authorized`, then check `ip -br addr`. If the NIC still does not appear, power-cycle back into Arch and use 4b. Record which it was in the log.
+
+## 4a. Install (wired)
+
+- [ ] Partition, install and reboot from the running installer:
+  ```bash
+  nix run github:nix-community/nixos-anywhere -- \
+    --flake .#celes \
+    --extra-files ~/.local/share/celes-install \
+    --phases disko,install,reboot \
+    root@10.0.1.85
+  ```
+  The closure builds on liquidark and is copied over the dock's 2.5GbE; celes reboots on its own.
+
+## 4b. Fallback: USB stick on Wi-Fi
+
+Only if the dock's NIC cannot be brought up in the kexec installer.
+
+- [ ] Write a current NixOS ISO (<https://nixos.org/download/>) to a stick, checking the device with `lsblk` first: `sudo dd if=nixos-*.iso of=/dev/sdX bs=4M status=progress conv=fsync`.
+- [ ] Boot it: **Esc** at power-on opens the boot menu (F2 is BIOS setup). Secure Boot is already off.
 - [ ] At the installer's console:
   ```bash
   nmtui                                   # join noctropolis
   mkdir -p ~/.ssh && curl -s https://github.com/bcrescimanno.keys > ~/.ssh/authorized_keys
   ip -br addr show wlp3s0                 # note the address
   ```
-  Your GitHub key list includes the key every host already trusts (`…eRzbHUv/0P2W`), so liquidark can log in.
-- [ ] From liquidark, confirm you can log in: `ssh nixos@<ip> true`.
-
-## 4. Install
-
-- [ ] Unlock Bitwarden first, because the SSH key lives there. Then, from `~/code/homelab-nix` on an up-to-date `main`:
+- [ ] Install. nixos-anywhere sees `VARIANT_ID=installer` and skips the kexec on its own:
   ```bash
   nix run github:nix-community/nixos-anywhere -- \
     --flake .#celes \
     --extra-files ~/.local/share/celes-install \
     nixos@<ip>
   ```
-  Use the address from step 3, not `celes.home.theshire.io`: the installer boots under a different hostname. The closure builds on liquidark (it has built it before, so most of it is cached), gets copied to celes over Wi-Fi, and celes reboots on its own. Take the stick out once it does.
+  Take the stick out once celes reboots.
 
 ## 5. First boot
 
 - [ ] Log in at SDDM with the password from `brian_password_hash`.
-- [ ] Wi-Fi: `nmcli connection show --active` lists `noctropolis`.
+- [ ] Wi-Fi: the radio comes up on (step 3 turned off Arch's radio, and that state is not carried), and `nmcli connection show --active` lists `noctropolis`.
+- [ ] Dock: `boltctl list` shows the CalDigit dock `authorized`, and `ip -br addr show enp100s0` has 10.0.1.85.
 - [ ] Bluetooth: `bluetoothctl devices Paired` lists the old pairings.
 - [ ] Secrets decrypted: `ls /run/secrets/` shows `attic_push_token` and `tailscale_auth_key`.
 - [ ] Tailscale: `tailscale status` shows celes. The install creates a new node, so if the Arch install was on the tailnet, remove its old node in the admin console.
 - [ ] On liquidark, forget the old SSH host key; the new system has a new one:
   ```bash
-  ssh-keygen -R celes; ssh-keygen -R celes.home.theshire.io; ssh-keygen -R 10.0.1.214
+  ssh-keygen -R celes; ssh-keygen -R celes.home.theshire.io; ssh-keygen -R 10.0.1.214; ssh-keygen -R 10.0.1.85
   ```
 - [ ] On liquidark, `rm -rf ~/.local/share/celes-install`. It holds celes's private age key and the Wi-Fi password.
 - [ ] `deploy celes` succeeds, which proves the deploy path works.

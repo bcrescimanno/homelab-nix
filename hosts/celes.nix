@@ -18,9 +18,10 @@
 # nvidia-open 615.71.09).
 #
 # ---------------------------------------------------------------------------
-# Installation is a checklist in hosts/celes-install.md: nixos-anywhere from
-# a NixOS USB stick, not terra's kexec recipe (the kexec installer has no
-# Wi-Fi, and the G14 has no Ethernet port), plus the Wi-Fi/Bluetooth
+# Installation is a checklist in hosts/celes-install.md: terra's kexec
+# recipe, wired through the CalDigit Thunderbolt dock (the G14 has no
+# Ethernet port of its own, and the kexec installer has no Wi-Fi), with a
+# NixOS USB stick on Wi-Fi as the fallback; plus the Wi-Fi/Bluetooth/bolt
 # carry-over and the first-boot checks.
 # ---------------------------------------------------------------------------
 
@@ -299,6 +300,16 @@
 
   hardware.bluetooth.enable = true;
 
+  # Thunderbolt/USB4 device authorization. The domain's security level is
+  # `user`, so a dock's PCIe tunnel — and with it the CalDigit TB4 Pro Dock's
+  # Intel 2.5GbE NIC (igc, enp100s0), celes's only wired port — does not
+  # exist until something writes `authorized`. On Arch that was boltd; the
+  # plasma6 module does not enable it, so without this line the dock's
+  # Ethernet silently never appears. The dock's enrolment (policy iommu) is
+  # carried over from Arch in /var/lib/boltd, so it is authorized at boot
+  # with no prompt.
+  services.hardware.bolt.enable = true;
+
   # The password manager holds the SSH key and signs git commits, through its
   # agent socket (dotfiles home/ssh-agent.nix, dotfiles.sshAgent = "bitwarden").
   # Lutris lives here rather than in dotfiles because it pulls in unfree Steam
@@ -330,7 +341,9 @@
   # ---------------------------------------------------------------------------
   #
   # NetworkManager, as on terra: Plasma's network applet drives it, and a
-  # laptop roams. Its address on the home Wi-Fi is DHCP (10.0.1.214).
+  # laptop roams. Its addresses are DHCP: 10.0.1.214 on the home Wi-Fi
+# (wlp3s0), 10.0.1.85 through the dock (enp100s0). celes.home.theshire.io
+# follows whichever UniFi saw last, so the SSH host key is pinned to neither.
   networking.networkmanager.enable = true;
 
   # ---------------------------------------------------------------------------
