@@ -273,6 +273,18 @@
   # something to point at.
   services.power-profiles-daemon.enable = true;
 
+  # Started at boot, before SDDM, not left to D-Bus activation. The nixpkgs
+  # module only adds the upstream unit through systemd.packages, whose
+  # [Install] WantedBy= NixOS ignores, so PPD started on its first D-Bus call.
+  # On the first boot (2026-11-24) that call came from powerdevil itself, in
+  # the same second, and powerdevil's startup probe lost the race: the
+  # per-source "Power Profile" settings were simply absent from System
+  # Settings until powerdevil was restarted.
+  systemd.services.power-profiles-daemon = {
+    wantedBy = [ "multi-user.target" ];
+    before = [ "display-manager.service" ];
+  };
+
   # Plasma's "Launch using dedicated GPU" asks switcheroo-control which GPU is
   # discrete; the plasma6 module does not enable it.
   services.switcherooControl.enable = true;
