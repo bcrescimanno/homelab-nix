@@ -94,6 +94,98 @@
   # board and is a BIOS setting, not a kernel one.
   powerManagement.powertop.enable = true;
 
+  # ---------------------------------------------------------------------------
+  # enp5s0 link recovery (RTL8125 on r8169)
+  # ---------------------------------------------------------------------------
+  #
+  # 2026-11-24 03:03:58 the switch dropped link on all four hosts for ~80s
+  # (UniFi firmware/reboot window). The three Pis logged `Link is Up` at
+  # 03:05:18; orthanc's RTL8125 (10ec:8125, in-kernel r8169) logged only
+  # `Link is Down` and stayed dark for 11 hours — the box itself was fine and
+  # running the whole time, so nothing alerted beyond "orthanc is down", and WoL
+  # did nothing because the machine was already on. A power cycle fixed it.
+  #
+  # Prime suspect: powertop --auto-tune had set the NIC's runtime PM to `auto`.
+  # With no carrier, r8169 runtime-suspends the chip after ~10s and relies on a
+  # PME wake to notice the link coming back — the RTL8125's well-known weak
+  # spot. So the NIC is exempted from powertop below (its PCIe ASPM is already
+  # off board-wide; this is device runtime PM, a separate thing).
+  #
+  # That is a hypothesis, not a proof: the failure needs a link drop to
+  # reproduce. So `enp5s0-link-watchdog` is the backstop either way: no carrier
+  # for 3 min → bounce the link; still none 2 min later → reload r8169 (and
+  # again every 10 min while it stays down, which is harmless if the switch
+  # really is gone). Once carrier returns after an intervention it pushes to
+  # ntfy, so a recurrence is visible and says which step fixed it.
+  #
+  # If it recurs despite both, the escape hatch is the board's Intel I211
+  # (enp6s0, igb), currently uncabled — moving the cable also moves the MAC that
+  # rivendell's WoL targets and the DHCP reservation for 10.0.1.10.
+  systemd.services.enp5s0-runtime-pm-off = {
+    description = "Keep enp5s0 (RTL8125) out of runtime PM";
+    wantedBy = [ "multi-user.target" ];
+    after = [ "powertop.service" ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+    };
+    script = ''
+      echo on > /sys/class/net/enp5s0/device/power/control
+    '';
+  };
+
+  systemd.services.enp5s0-link-watchdog = {
+    description = "Recover enp5s0 when its link does not come back";
+    wantedBy = [ "multi-user.target" ];
+    after = [ "network.target" ];
+    path = [ pkgs.iproute2 pkgs.kmod pkgs.curl pkgs.coreutils ];
+    serviceConfig = {
+      Restart = "always";
+      RestartSec = 30;
+    };
+    script = ''
+      IF=enp5s0
+      carrier() { [ "$(cat /sys/class/net/$IF/carrier 2>/dev/null)" = 1 ]; }
+      down_since=""   # epoch when carrier was first seen missing
+      last_action=0   # epoch of the last bounce/reload
+      action=""       # last step taken in this incident
+
+      while true; do
+        now=$(date +%s)
+        if carrier; then
+          if [ -n "$action" ]; then
+            secs=$((now - down_since))
+            echo "carrier back after ''${secs}s (last step: $action)"
+            curl -s --connect-timeout 5 --max-time 30 --retry 10 --retry-delay 15 \
+              --retry-all-errors \
+              -H "Title: orthanc NIC link recovered" -H "Priority: 4" -H "Tags: warning" \
+              -d "enp5s0 had no carrier for $((secs / 60)) min. The watchdog's last step before it returned: $action. See enp5s0-link-watchdog in hosts/orthanc.nix." \
+              http://10.0.1.9:2586/homelab || true
+          fi
+          down_since=""; action=""; last_action=0
+        else
+          [ -z "$down_since" ] && { down_since=$now; echo "carrier lost"; }
+          down=$((now - down_since))
+          if [ -z "$action" ] && [ "$down" -ge 180 ]; then
+            echo "no carrier for ''${down}s: bouncing $IF"
+            ip link set "$IF" down; sleep 2; ip link set "$IF" up
+            action="link bounce"; last_action=$now
+          elif [ -n "$action" ] && [ $((now - last_action)) -ge \
+                 "$([ "$action" = "link bounce" ] && echo 120 || echo 600)" ]; then
+            echo "no carrier for ''${down}s after $action: reloading r8169"
+            modprobe -r r8169 && sleep 2 && modprobe r8169
+            sleep 5
+            # Runtime PM is a per-device setting and the reload recreates the device.
+            echo on > /sys/class/net/$IF/device/power/control 2>/dev/null || true
+            ip link set "$IF" up 2>/dev/null || true
+            action="r8169 reload"; last_action=$(date +%s)
+          fi
+        fi
+        sleep 15
+      done
+    '';
+  };
+
   disko.devices = {
     disk.main = {
       type = "disk";
