@@ -15,20 +15,20 @@ The installed system runs boltd (`services.hardware.bolt.enable`), and Arch's `/
 ## 1. Prepare
 
 - [x] Anything important in `~` is backed up (confirmed 2026-11-20).
-- [ ] Unlock Bitwarden on liquidark, because the SSH key lives there. Work from `~/code/homelab-nix` on an up-to-date `main`.
+- [x] Unlock Bitwarden on liquidark, because the SSH key lives there. Work from `~/code/homelab-nix` on an up-to-date `main`.
 
 ## 2. Carry-over (right before the install)
 
 Re-run this even though the tree already exists from 2026-10-13, so pairings made since are kept. Arch's sudo wants a password, so `ssh -t`. A tty mangles binary output, so the tar goes through a file. Both copies hold the Wi-Fi password, so the last line deletes them.
 
-- [ ] **Carry over Wi-Fi profiles, Bluetooth pairings and the bolt enrolment.**
+- [x] **Carry over Wi-Fi profiles, Bluetooth pairings and the bolt enrolment.**
   ```bash
   ssh -t brian@celes 'sudo tar -C / -cf /tmp/carry.tar etc/NetworkManager/system-connections var/lib/bluetooth var/lib/boltd && sudo chown brian /tmp/carry.tar'
   scp brian@celes:/tmp/carry.tar /tmp/ \
     && tar -C ~/.local/share/celes-install -xpf /tmp/carry.tar \
     && rm /tmp/carry.tar && ssh brian@celes rm /tmp/carry.tar
   ```
-- [ ] **Check the tree.** Profiles in `etc/NetworkManager/system-connections/` should be `-rw-------`, `var/lib/bluetooth` should be `drwx------`, and `var`, `var/lib` and `var/lib/boltd` should be `drwxr-xr-x`.
+- [x] **Check the tree.** Profiles in `etc/NetworkManager/system-connections/` should be `-rw-------`, `var/lib/bluetooth` should be `drwx------`, and `var`, `var/lib` and `var/lib/boltd` should be `drwxr-xr-x`.
   ```bash
   find ~/.local/share/celes-install -printf '%M %p\n'
   ```
@@ -70,15 +70,15 @@ What carries over, as checked on 2026-10-13:
 
 Only if the dock's NIC cannot be brought up in the kexec installer.
 
-- [ ] Write a current NixOS ISO (<https://nixos.org/download/>) to a stick, checking the device with `lsblk` first: `sudo dd if=nixos-*.iso of=/dev/sdX bs=4M status=progress conv=fsync`.
-- [ ] Boot it: **Esc** at power-on opens the boot menu (F2 is BIOS setup). Secure Boot is already off.
-- [ ] At the installer's console:
+- [x] Write a current NixOS ISO (<https://nixos.org/download/>) to a stick, checking the device with `lsblk` first: `sudo dd if=nixos-*.iso of=/dev/sdX bs=4M status=progress conv=fsync`.
+- [x] Boot it: **Esc** at power-on opens the boot menu (F2 is BIOS setup). Secure Boot is already off.
+- [x] At the installer's console:
   ```bash
   nmtui                                   # join noctropolis
   mkdir -p ~/.ssh && curl -s https://github.com/bcrescimanno.keys > ~/.ssh/authorized_keys
   ip -br addr show wlp3s0                 # note the address
   ```
-- [ ] Install. nixos-anywhere sees `VARIANT_ID=installer` and skips the kexec on its own:
+- [x] Install. nixos-anywhere sees `VARIANT_ID=installer` and skips the kexec on its own:
   ```bash
   nix run github:nix-community/nixos-anywhere -- \
     --flake .#celes \
@@ -89,18 +89,18 @@ Only if the dock's NIC cannot be brought up in the kexec installer.
 
 ## 5. First boot
 
-- [ ] Log in at SDDM with the password from `brian_password_hash`.
-- [ ] Wi-Fi: the radio comes up on (step 3 turned off Arch's radio, and that state is not carried), and `nmcli connection show --active` lists `noctropolis`.
-- [ ] Dock: `boltctl list` shows the CalDigit dock `authorized`, and `ip -br addr show enp100s0` has 10.0.1.85.
-- [ ] Bluetooth: `bluetoothctl devices Paired` lists the old pairings.
-- [ ] Secrets decrypted: `ls /run/secrets/` shows `attic_push_token` and `tailscale_auth_key`.
-- [ ] Tailscale: `tailscale status` shows celes. The install creates a new node, so if the Arch install was on the tailnet, remove its old node in the admin console.
-- [ ] On liquidark, forget the old SSH host key; the new system has a new one:
+- [x] Log in at SDDM with the password from `brian_password_hash`.
+- [x] Wi-Fi: the radio comes up on (step 3 turned off Arch's radio, and that state is not carried), and `nmcli connection show --active` lists `noctropolis`.
+- [x] Dock: `boltctl list` shows the CalDigit dock `authorized`, and `ip -br addr show enp100s0` has 10.0.1.85.
+- [x] Bluetooth: `bluetoothctl devices Paired` lists the old pairings.
+- [x] Secrets decrypted: `ls /run/secrets/` shows `attic_push_token` and `tailscale_auth_key`.
+- [x] Tailscale: `tailscale status` shows celes. The install creates a new node, so if the Arch install was on the tailnet, remove its old node in the admin console.
+- [x] On liquidark, forget the old SSH host key; the new system has a new one:
   ```bash
   ssh-keygen -R celes; ssh-keygen -R celes.home.theshire.io; ssh-keygen -R 10.0.1.214; ssh-keygen -R 10.0.1.85
   ```
 - [ ] On liquidark, `rm -rf ~/.local/share/celes-install`. It holds celes's private age key and the Wi-Fi password.
-- [ ] `deploy celes` succeeds, which proves the deploy path works.
+- [x] `deploy celes` succeeds, which proves the deploy path works.
 
 ## 6. Post-install checks
 
@@ -110,10 +110,10 @@ Claude can do most of these over SSH. Ask once celes is up.
   - Should KWin be pinned to the iGPU with `KWIN_DRM_DEVICES`? That would cost HDMI, which is wired to the NVIDIA card.
   - Should Steam's menu entry drop `PrefersNonDefaultGPU`? With it, Plasma runs the Steam client itself on the 4070.
 - [ ] **dGPU for games.** A DXVK/Proton game should land on the 4070 with no offload command.
-- [ ] **Lighting.** `asusctl leds` and the Slash bar both respond.
-- [ ] **Charge limit.** `cat /sys/class/power_supply/BAT1/charge_control_end_threshold` reads 80.
-- [ ] **Power profiles.** In Plasma, under System Settings → Power Management, set Performance on AC and power-saver on battery. asusd's own profile switching is off.
-- [ ] **Charging.** On a USB-C PD charger, UPower reports AC. The nightly upgrade only runs on AC power.
+- [x] **Lighting.** `asusctl leds` and the Slash bar both respond.
+- [x] **Charge limit.** `cat /sys/class/power_supply/BAT1/charge_control_end_threshold` reads 80.
+- [x] **Power profiles.** In Plasma, under System Settings → Power Management, set Performance on AC and power-saver on battery. asusd's own profile switching is off.
+- [x] **Charging.** On a USB-C PD charger, UPower reports AC. The nightly upgrade only runs on AC power.
 - [ ] **Keys.** Check the mic-mute key, and bind Fn+F5 (it does nothing until the desktop binds it).
 - [ ] **Lutris.** If you restore Lutris config, set the Wine runner's GPU option back to **Auto**. Arch had `gpu: card1`, and card numbers aren't stable.
 - [ ] **Dotfiles cleanup.** Retire `machines/celes.nix` and rename `celes-nixos` to `celes`.
@@ -131,3 +131,17 @@ These need deciding:
 ## Log
 
 Note anything that went differently from the steps above, with the date.
+
+### 2026-11-24 — installed from the USB stick (4b)
+
+- **Section 3 skipped by choice.** Went straight to 4b. Whether the dock survives the kexec installer is still unknown.
+- **Stick:** NixOS 26.05 graphical ISO (`nixos-graphical-26.05.15079.0dc498bfe49b`), SHA-256 verified. Pick the default boot menu entry; the graphical ISO boots into Plasma as `nixos`, so the console steps are done in Konsole (Wi-Fi via the panel applet or `nmtui`). It came up on 10.0.1.213, the same lease Arch's Wi-Fi had.
+- **Carry-over refreshed from Arch** right before (same contents as 11-19/11-20: five Wi-Fi profiles, one Bluetooth pairing, the dock enrolment). The `sudo tar` half was run at celes's own keyboard instead of `ssh -t`. `key.txt` was checked against `&celes` in `.sops.yaml` (`age-keygen -y`) before the install.
+- **Host keys:** liquidark had no entry for 10.0.1.85, so the Arch, installer and installed-system keys were each checked against `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` at the console. The live ISO makes a new key every boot, so a new key alone proves nothing.
+- **Installed `main` at fb45845** (`nixos-system-celes-26.11.20261121.93a9ed0`, prebuilt on liquidark, so only the copy went over Wi-Fi). nixos-anywhere ran clean through disko → install → reboot.
+- **Tailscale enrolment failed on first boot, a race:** on NetworkManager, `network-online.target` is just `nm-online -s`, which returned at 15:14:05 before Wi-Fi had an address, so `tailscaled-autoconnect` hit `lookup api.tailscale.com on [::1]:53: connection refused` and failed. (The tailscale module's ordering assumes dhcpcd's `wait = "ipv4"` gates network-online, which isn't true on an NM host.) `systemctl restart tailscaled-autoconnect` enrolled it. That's a one-off: once logged in, autoconnect only waits for Running. The node came up as plain `celes`, so no stale Arch node existed.
+- **Dock NIC lost after Thunderbolt runtime PM.** boltd authorized the dock and `enp100s0` came up, but after a Thunderbolt link drop the dock re-authorized (`auto-auth: authorization successful`) with no NIC behind it. The USB4 PCIe hotplug root port `0000:00:03.1` was runtime-suspended and never saw the link. `echo on > /sys/bus/pci/devices/0000:00:03.1/power/control` brought it straight back (`pciehp: Card present / Link Up`, `enp100s0` got 10.0.1.85). Fix in a separate PR: a udev rule pinning the USB4 tunnel ports awake. Not `pcie_port_pm=off`, which would also hold the 4070's bridge awake.
+- **power-profiles-daemon raced powerdevil:** the per-source Power Profile settings were missing from System Settings. PPD was only D-Bus-activated (the nixpkgs module ships the unit via `systemd.packages`, whose `WantedBy=` NixOS ignores) and came up in the same second as powerdevil. Restarting powerdevil showed them. It's now started at boot before SDDM (`hosts/celes.nix`).
+- **The 4070 never sleeps: `Runtime D3 status: Not supported`** in `/proc/driver/nvidia/gpus/0000:01:00.0/power` (615.78.08 open), active 60/60 s idle with Steam closed. The modprobe options are applied (`NVreg_DynamicPowerManagement=0x02`), the MUX is hybrid (`gpu_mux_mode=1`, `dgpu_disable=0`), and the parent bridge `00:01.1` has ACPI `power_resources_D3hot`, so the cause is still unknown. KWin also holds `/dev/nvidia0` open (`card0`). Until RTD3 works, the `KWIN_DRM_DEVICES` / `PrefersNonDefaultGPU` decisions are moot. Open investigation.
+- **asusd's `Unknown or invalid slash: "19b6"` is harmless:** `19b6` is the keyboard aura device, probed as a Slash candidate first. The Slash bar and aura both respond to asusctl.
+- **Still open:** dGPU-for-games (needs a game installed), Fn+F5 binding, Lutris, dotfiles cleanup, and the deletion of `~/.local/share/celes-install` (kept for now on purpose).
