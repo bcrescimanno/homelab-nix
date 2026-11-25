@@ -330,6 +330,14 @@
   programs.firefox.enable = true;
   programs.gamemode.enable = true;
 
+  # Steam itself, the native module (FHS runtime, 32-bit libs, controller udev
+  # rules via hardware.steam-hardware). Proton games then reach the 4070 on
+  # their own (see the graphics block); the client's own GPU, through
+  # PrefersNonDefaultGPU, is the open question measured there. Remote Play and
+  # LAN game transfers stay closed in the firewall — it is a laptop, often on
+  # someone else's network.
+  programs.steam.enable = true;
+
   # The terminal font dotfiles' Ghostty config names (home/terminal.nix).
   fonts.packages = [ pkgs.nerd-fonts.jetbrains-mono ];
 
