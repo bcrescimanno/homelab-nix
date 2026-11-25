@@ -114,13 +114,17 @@ Claude can do most of these over SSH. Ask once celes is up.
 - [x] **Charge limit.** `cat /sys/class/power_supply/BAT1/charge_control_end_threshold` reads 80.
 - [x] **Power profiles.** In Plasma, under System Settings → Power Management, set Performance on AC and power-saver on battery. asusd's own profile switching is off.
 - [x] **Charging.** On a USB-C PD charger, UPower reports AC. The nightly upgrade only runs on AC power.
-- [x] **Keys.** Check the mic-mute key (works). Binding Fn+F5 (it does nothing until the desktop binds it) is **deferred**: see Follow-ups.
-- [ ] **Lutris.** If you restore Lutris config, set the Wine runner's GPU option back to **Auto**. Arch had `gpu: card1`, and card numbers aren't stable.
-- [ ] **Dotfiles cleanup.** Retire `machines/celes.nix` and rename `celes-nixos` to `celes`.
+- [x] **Keys.** Mic-mute works. Fn+F5 is the fan-profile key: the kernel (asus-wmi) handles it itself, cycling quiet → balanced → performance, and no key event reaches userspace, so it can't be bound to anything else. Kept as it is.
+- [x] **Lutris.** Nothing restored from Arch (no `~/.config/lutris` or `~/.local/share/lutris`), and a fresh Lutris already defaults the Wine runner's GPU option to Auto. Leave it on Auto when adding games: Arch had `gpu: card1`, and card numbers aren't stable.
+- [x] **Dotfiles cleanup.** The Arch profile, `hyprland-celes.lua` and `env-celes` are deleted, and `celes-nixos` is renamed to `celes` (dotfiles #8). `hosts/celes.nix` imports `machines/celes.nix`.
 
 ## Follow-ups
 
-- [ ] **Bind Fn+F5.** Deferred on 2026-11-24. It does nothing until Plasma binds it; pick an action and bind it in System Settings → Shortcuts.
+- [ ] **Pin `celes.home.theshire.io` to Wi-Fi.** Deferred on 2026-11-24. The UDM keeps one record per hostname, and the dock NIC's lease (10.0.1.85) won it, so off the dock the name points at nothing. Plan:
+  1. UDM: Fixed IP 10.0.1.213 for the Wi-Fi MAC `78:46:5c:77:de:63`. That's the permanent MAC: NM doesn't randomize it.
+  2. `modules/dns.nix`: add `celes = [ "10.0.1.213" ];` to `machines`, which pins it in both `customDNS` and `clientLookup`.
+  3. Optional: stop the dock's NM connection from sending the hostname (`ipv4.dhcp-send-hostname=false`).
+  Until then, reach celes at 10.0.1.213, or as `celes` over Tailscale.
 - [ ] **Laptop panel stays off after lid-open resume while docked.** Accepted for now on 2026-11-24, an upstream KWin race (looks like [KDE bug 515550](https://bugs.kde.org/show_bug.cgi?id=515550)). Recheck after each Plasma update. Recovery: close and reopen the lid, or over SSH `XDG_RUNTIME_DIR=/run/user/1000 WAYLAND_DISPLAY=wayland-1 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus kscreen-doctor output.eDP-1.enable` (the socket is `wayland-1`, not `-0`). A resume hook running that was considered and rejected, because it would fight KWin's own output handling and undo a deliberate clamshell setup. See the Log, 2026-11-24 evening.
 
 ## Not carried over yet
@@ -177,3 +181,9 @@ Celes cold-booted on `main` plus both open branches (the dock udev rule, and the
 - **DXVK's own GPU choice, tested.** Steam was started from Konsole (no offload env) and Pixel Remaster launched under Proton Experimental. The game was still on the 4070 (`nvidia-smi`: `FINAL FANTASY.exe`, 327 MiB), with no `__NV_PRIME_*` set in Steam or the game, and the client stayed off the card.
 - **Change:** `hosts/celes.nix` overrides `steam-unwrapped` so the menu entry reads `PrefersNonDefaultGPU=false`. The override uses `--replace-fail`, so the build fails if upstream drops the key. A native OpenGL game now starts on the 780M, and needs `__NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia %command%` in its launch options.
 - **Verified after the deploy:** Steam was started from the Plasma menu and left idle at its main window. No offload env was set, no Steam process held `/dev/nvidia*`, and the 4070 stayed suspended for the full 60 s sample (+0 ms active), with its bridge `00:01.1` suspended too.
+
+### 2026-11-24 (late) — Fn+F5, Lutris, dotfiles
+
+- **Fn+F5 is not bindable.** evtest on every input device recorded no event while it was pressed three times, but asusd logged three `platform_profile` changes a second apart (quiet → balanced → performance). asus-wmi consumes the key (`NOTIFY_KBD_TTP`) and cycles the platform profile itself, and power-profiles-daemon follows the change. No Steam shortcut wanted.
+- **Lutris:** nothing to restore. **Dotfiles:** Arch profile retired and `celes-nixos` renamed to `celes` (dotfiles #8). **`~/.local/share/celes-install`:** deleted by Brian.
+- **DNS** for `celes.home.theshire.io` is deferred: see Follow-ups.
