@@ -217,15 +217,33 @@ in
     # qBittorrent traffic through the VPN. The v1 tag is kept as a conservative
     # choice; v2 may also work but has not been tested in this configuration.
     #
-    # HELD at 5.3.0 (linuxserver 5.3.0_v1.2.20-ls144). Private trackers keep a
-    # client whitelist, and Redacted had not whitelisted 5.3.1 when the
-    # 2026-11-24 digest bump (#1018) deployed it. Renovate updates for this
-    # image are disabled in renovate.json (packageRules, "qBittorrent hold").
-    # Before moving the digest, confirm the new version is on Redacted's
-    # whitelist, then drop that rule. The floating tag carries no version, so
-    # read the image's `build_version` label, not the tag.
+    # VERSIONED TAG, NOT THE FLOATING `libtorrentv1`. Redacted only accepts
+    # announces from whitelisted client versions and is often days or weeks
+    # behind a qBittorrent release. On the floating tag a new qBittorrent
+    # version arrived as an anonymous "update digest" PR, indistinguishable
+    # from the routine linuxserver rebuilds, and automerged: #1018 shipped
+    # 5.3.1 on 2026-11-24 before Redacted had whitelisted it (#1030 rolled
+    # back). The tag reads libtorrentv1-<qBittorrent>_v<libtorrent>-ls<build>,
+    # and updates move in two lanes:
+    #
+    #   ls<build> only      Renovate, automerged. renovate.json captures the
+    #                       qBittorrent version as the versioning's
+    #                       `compatibility`, so Renovate never proposes a
+    #                       different one.
+    #   qBittorrent version .github/workflows/qbittorrent-version-watch.yml
+    #                       opens a PR labelled `needs-redacted-whitelist`,
+    #                       never armed. Merge it only after finding the new
+    #                       version on Redacted's client whitelist.
+    #                       pr-automerge-watch pushes a reminder while it waits.
+    #
+    # The `_v1.2.` is part of both matchers on purpose: the registry also holds
+    # a mis-published libtorrentv1-5.3.0_v2.0.15-ls139.
+    #
+    # If a rejection gets through anyway, qbittorrent-seed-policy reports every
+    # private torrent whose tracker refuses the client, and grafana.nix alerts
+    # on it (QbittorrentClientRejected).
     qbittorrent = {
-      image = "lscr.io/linuxserver/qbittorrent:libtorrentv1@sha256:3f4e61ffef408311bbe26ccda03e6e691ec218633cdf8a458bd277ae154c0bac";
+      image = "lscr.io/linuxserver/qbittorrent:libtorrentv1-5.3.0_v1.2.20-ls144@sha256:3f4e61ffef408311bbe26ccda03e6e691ec218633cdf8a458bd277ae154c0bac";
       autoStart = true;
       dependsOn = [ "gluetun" ];
       extraOptions = [ "--network=container:gluetun" ];

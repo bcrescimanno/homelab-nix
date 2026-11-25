@@ -38,6 +38,13 @@
 # Renovate PR whose automerge was never armed at all. See the docstring in
 # pr-automerge-watch.py for each case and how it is distinguished from "slow".
 #
+# HELD PRS ARE THE ONE EXCEPTION
+#
+# A PR labelled `needs-redacted-whitelist` (opened by the
+# qbittorrent-version-watch workflow) is unarmed on purpose: a person has to
+# confirm the tracker whitelists the new client first. It is announced once,
+# then re-announced weekly while it stays open, never reported as stuck.
+#
 # UNKNOWN IS NOT CLEAN
 #
 # Inherited from flake-freshness, which exists because nixpkgs-watch.nix
