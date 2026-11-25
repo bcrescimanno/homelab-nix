@@ -106,9 +106,9 @@ Only if the dock's NIC cannot be brought up in the kexec installer.
 
 Claude can do most of these over SSH. Ask once celes is up.
 
-- [ ] **dGPU idle wakeups.** Measure twice, with Steam closed and with Steam open. Watch `/sys/bus/pci/devices/0000:01:00.0/power/runtime_status` and `runtime_active_time`. **Don't run `lspci` while measuring**, because it wakes the card. Then decide two things:
-  - Should KWin be pinned to the iGPU with `KWIN_DRM_DEVICES`? That would cost HDMI, which is wired to the NVIDIA card.
-  - Should Steam's menu entry drop `PrefersNonDefaultGPU`? With it, Plasma runs the Steam client itself on the 4070.
+- [x] **dGPU idle wakeups.** Measured 2026-11-24 with RTD3 working (see the Log, 2026-11-24 night). Never run `lspci` while measuring, because it wakes the card. Decisions:
+  - **KWin is not pinned to the iGPU.** It holds the 4070 open but doesn't keep it awake. Pinning would cost HDMI, which is wired to the NVIDIA card.
+  - **Steam's menu entry no longer has `PrefersNonDefaultGPU`.** With it, Steam idle kept the 4070 awake the whole time. Without it, Proton still picks the 4070.
 - [x] **dGPU for games.** A DXVK/Proton game should land on the 4070 with no offload command.
 - [x] **Lighting.** `asusctl leds` and the Slash bar both respond.
 - [x] **Charge limit.** `cat /sys/class/power_supply/BAT1/charge_control_end_threshold` reads 80.
@@ -167,3 +167,12 @@ Celes cold-booted on `main` plus both open branches (the dock udev rule, and the
   - **The Thunderbolt link dropped during sleep** (`0:2: failed to reach state TB_PORT_UP ... lost during suspend`). On resume the kernel removed the dock and re-added it within a second. igc's teardown printed `Trying to free already-free IRQ` and `disabling already-disabled device` warnings (harmless). boltd re-authorized the dock, then `pciehp: Slot(0-1): Card present / Link Up` with no manual wake, and `enp100s0` came back. **That exercised the dock fix's hotplug path, via resume rather than a cable pull.** A real replug is still worth doing once.
   - **The laptop panel never came back.** KWin re-enabled `eDP-1` on lid-open before it had the DRM device back (`drmModeListLessees() failed: Permission denied`, `Applying output configuration failed: EACCESS`) and never retried. The desktop, lock screen included, was only on the LG (`DP-5`), which was dark behind a burst of `DPIA AUX failed` errors. `kscreen-doctor output.eDP-1.enable` over SSH restored it. Accepted as an upstream race: see Follow-ups.
   - **`celes.home.theshire.io` resolves only to the dock NIC (10.0.1.85).** With the dock unplugged, reach celes on its Wi-Fi lease, 10.0.1.213.
+
+### 2026-11-24 (night) — dock replug, dGPU idle with Steam, KWin and Steam decisions
+
+- **Dock replug passes.** Thunderbolt unplugged and plugged back in at 22:18:17. igc re-probed behind `0000:00:03.1` and `enp100s0` was up with 10.0.1.85 two seconds later, with no manual wake.
+- **The 4070 with Steam closed:** a 60 s sample showed 0 wakeups (`runtime_active_time` +0 ms). It wakes for a few seconds on display hotplug or resume (3.5 s in the sample that included the replug), which is KWin probing the NVIDIA card's outputs.
+- **KWin stays on both GPUs.** It holds `card0` open, but that doesn't keep the 4070 awake, so `KWIN_DRM_DEVICES` would save only the hotplug blips and would cost the HDMI port. Brian chose not to pin it.
+- **Steam idle at its main window kept the 4070 awake 60 s of 60** (bridge `00:01.1` active, video memory active). `steam` and its steamwebhelpers held `/dev/nvidia*` and carried `__NV_PRIME_RENDER_OFFLOAD=1` / `__VK_LAYER_NV_optimus=NVIDIA_only`, from Plasma honouring `PrefersNonDefaultGPU`.
+- **DXVK's own GPU choice, tested.** Steam was started from Konsole (no offload env) and Pixel Remaster launched under Proton Experimental. The game was still on the 4070 (`nvidia-smi`: `FINAL FANTASY.exe`, 327 MiB), with no `__NV_PRIME_*` set in Steam or the game, and the client stayed off the card.
+- **Change:** `hosts/celes.nix` overrides `steam-unwrapped` so the menu entry reads `PrefersNonDefaultGPU=false`. The override uses `--replace-fail`, so the build fails if upstream drops the key. A native OpenGL game now starts on the 780M, and needs `__NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia %command%` in its launch options.

@@ -378,11 +378,29 @@
 
   # Steam itself, the native module (FHS runtime, 32-bit libs, controller udev
   # rules via hardware.steam-hardware). Proton games then reach the 4070 on
-  # their own (see the graphics block); the client's own GPU, through
-  # PrefersNonDefaultGPU, is the open question measured there. Remote Play and
-  # LAN game transfers stay closed in the firewall — it is a laptop, often on
-  # someone else's network.
+  # their own (see the graphics block). Remote Play and LAN game transfers stay
+  # closed in the firewall — it is a laptop, often on someone else's network.
   programs.steam.enable = true;
+
+  # Steam's menu entry ships PrefersNonDefaultGPU=true, so Plasma launches the
+  # client on the 4070 with __NV_PRIME_RENDER_OFFLOAD=1 /
+  # __VK_LAYER_NV_optimus=NVIDIA_only, and every game inherits that. Measured
+  # 2026-11-24 with RTD3 working: Steam idle at its main window kept the 4070
+  # awake 60 s of 60 (steam + steamwebhelper hold /dev/nvidia*), so the dGPU
+  # never slept while Steam was open. Launched without the env, Pixel Remaster
+  # under Proton still landed on the 4070 (DXVK picks the discrete GPU itself)
+  # and the client stayed off it. Cost: a native OpenGL game now starts on the
+  # 780M — give it `__NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia
+  # %command%` as its launch options. --replace-fail is the tripwire: if
+  # upstream drops the key, the build fails and this override can go.
+  programs.steam.package = pkgs.steam.override {
+    steam-unwrapped = pkgs.steam-unwrapped.overrideAttrs (old: {
+      postInstall = (old.postInstall or "") + ''
+        substituteInPlace $out/share/applications/steam.desktop \
+          --replace-fail 'PrefersNonDefaultGPU=true' 'PrefersNonDefaultGPU=false'
+      '';
+    });
+  };
 
   # The terminal font dotfiles' Ghostty config names (home/terminal.nix).
   fonts.packages = [ pkgs.nerd-fonts.jetbrains-mono ];
