@@ -322,6 +322,23 @@
   # with no prompt.
   services.hardware.bolt.enable = true;
 
+  # Authorization alone is not enough: the PCIe root port the USB4 tunnel
+  # hangs off (0000:00:03.1, buses 05–100; celes has one USB4 domain and this
+  # is its only tunnel port) runtime-suspends when nothing is behind it, and
+  # once suspended it misses the tunnel coming up. First boot, 2026-11-24:
+  # after a Thunderbolt link drop the dock re-enumerated and boltd
+  # re-authorized it ("auto-auth: authorization successful"), yet no
+  # `pciehp: Link Up` and no NIC appeared until the port was woken by hand —
+  # then the dock's switch, igc and 10.0.1.85 were back within a second.
+  #
+  # So pin that one port awake. Matched by exact address on purpose: the
+  # other hotplug-capable root port, 00:01.1, is the 4070's bridge, and
+  # anything broader (or `pcie_port_pm=off`) would hold the dGPU out of
+  # D3cold. Root-port addresses are fixed by the SoC, not enumerated.
+  services.udev.extraRules = ''
+    ACTION=="add", SUBSYSTEM=="pci", KERNEL=="0000:00:03.1", ATTR{power/control}="on"
+  '';
+
   # The password manager holds the SSH key and signs git commits, through its
   # agent socket (dotfiles home/ssh-agent.nix, dotfiles.sshAgent = "bitwarden").
   # Lutris lives here rather than in dotfiles because it pulls in unfree Steam
