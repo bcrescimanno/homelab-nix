@@ -468,11 +468,8 @@
   # ---------------------------------------------------------------------------
   # Home Manager
   # ---------------------------------------------------------------------------
-  #
-  # celes-nixos.nix, not celes.nix: the latter still serves the Arch install
-  # until the wipe, and is retired after it.
   home-manager.users.brian = {
-    imports = [ "${inputs.dotfiles}/machines/celes-nixos.nix" ];
+    imports = [ "${inputs.dotfiles}/machines/celes.nix" ];
   };
 
   system.stateVersion = "26.11";
