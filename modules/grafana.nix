@@ -565,6 +565,42 @@ let
         ];
       }
       {
+        # Published by qbittorrent-seed-policy (modules/qbittorrent-seed-policy.py).
+        # #1018 shipped a qBittorrent that Redacted had not whitelisted and
+        # nothing noticed: the container, VPN and port were all healthy while
+        # every private announce was refused. The upgrade path now holds new
+        # versions for a human (see the image comment in arr-stack.nix); these
+        # catch whatever still gets through, including a version the tracker
+        # later withdraws.
+        name = "qbittorrent";
+        rules = [
+          {
+            # 10m rides out a single stale tracker row after a restart. Once
+            # fixed, it clears on the next announce, which can take the
+            # tracker's announce interval (tens of minutes).
+            alert = "QbittorrentClientRejected";
+            expr = ''qbittorrent_private_tracker_rejected_client > 0'';
+            "for" = "10m";
+            labels.severity = "critical";
+            annotations = {
+              summary = "Private tracker is rejecting this qBittorrent version";
+              description = "{{ $value }} private torrent(s) on pirateship report the tracker refusing the client, almost always a version not (or no longer) on Redacted's whitelist. The running version is the build_version label in `sudo podman inspect qbittorrent`. Pin the image in modules/arr-stack.nix back to the last whitelisted libtorrentv1-<version> tag and deploy pirateship. The exact message is in `journalctl -u qbittorrent-seed-policy`.";
+            };
+          }
+          {
+            # absent() covers never published; the age check covers stopped.
+            alert = "QbittorrentTrackerCheckStale";
+            expr = ''absent(qbittorrent_tracker_check_timestamp_seconds) or (time() - qbittorrent_tracker_check_timestamp_seconds > 1800)'';
+            "for" = "10m";
+            labels.severity = "warning";
+            annotations = {
+              summary = "qBittorrent tracker-rejection check has stopped reporting";
+              description = "qbittorrent-seed-policy on pirateship has not published tracker status in over 30m (it runs every 5m), so a client rejected by Redacted would go unnoticed. Check `journalctl -u qbittorrent-seed-policy` for 'tracker check FAILED'.";
+            };
+          }
+        ];
+      }
+      {
         # The external dead-man switch (modules/deadman.nix) watches the alert
         # path from outside the house. These rules watch the watcher from
         # inside it — specifically so that "not switched on yet" and

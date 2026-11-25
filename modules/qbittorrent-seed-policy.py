@@ -12,7 +12,9 @@ actually differ, so a steady-state run issues zero writes.
 Run with --dry-run to print the plan without touching anything.
 """
 import json
+import os
 import re
+import tempfile
 import sys
 import time
 import urllib.error
@@ -62,6 +64,27 @@ MODE_MATCH_ANY = "MatchAny"
 # GLOBAL action to Stop and put deletion only on individually classified public
 # torrents -- see the comment in the preferences block.
 GLOBAL_ACT_STOP = 0
+
+# ---------------------------------------------------------- tracker rejection
+# Private trackers refuse announces from clients not on their whitelist, and
+# Redacted lags qBittorrent releases. When #1018 shipped an unwhitelisted 5.3.1
+# nothing noticed: the container was healthy, the VPN was up, and every Redacted
+# torrent quietly stopped announcing. This counts, per run, the private torrents
+# whose real tracker (tier >= 0, not the DHT/PeX/LSD pseudo-rows) is "not
+# working" (status 4), and of those, the ones whose message blames the client.
+#
+# The exact wording has NOT been observed here: qBittorrent does not log
+# tracker errors, and the 5.3.1 run was rolled back before anyone looked.
+# Gazelle's Ocelot tracker answers "Your client is not on the whitelist"; the
+# pattern is deliberately broader than that so a Redacted-specific phrasing
+# still matches. The unfiltered not-working count is exported too, so a
+# rejection that matches nothing still shows as a jump there.
+TRACKER_NOT_WORKING = 4
+CLIENT_REJECT_RE = re.compile(
+    r"whitelist|white-list|allowlist|client|not (?:allowed|approved|permitted)",
+    re.I)
+METRIC_DIR = "/var/lib/prometheus-textfiles"
+METRIC_FILE = "qbittorrent_trackers.prom"
 
 
 def log(msg):
@@ -122,6 +145,51 @@ class QBit:
         return json.loads(self.get("/api/v2/torrents/info"))
 
 
+def check_private_trackers(qb, private):
+    """Return (metrics dict, sample messages). Raises on API failure."""
+    rejected = not_working = 0
+    samples = []
+    for t in private:
+        rows = json.loads(qb.get("/api/v2/torrents/trackers?hash=" + t["hash"]))
+        bad = [r for r in rows
+               if r.get("tier", -1) >= 0 and r.get("status") == TRACKER_NOT_WORKING]
+        if not bad:
+            continue
+        not_working += 1
+        msgs = [r.get("msg") or "" for r in bad]
+        if any(CLIENT_REJECT_RE.search(m) for m in msgs):
+            rejected += 1
+        if len(samples) < 3:
+            samples.append("%s: %s" % (t["name"][:40], " | ".join(msgs)[:120]))
+    return {
+        "qbittorrent_private_torrents": len(private),
+        "qbittorrent_private_tracker_not_working": not_working,
+        "qbittorrent_private_tracker_rejected_client": rejected,
+        "qbittorrent_tracker_check_timestamp_seconds": int(time.time()),
+    }, samples
+
+
+def write_metrics(metrics):
+    """Atomically publish to node_exporter's textfile collector.
+
+    mkstemp creates 0600 and the mode survives the rename, so node_exporter
+    could never read the file; chmod before the replace.
+    """
+    if not os.path.isdir(METRIC_DIR):
+        log("tracker check: %s missing, metrics not published" % METRIC_DIR)
+        return
+    fd, tmp = tempfile.mkstemp(dir=METRIC_DIR, prefix=".qbt-trackers.")
+    try:
+        with os.fdopen(fd, "w") as f:
+            for k, v in metrics.items():
+                f.write("%s %s\n" % (k, v))
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, os.path.join(METRIC_DIR, METRIC_FILE))
+    except BaseException:
+        os.unlink(tmp)
+        raise
+
+
 def approx(a, b):
     if a is None or b is None:
         return False
@@ -146,6 +214,24 @@ def main():
                                        "  [DRY RUN]" if dry else ""))
 
     torrents = qb.torrents()
+
+    # Observation only, and run before the policy so the policy's own refusals
+    # (below) cannot hide it. A failure here must not block the policy either:
+    # it is logged, the timestamp is not refreshed, and grafana.nix's
+    # QbittorrentTrackerCheckStale reports the blindness.
+    try:
+        metrics, samples = check_private_trackers(
+            qb, [t for t in torrents if t.get("private") is True])
+        log("trackers: %d private  %d not working  %d rejecting the client"
+            % (metrics["qbittorrent_private_torrents"],
+               metrics["qbittorrent_private_tracker_not_working"],
+               metrics["qbittorrent_private_tracker_rejected_client"]))
+        for line in samples:
+            log("    " + line)
+        if not dry:
+            write_metrics(metrics)
+    except Exception as e:  # observation must never block the policy
+        log("tracker check FAILED (policy continues): %r" % e)
 
     # ---------------------------------------------------------------- safety
     # Everything below hangs off `private`. If the field is missing -- an older

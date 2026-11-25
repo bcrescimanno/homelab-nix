@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# Find the newest qBittorrent release in linuxserver's libtorrentv1 line and,
+# if it is a different qBittorrent version from the one pinned, rewrite the
+# image in modules/arr-stack.nix to it (tag + digest).
+#
+# Renovate deliberately cannot do this: renovate.json captures the qBittorrent
+# version as the versioning's `compatibility`, so it only proposes linuxserver
+# rebuilds (ls<N>) of the pinned version. A new qBittorrent version needs
+# Redacted to whitelist it first, so it arrives as a separate, never-armed PR
+# that .github/workflows/qbittorrent-version-watch.yml opens from this script.
+# See the comment on the image in modules/arr-stack.nix.
+#
+# Prints KEY=VALUE lines for the workflow ($GITHUB_OUTPUT format):
+#   changed=true|false  current=<qB version>  new=<qB version>  tag=<full tag>
+#
+# Usage: scripts/qbittorrent-version-watch [--check]
+#   --check  report only, never edit the file
+set -euo pipefail
+
+FILE=modules/arr-stack.nix
+REPO=lscr.io/linuxserver/qbittorrent
+# `_v1\.2\.` on purpose: the registry also has a mis-published
+# libtorrentv1-5.3.0_v2.0.15-ls139 under the v1 prefix. Keep in step with the
+# versioning regex in renovate.json.
+TAG_RE='^libtorrentv1-([0-9]+\.[0-9]+\.[0-9]+)_v1\.2\.[0-9]+-ls([0-9]+)$'
+
+skopeo() { nix run nixpkgs#skopeo -- "$@"; }
+
+line=$(grep -oE "image = \"$REPO:[^\"]+\"" "$FILE")
+[ "$(printf '%s\n' "$line" | wc -l)" = 1 ] || { echo "expected exactly one $REPO image in $FILE" >&2; exit 1; }
+cur_tag=$(printf '%s' "$line" | sed -E "s|image = \"$REPO:([^@\"]+).*|\1|")
+[[ $cur_tag =~ $TAG_RE ]] || { echo "pinned tag '$cur_tag' does not match $TAG_RE" >&2; exit 1; }
+cur_ver=${BASH_REMATCH[1]}
+
+# Newest qBittorrent version first, then newest ls build within it. A failed
+# listing must fail the job (set -e + pipefail), never read as "nothing new".
+tags=$(skopeo list-tags "docker://$REPO" | nix run nixpkgs#jq -- -r '.Tags[]')
+best=$(printf '%s\n' "$tags" | grep -E "$TAG_RE" \
+  | sed -E "s/$TAG_RE/\1 \2 &/" | sort -k1,1V -k2,2n | tail -1)
+[ -n "$best" ] || { echo "registry returned no tag matching $TAG_RE" >&2; exit 1; }
+read -r new_ver _ new_tag <<<"$best"
+
+echo "current=$cur_ver"
+echo "new=$new_ver"
+echo "tag=$new_tag"
+
+newer=$(printf '%s\n%s\n' "$cur_ver" "$new_ver" | sort -V | tail -1)
+if [ "$new_ver" = "$cur_ver" ] || [ "$newer" = "$cur_ver" ]; then
+  # Same qBittorrent version (Renovate owns its rebuilds) or the pin is ahead.
+  echo "changed=false"
+  exit 0
+fi
+
+echo "changed=true"
+[ "${1:-}" = "--check" ] && exit 0
+
+# The manifest-list digest, which is what the image pin and Renovate record.
+digest=sha256:$(skopeo inspect --raw "docker://$REPO:$new_tag" | sha256sum | cut -d' ' -f1)
+sed -i -E "s|image = \"$REPO:[^\"]+\"|image = \"$REPO:$new_tag@$digest\"|" "$FILE"
+grep -q "$REPO:$new_tag@$digest" "$FILE" || { echo "rewrite of $FILE failed" >&2; exit 1; }

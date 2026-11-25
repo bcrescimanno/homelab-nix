@@ -1,0 +1,114 @@
+name: qBittorrent version watch
+
+# Opens (or refreshes) a HELD PR when linuxserver publishes a new qBittorrent
+# version in the libtorrentv1 line. Renovate cannot: renovate.json pins the
+# qBittorrent version as its versioning `compatibility`, so Renovate only moves
+# linuxserver rebuilds (ls<N>) of the version already running, and automerges
+# them.
+#
+# A new qBittorrent version must wait for Redacted to add it to the client
+# whitelist (#1018 shipped an unwhitelisted 5.3.1; #1030 rolled it back). There
+# is no API to ask, so this PR is NEVER armed for automerge: it is labelled
+# `needs-redacted-whitelist` and merged by hand after checking the tracker's
+# client rules page. pr-automerge-watch on rivendell announces it once and then
+# reminds weekly, so a held upgrade cannot be forgotten. See the comment on the
+# image in modules/arr-stack.nix.
+#
+# Uses RENOVATE_TOKEN, not GITHUB_TOKEN, for the same reason as
+# refresh-pins.yml: a PR opened with GITHUB_TOKEN never triggers the required
+# checks.
+
+on:
+  schedule:
+    - cron: '30 14 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  watch:
+    name: Check for a new qBittorrent version
+    runs-on: [self-hosted, Linux, X64, nix-builder]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.RENOVATE_TOKEN }}
+
+      - name: Look for a newer qBittorrent
+        id: watch
+        run: ./scripts/qbittorrent-version-watch | tee -a "$GITHUB_OUTPUT"
+
+      - name: Open or refresh the held PR
+        if: steps.watch.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.RENOVATE_TOKEN }}
+          CURRENT: ${{ steps.watch.outputs.current }}
+          NEW: ${{ steps.watch.outputs.new }}
+          TAG: ${{ steps.watch.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh() { nix run nixpkgs#gh -- "$@"; }
+
+          BRANCH=automation/qbittorrent-version
+          LABEL=needs-redacted-whitelist
+          TITLE="qbittorrent: $CURRENT -> $NEW (hold until Redacted whitelists it)"
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          git add modules/arr-stack.nix
+          git commit -m "$TITLE" -m "Image: lscr.io/linuxserver/qbittorrent:$TAG. Opened by .github/workflows/qbittorrent-version-watch.yml."
+
+          # Explicit lease, as in refresh-pins.yml: actions/checkout fetches main
+          # only, so a bare --force-with-lease has no tracking ref and refuses
+          # whenever the branch already exists. Rebuilt from main on every run,
+          # so a Renovate rebuild landing on main never leaves this conflicted.
+          EXPECT=$(git ls-remote origin "refs/heads/$BRANCH" | cut -f1)
+          # Skip the push when the branch already carries this exact change on
+          # this exact main: a daily re-push would rerun every required check
+          # for nothing.
+          SAME=false
+          if [ -n "$EXPECT" ]; then
+            git fetch --no-tags origin "$EXPECT"
+            if [ "$(git rev-parse "$EXPECT^")" = "$(git rev-parse HEAD^)" ] &&
+               [ "$(git rev-parse "$EXPECT^{tree}")" = "$(git rev-parse "HEAD^{tree}")" ]; then
+              SAME=true
+            fi
+          fi
+          if [ "$SAME" = true ]; then
+            echo "$BRANCH already holds $TAG on current main; not re-pushing."
+          else
+            git push --force-with-lease="$BRANCH:$EXPECT" origin "$BRANCH"
+          fi
+
+          gh label create "$LABEL" --color D93F0B --force \
+            --description "Held until the tracker whitelists this client version; merge by hand"
+
+          cat > "$RUNNER_TEMP/body.md" <<EOF
+          qBittorrent **$NEW** is out (\`$TAG\`); pirateship runs **$CURRENT**.
+
+          **Do not merge until Redacted lists $NEW on its client whitelist.** An
+          unwhitelisted client has every Redacted announce rejected (#1018 → #1030).
+          There is no API for the whitelist, so this is checked by hand on the
+          tracker's client rules page.
+
+          - [ ] $NEW is on Redacted's client whitelist
+          - [ ] Merge (squash). Renovate then automerges linuxserver rebuilds of $NEW.
+
+          Nothing arms automerge on this PR. pr-automerge-watch pushes a reminder
+          to ntfy every 7 days while it is open. If a version later than $NEW
+          appears first, this PR is retargeted at it in place.
+
+          Opened by \`.github/workflows/qbittorrent-version-watch.yml\`.
+          EOF
+
+          OPEN=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
+          if [ -z "$OPEN" ]; then
+            gh pr create --head "$BRANCH" --title "$TITLE" --body-file "$RUNNER_TEMP/body.md" --label "$LABEL"
+          else
+            gh pr edit "$OPEN" --title "$TITLE" --body-file "$RUNNER_TEMP/body.md" --add-label "$LABEL"
+            echo "Refreshed #$OPEN."
+          fi

@@ -74,14 +74,25 @@
     },
     {
       "description": [
-        "qBittorrent hold. Private trackers whitelist client versions, and a",
-        "digest bump on the floating libtorrentv1 tag can silently move to a",
-        "version Redacted has not approved (5.3.1, #1018, 2026-11-24). Held at",
-        "5.3.0; see the comment on the image in modules/arr-stack.nix. Remove",
-        "this rule only once the next version is on Redacted's whitelist."
+        "qBittorrent: linuxserver rebuilds only. Redacted whitelists client",
+        "versions, often weeks after a release, and #1018 shipped an",
+        "unwhitelisted 5.3.1 by automerging what looked like a routine digest",
+        "bump. The tag is libtorrentv1-<qBittorrent>_v<libtorrent>-ls<build>.",
+        "The qBittorrent version is captured as `compatibility`, so Renovate",
+        "only ever proposes a new ls<build> of the version already pinned,",
+        "and those keep automerging under the rule above. `ls` sits in the",
+        "`major` slot only because regex versioning requires one; these PRs",
+        "read as major updates and that is cosmetic.",
+        "",
+        "New qBittorrent versions do NOT come from Renovate: the",
+        "qbittorrent-version-watch workflow opens an unarmed",
+        "`needs-redacted-whitelist` PR for them. See modules/arr-stack.nix.",
+        "",
+        "`_v1\\.2\\.` is deliberate: the registry also carries a mis-published",
+        "libtorrentv1-5.3.0_v2.0.15-ls139 under the v1 prefix."
       ],
       "matchPackageNames": ["lscr.io/linuxserver/qbittorrent"],
-      "enabled": false
+      "versioning": "regex:^libtorrentv1-(?<compatibility>\\d+\\.\\d+\\.\\d+)_v1\\.2\\.\\d+-ls(?<major>\\d+)$"
     }
   ]
 }

@@ -58,6 +58,17 @@ or rotate, one less silent failure mode. That costs a 60 req/hr per-IP limit,
 which an hourly run using 1 + one-per-open-PR requests does not approach. A 403
 from the rate limiter is treated as UNKNOWN, not as an empty PR list.
 
+HELD PRS
+--------
+A PR labelled `needs-redacted-whitelist` is deliberately never armed: it moves
+qBittorrent to a version Redacted may not have whitelisted yet, and only a
+human can check that (.github/workflows/qbittorrent-version-watch.yml opens it;
+see the image comment in modules/arr-stack.nix). None of the stuck/not-armed
+diagnoses apply to it. Instead it is announced once when first seen and then
+re-announced every HELD_REMIND_DAYS while it stays open, so a held upgrade is
+never silently forgotten. Closing or merging it just drops the state; that was
+a human's decision, so there is nothing to report.
+
 STATE
 -----
 Alerting every hour about the same wedged PR would train the alert into
@@ -85,6 +96,9 @@ STALE_HOURS = 4
 # A queued run already has a check run, so this only trips when nothing was
 # created at all. Generous anyway: workflow dispatch is not instant.
 CHECKS_GRACE_MIN = 60
+
+HELD_LABEL = "needs-redacted-whitelist"
+HELD_REMIND_DAYS = 7
 
 FAILED_CONCLUSIONS = {"failure", "timed_out", "cancelled", "action_required"}
 API = "https://api.github.com"
@@ -175,6 +189,40 @@ def diagnose(pr):
         )
 
     return None
+
+
+def is_held(pr):
+    return any(l.get("name") == HELD_LABEL for l in pr.get("labels") or [])
+
+
+def remind_held(pr):
+    """Announce a held PR on first sight, then every HELD_REMIND_DAYS."""
+    num = pr["number"]
+    statefile = os.path.join(STATE_DIR, f"held-{num}")
+    try:
+        with open(statefile) as f:
+            last = float(f.read().strip())
+    except (FileNotFoundError, ValueError):
+        last = None
+    now = time.time()
+    if last is not None and now - last < HELD_REMIND_DAYS * 86400:
+        return
+    days = int(age_minutes(pr["created_at"]) / 1440)
+    if last is None:
+        title = "Upgrade held for tracker whitelist"
+        lead = "New upgrade waiting"
+    else:
+        title = "Upgrade still held for tracker whitelist"
+        lead = f"Still waiting after {days} days"
+    if notify(
+        title,
+        3,
+        "hourglass",
+        f"{lead}: {pr['title']}. Merge it once Redacted's client whitelist "
+        f"lists the new version. https://github.com/{REPO}/pull/{num}",
+    ):
+        with open(statefile, "w") as f:
+            f.write(str(now))
 
 
 def notify(title, priority, tags, body):
@@ -268,10 +316,15 @@ def main():
 
     open_numbers = set()
     stuck = []
+    held = []
 
     for pr in prs:
         num = pr["number"]
         open_numbers.add(num)
+        if is_held(pr):
+            held.append(f"#{num}")
+            remind_held(pr)
+            continue
         try:
             verdict = diagnose(pr)
         except Unknown as e:
@@ -307,6 +360,11 @@ def main():
 
     # Anything we had flagged that is no longer open got resolved somehow.
     for name in os.listdir(STATE_DIR):
+        if name.startswith("held-"):
+            # A held PR that closed was merged or dropped by a human: no news.
+            if int(name[5:]) not in open_numbers:
+                os.remove(os.path.join(STATE_DIR, name))
+            continue
         if not name.startswith("pr-"):
             continue
         num = int(name[3:])
@@ -322,6 +380,7 @@ def main():
 
     print(
         f"checked {len(prs)} open PRs; stuck:{','.join(stuck) or 'none'}; "
+        f"held:{','.join(held) or 'none'}; "
         f"unknown:{'; '.join(unknowns) or 'none'}"
     )
     if unknowns:
