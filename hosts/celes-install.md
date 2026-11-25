@@ -114,9 +114,13 @@ Claude can do most of these over SSH. Ask once celes is up.
 - [x] **Charge limit.** `cat /sys/class/power_supply/BAT1/charge_control_end_threshold` reads 80.
 - [x] **Power profiles.** In Plasma, under System Settings → Power Management, set Performance on AC and power-saver on battery. asusd's own profile switching is off.
 - [x] **Charging.** On a USB-C PD charger, UPower reports AC. The nightly upgrade only runs on AC power.
-- [ ] **Keys.** Check the mic-mute key, and bind Fn+F5 (it does nothing until the desktop binds it).
+- [x] **Keys.** Check the mic-mute key (works). Binding Fn+F5 (it does nothing until the desktop binds it) is **deferred**: see Follow-ups.
 - [ ] **Lutris.** If you restore Lutris config, set the Wine runner's GPU option back to **Auto**. Arch had `gpu: card1`, and card numbers aren't stable.
 - [ ] **Dotfiles cleanup.** Retire `machines/celes.nix` and rename `celes-nixos` to `celes`.
+
+## Follow-ups
+
+- [ ] **Bind Fn+F5.** Deferred on 2026-11-24. It does nothing until Plasma binds it; pick an action and bind it in System Settings → Shortcuts.
 
 ## Not carried over yet
 
@@ -145,4 +149,4 @@ Note anything that went differently from the steps above, with the date.
 - **The 4070 never sleeps: `Runtime D3 status: Not supported`** in `/proc/driver/nvidia/gpus/0000:01:00.0/power` (615.78.08 open), active 60/60 s idle with Steam closed. The modprobe options are applied (`NVreg_DynamicPowerManagement=0x02`), the MUX is hybrid (`gpu_mux_mode=1`, `dgpu_disable=0`), and the parent bridge `00:01.1` has ACPI `power_resources_D3hot`, so the cause is still unknown. KWin also holds `/dev/nvidia0` open (`card0`). Until RTD3 works, the `KWIN_DRM_DEVICES` / `PrefersNonDefaultGPU` decisions are moot. Open investigation.
 - **asusd's `Unknown or invalid slash: "19b6"` is harmless:** `19b6` is the keyboard aura device, probed as a Slash candidate first. The Slash bar and aura both respond to asusctl.
 - **dGPU for games: passes, by the inherited route (2026-11-24, after Steam was added in #1021).** FINAL FANTASY (Pixel Remaster) under Proton Experimental ran on the 4070 (`nvidia-smi`: C+G, 349 MiB, P0), with no offload command. But it carried `__NV_PRIME_RENDER_OFFLOAD=1` / `__VK_LAYER_NV_optimus=NVIDIA_only`, inherited from Steam, which Plasma launched via `PrefersNonDefaultGPU` (steamwebhelper is on the 4070 too, ~400 MiB). So DXVK's own discrete-first choice is **untested**. Re-test it with a game launched without the offload env before dropping `PrefersNonDefaultGPU`. That decision waits on RTD3 anyway.
-- **Still open:** Fn+F5 binding, Lutris, dotfiles cleanup, and the deletion of `~/.local/share/celes-install` (kept for now on purpose).
+- **Still open:** Lutris, dotfiles cleanup, and the deletion of `~/.local/share/celes-install` (Brian is doing that one).
