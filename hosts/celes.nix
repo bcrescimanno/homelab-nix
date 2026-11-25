@@ -136,7 +136,36 @@
     # Ada works with either; the open modules are what Arch ran (nvidia-open).
     open = true;
     # The feature branch, as on terra — 615.x is also what Arch ran.
-    package = config.boot.kernelPackages.nvidiaPackages.latest;
+    #
+    # The open module carries NVIDIA open-gpu-kernel-modules PR #1512, without
+    # which RTD3 cannot work on this kernel: since Linux 7.3 ("fs,kthread: start
+    # all kthreads in nullfs") the driver's nv-probe kthread resolves paths in
+    # an empty root, its filp_open of /sys/bus/pci/devices/<bdf>/config fails
+    # with ENOENT, and the driver silently disables dynamic power management.
+    # The symptom is "Runtime D3 status: Not supported" in
+    # /proc/driver/nvidia/gpus/0000:01:00.0/power with the 4070 pinned in D0
+    # (issue #1507, NVIDIA internal bug 7039712). Found on first boot,
+    # 2026-11-24, on 7.3.5 + 615.78.08; kthreadd's root there is dev 4/ino 1,
+    # empty. Only `.open` is overridden — the userspace driver, firmware and
+    # 32-bit libs are the stock derivations.
+    #
+    # The patch is rebased onto 615.78.08 exactly (no fuzz). DROP IT once a
+    # release carries the fix: a bump of `latest` past 615.78.08 makes it fail to
+    # apply, which fails celes's build (nightly upgrade or deploy) and nothing
+    # else — CI never builds celes. Then check #1507/#1512. If the new
+    # version still lacks the fix, rebase the patch onto it. If it has the
+    # fix, delete the patch. Not an overlayWorkarounds entry: those probe a
+    # top-level pkgs attribute, and this is a kernelPackages-scoped module.
+    package =
+      let
+        base = config.boot.kernelPackages.nvidiaPackages.latest;
+      in
+      base
+      // {
+        open = base.open.overrideAttrs (old: {
+          patches = (old.patches or [ ]) ++ [ ../patches/nvidia-open-rtd3-kthread-nullfs.patch ];
+        });
+      };
     modesetting.enable = true;
     powerManagement = {
       enable = true;
