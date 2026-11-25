@@ -216,8 +216,16 @@ in
     # routing (rule 101: no-fwmark traffic → table 51820 → tun0) routes all
     # qBittorrent traffic through the VPN. The v1 tag is kept as a conservative
     # choice; v2 may also work but has not been tested in this configuration.
+    #
+    # HELD at 5.3.0 (linuxserver 5.3.0_v1.2.20-ls144). Private trackers keep a
+    # client whitelist, and Redacted had not whitelisted 5.3.1 when the
+    # 2026-11-24 digest bump (#1018) deployed it. Renovate updates for this
+    # image are disabled in renovate.json (packageRules, "qBittorrent hold").
+    # Before moving the digest, confirm the new version is on Redacted's
+    # whitelist, then drop that rule. The floating tag carries no version, so
+    # read the image's `build_version` label, not the tag.
     qbittorrent = {
-      image = "lscr.io/linuxserver/qbittorrent:libtorrentv1@sha256:de643bfc4adf33a88dc200e3f1bfe63a55e228825d6778787d26cac75082497f";
+      image = "lscr.io/linuxserver/qbittorrent:libtorrentv1@sha256:3f4e61ffef408311bbe26ccda03e6e691ec218633cdf8a458bd277ae154c0bac";
       autoStart = true;
       dependsOn = [ "gluetun" ];
       extraOptions = [ "--network=container:gluetun" ];
