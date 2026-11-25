@@ -372,7 +372,14 @@
   # agent socket (dotfiles home/ssh-agent.nix, dotfiles.sshAgent = "bitwarden").
   # Lutris lives here rather than in dotfiles because it pulls in unfree Steam
   # runtime pieces, and only this host allows unfree.
-  environment.systemPackages = [ pkgs.bitwarden-desktop pkgs.lutris ];
+  environment.systemPackages = [
+    pkgs.bitwarden-desktop
+    pkgs.lutris
+    # Konveyor — scrolling column tiling as a KWin effect. Installed means on:
+    # the package flips the effect's EnabledByDefault, and KWin finds it
+    # through /run/current-system/sw/lib/qt-6/plugins. See pkgs/konveyor.nix.
+    (pkgs.callPackage ../pkgs/konveyor.nix { })
+  ];
   programs.firefox.enable = true;
   programs.gamemode.enable = true;
 
