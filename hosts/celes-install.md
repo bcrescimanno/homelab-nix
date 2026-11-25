@@ -121,6 +121,7 @@ Claude can do most of these over SSH. Ask once celes is up.
 ## Follow-ups
 
 - [ ] **Bind Fn+F5.** Deferred on 2026-11-24. It does nothing until Plasma binds it; pick an action and bind it in System Settings → Shortcuts.
+- [ ] **Laptop panel stays off after lid-open resume while docked.** Accepted for now on 2026-11-24, an upstream KWin race (looks like [KDE bug 515550](https://bugs.kde.org/show_bug.cgi?id=515550)). Recheck after each Plasma update. Recovery: close and reopen the lid, or over SSH `XDG_RUNTIME_DIR=/run/user/1000 WAYLAND_DISPLAY=wayland-1 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus kscreen-doctor output.eDP-1.enable` (the socket is `wayland-1`, not `-0`). A resume hook running that was considered and rejected, because it would fight KWin's own output handling and undo a deliberate clamshell setup. See the Log, 2026-11-24 evening.
 
 ## Not carried over yet
 
@@ -150,3 +151,19 @@ Note anything that went differently from the steps above, with the date.
 - **asusd's `Unknown or invalid slash: "19b6"` is harmless:** `19b6` is the keyboard aura device, probed as a Slash candidate first. The Slash bar and aura both respond to asusctl.
 - **dGPU for games: passes, by the inherited route (2026-11-24, after Steam was added in #1021).** FINAL FANTASY (Pixel Remaster) under Proton Experimental ran on the 4070 (`nvidia-smi`: C+G, 349 MiB, P0), with no offload command. But it carried `__NV_PRIME_RENDER_OFFLOAD=1` / `__VK_LAYER_NV_optimus=NVIDIA_only`, inherited from Steam, which Plasma launched via `PrefersNonDefaultGPU` (steamwebhelper is on the 4070 too, ~400 MiB). So DXVK's own discrete-first choice is **untested**. Re-test it with a game launched without the offload env before dropping `PrefersNonDefaultGPU`. That decision waits on RTD3 anyway.
 - **Still open:** Lutris, dotfiles cleanup, and the deletion of `~/.local/share/celes-install` (Brian is doing that one).
+
+### 2026-11-24 (evening) — dock, RTD3 and PPD fixes verified; first lid-close sleep
+
+Celes cold-booted on `main` plus both open branches (the dock udev rule, and the nvidia-open RTD3 patch).
+
+- **RTD3 fixed.** The cause was nvidia-open on Linux ≥7.3 ([NVIDIA/open-gpu-kernel-modules#1507](https://github.com/NVIDIA/open-gpu-kernel-modules/issues/1507)): the `nv-probe` kthread can no longer open the device's sysfs `config`, so RTD3 is silently disabled. The fix is upstream PR #1512, carried as `patches/nvidia-open-rtd3-kthread-nullfs.patch`. After the reboot:
+  - `/proc/driver/nvidia/gpus/0000:01:00.0/power` reads `Runtime D3 status: Enabled (fine-grained)` and `Video Memory: Off`.
+  - The 4070 stayed suspended for the full 60 s sample, and its bridge `00:01.1` was in D3cold, with KWin running and Steam closed. KWin holding `card0` therefore doesn't keep the card awake.
+  - The `KWIN_DRM_DEVICES` / `PrefersNonDefaultGPU` decisions (section 6) are live again.
+- **PPD cold-boot ordering holds.** power-profiles-daemon started at 16:18:34 and powerdevil at 16:18:52. The Power Profile settings are present.
+- **Dock port pinned.** `0000:00:03.1` reads `power/control=on` from boot, and `enp100s0` had 10.0.1.85 at boot.
+- **First lid-close sleep (18:23–22:07, docked to the LG UltraGear):**
+  - Each suspend aborted once (`errno -16`: a wakeup event during the suspend) and powerdevil re-entered it immediately. Harmless.
+  - **The Thunderbolt link dropped during sleep** (`0:2: failed to reach state TB_PORT_UP ... lost during suspend`). On resume the kernel removed the dock and re-added it within a second. igc's teardown printed `Trying to free already-free IRQ` and `disabling already-disabled device` warnings (harmless). boltd re-authorized the dock, then `pciehp: Slot(0-1): Card present / Link Up` with no manual wake, and `enp100s0` came back. **That exercised the dock fix's hotplug path, via resume rather than a cable pull.** A real replug is still worth doing once.
+  - **The laptop panel never came back.** KWin re-enabled `eDP-1` on lid-open before it had the DRM device back (`drmModeListLessees() failed: Permission denied`, `Applying output configuration failed: EACCESS`) and never retried. The desktop, lock screen included, was only on the LG (`DP-5`), which was dark behind a burst of `DPIA AUX failed` errors. `kscreen-doctor output.eDP-1.enable` over SSH restored it. Accepted as an upstream race: see Follow-ups.
+  - **`celes.home.theshire.io` resolves only to the dock NIC (10.0.1.85).** With the dock unplugged, reach celes on its Wi-Fi lease, 10.0.1.213.
