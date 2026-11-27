@@ -60,6 +60,14 @@ DRIFT=0
 # releases.atom, and rewrites version, src.hash and npmDepsHash itself. Being
 # unable to compute those two hashes was the stated reason this pin was left
 # manual — Renovate cannot, nix-update can, which is the whole trick.
+# nix-update 1.16.0 (nixpkgs, as of 2026-11-27) cannot evaluate a flake under
+# Nix >= 2.35: `nix flake metadata` no longer copies the flake into the store,
+# so the path it hands nix-instantiate does not exist ("opening file
+# /nix/store/...-source: No such file or directory"). That killed the
+# 2026-11-25 weekly run and no Materialious 1.18.37 PR was opened. 1.17.0
+# fixes it. Go back to nixpkgs#nix-update once nixpkgs ships >= 1.17.0.
+NIX_UPDATE="github:Mic92/nix-update/v1.17.0"
+
 refresh_materialious() {
   step "materialious"
   local before after
@@ -68,7 +76,7 @@ refresh_materialious() {
   if $CHECK; then
     # --version-regex keeps it on plain numeric tags; upstream also publishes
     # capacitor-* and desktop-* tags that are not this package.
-    nix run nixpkgs#nix-update -- --flake materialious \
+    nix run "$NIX_UPDATE" -- --flake materialious \
       --version-regex '^([0-9.]+)$' 2>&1 | grep -qi "already" && {
         ok "materialious $before is current"; return 0; }
     warn "materialious $before is behind upstream"
@@ -77,7 +85,7 @@ refresh_materialious() {
     return 0
   fi
 
-  nix run nixpkgs#nix-update -- --flake materialious --version-regex '^([0-9.]+)$'
+  nix run "$NIX_UPDATE" -- --flake materialious --version-regex '^([0-9.]+)$'
   after="$(nix eval --raw .#materialious.version 2>/dev/null || echo unknown)"
   if [[ "$before" == "$after" ]]; then
     ok "materialious $before is current"
