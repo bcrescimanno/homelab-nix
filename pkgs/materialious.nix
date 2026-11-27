@@ -65,6 +65,10 @@
 #      anywhere under src/ or the new shared/. They exist ONLY because the source
 #      is patched before building. A prebuilt image gives up the measured
 #      AV1 -> H.264 startup fix.
+#      UPDATE 1.18.37: upstream's Player.svelte now sets
+#      `defaultBandwidthEstimate: isAndroidTv() ? 50_000_000 : undefined` —
+#      the same value, but Android TV only, so a web build still gets nothing
+#      from it. `preferredVideoCodecs` still has zero hits. Both patches stay.
 #   2. It moves config back to a runtime `replace_env_vars.sh` sed of VITE_
 #      placeholders, undoing the build-time baking below and re-opening the
 #      `#`-in-unquoted-dotenv truncation trap that installCheckPhase guards.
@@ -86,18 +90,18 @@
 
 buildNpmPackage rec {
   pname = "materialious";
-  version = "1.18.34";
+  version = "1.18.37";
 
   src = fetchFromGitHub {
     owner = "Materialious";
     repo = "Materialious";
     tag = version;
-    hash = "sha256-omGkIO4ewFH9n52yOOM323lO1bs7GqEZAcLJfJkSW6E=";
+    hash = "sha256-jAmzyyWa67WR5nWQbA/hcmKmLRwmTZpCaY3tdDQroHw=";
   };
 
   sourceRoot = "${src.name}/materialious";
 
-  npmDepsHash = "sha256-ydZoMcspfHXk+930lQRowAuh3P1SP7vQ5uHu5LTC14I=";
+  npmDepsHash = "sha256-BA0wpda45q5hl70hsqy4gG1lYQTkPJzP24KAyo2Kv3Y=";
 
   # WORKAROUND 1 — `sharp` (a devDependency reached via @capacitor/assets, and
   # used only to generate mobile app icons) has a postinstall that downloads a
