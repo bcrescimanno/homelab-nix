@@ -59,7 +59,7 @@
 # all now that this file updates itself. It still costs too much:
 #
 #   1. It cannot carry the two shaka patches below. Neither
-#      `preferredVideoCodecs` nor `defaultBandwidthEstimate` is exposed upstream
+#      `preferredVideo` (codec) nor `defaultBandwidthEstimate` is exposed upstream
 #      in any configurable form — re-verified against 1.18.12: no VITE_ variable,
 #      no settings entry, no UI toggle, and zero hits for either identifier
 #      anywhere under src/ or the new shared/. They exist ONLY because the source
@@ -68,7 +68,7 @@
 #      UPDATE 1.18.37: upstream's Player.svelte now sets
 #      `defaultBandwidthEstimate: isAndroidTv() ? 50_000_000 : undefined` —
 #      the same value, but Android TV only, so a web build still gets nothing
-#      from it. `preferredVideoCodecs` still has zero hits. Both patches stay.
+#      from it. a codec preference (`preferredVideo`) still has zero hits. Both patches stay.
 #   2. It moves config back to a runtime `replace_env_vars.sh` sed of VITE_
 #      placeholders, undoing the build-time baking below and re-opening the
 #      `#`-in-unquoted-dotenv truncation trap that installCheckPhase guards.
@@ -190,11 +190,19 @@ buildNpmPackage rec {
     #
     # Verified by measuring which itags the player actually fetches:
     # before ['140','399'] (AAC + AV1), after ['137','140'] (H.264 + AAC).
+    #
+    # `preferredVideo`, NOT `preferredVideoCodecs`. Shaka 5.x deprecated the
+    # latter and logs a warning on every load; its legacy shim converts it to
+    # a preferredVideo entry with every other field empty (including hdrLevel,
+    # whose real default is 'AUTO'). This is shaka's own default entry
+    # (lib/util/player_configuration.js, 5.2.16) with only `codec` changed, so
+    # the patch changes the codec and nothing else. The array REPLACES the
+    # default, so every field must be spelled out.
     P='src/lib/components/player/Player.svelte'
     substituteInPlace "$P" \
       --replace-fail \
         'if (playerElement) playerElement.loop = $playerAlwaysLoopStore;' \
-        'player.configure({ preferredVideoCodecs: ['"'"'avc1'"'"'], abr: { defaultBandwidthEstimate: 50000000 } }); if (playerElement) playerElement.loop = $playerAlwaysLoopStore;'
+        'player.configure({ preferredVideo: [{ label: "", role: "", language: "", codec: "avc1", hdrLevel: "AUTO", layout: "" }], abr: { defaultBandwidthEstimate: 50000000 } }); if (playerElement) playerElement.loop = $playerAlwaysLoopStore;'
   '';
 
   preBuild = ''
@@ -303,10 +311,16 @@ buildNpmPackage rec {
     # The shaka config is injected by postPatch into a minified bundle;
     # --replace-fail proves the ANCHOR matched, not that the payload survived
     # the build. Assert both settings are actually present in the output.
-    grep -rqF 'defaultBandwidthEstimate' $out/_app \
+    #
+    # Match OUR payload, not the bare identifiers. Shaka's own bundled code
+    # contains `defaultBandwidthEstimate` (default 1e6), upstream's Player
+    # sets it for Android TV (`ue()?5e7:void 0`), and shaka's legacy shim
+    # names `preferredVideoCodecs` — so the old identifier-only greps passed
+    # with no patch at all. `.` stands for whichever quote the minifier picks.
+    grep -rqE 'abr:\{defaultBandwidthEstimate:(5e7|50000000)\}' $out/_app \
       || { echo "FAIL: ABR bandwidth estimate did not reach the bundle"; exit 1; }
 
-    grep -rqF 'preferredVideoCodecs' $out/_app \
+    grep -rqE 'preferredVideo:\[\{[^]]*codec:.avc1.' $out/_app \
       || { echo "FAIL: codec preference did not reach the bundle"; exit 1; }
 
     test -f $out/index.html || { echo "FAIL: no index.html"; exit 1; }
