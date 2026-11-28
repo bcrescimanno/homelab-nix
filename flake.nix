@@ -2,9 +2,17 @@
   description = "Homelab NixOS configurations";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    # Track `nixos-unstable` (not `main`): we run nixpkgs-unstable, and this is
-    # nixos-raspberrypi's companion branch for that channel, so the two move
+    # nixos-unstable, not nixpkgs-unstable. nixpkgs-unstable advances more often
+    # (median gap 0.5d vs 1.8d, Jun–Nov 2026) but gates only on package builds,
+    # so it repeatedly landed on revs whose aarch64 builds Hydra hadn't finished:
+    # torch at 4fe25e1 (#964), grafana at 619c39f (#1016) — each time rivendell
+    # compiled it from source. The nixos-unstable revs of the same weeks had both
+    # cached. It is also the channel Jovian asserts on (version >= 27.05 while
+    # nixpkgs-unstable still said 26.11). We moved off it in March only for
+    # libraop/cliairplay, long since in both channels.
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    # Track `nixos-unstable` (not `main`): we run nixos-unstable, and this is
+    # nixos-raspberrypi's branch for that channel, so the two move
     # together. The stable `main` branch lags — it froze at 2026-05-17 with an
     # unguarded `boot.loader.kernelFile = …stdenv.hostPlatform.linux-kernel.target`,
     # which broke once nixpkgs 26.11 removed that attribute. nixos-unstable carries
@@ -41,7 +49,7 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     # Steam Deck Gaming Mode on NixOS, for terra. Follows our nixpkgs: Jovian
-    # validates against nixos-unstable, which nixpkgs-unstable tracks closely.
+    # validates against nixos-unstable, and asserts nixpkgs is new enough.
     jovian.url = "github:Jovian-Experiments/Jovian-NixOS/development";
     jovian.inputs.nixpkgs.follows = "nixpkgs";
   };
